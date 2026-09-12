@@ -1,0 +1,14 @@
+{
+  "name": "cityfix-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CityFix Mobile (React Native) and Web (React Vite) Workspace",
+  "scripts": {
+    "dev:web": "npm run dev --prefix web",
+    "build:web": "npm run build --prefix web",
+    "preview:web": "npm run preview --prefix web",
+    "start:mobile": "npm start --prefix mobile",
+    "android:mobile": "npm run android --prefix mobile",
+    "ios:mobile": "npm run ios --prefix mobile"
+  }
+}
