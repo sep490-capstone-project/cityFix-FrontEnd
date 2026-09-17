@@ -1,0 +1,554 @@
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  StyleSheet,
+  ActivityIndicator,
+  StatusBar,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { ReportDraft, AIAnalysis } from '../types';
+
+const SIMULATED_AI_RESULT: AIAnalysis = {
+  analysisId: 'ai-demo',
+  categoryId: 'cat-001',
+  severity: 'HIGH',
+  dangerLevel: 'DANGEROUS',
+  confidenceScore: 87.4,
+  description:
+    'Phát hiện vùng hư hỏng mặt đường diện tích lớn. Bề mặt lún sâu có nguy cơ gây mất kiểm soát phương tiện.',
+  isAcceptedByHuman: false,
+};
+
+const AI_STEPS = [
+  'Tải ảnh lên hệ thống',
+  'Tiền xử lý hình ảnh',
+  'Nhận diện đối tượng (AI Model)',
+  'Phân loại loại sự cố',
+  'Đánh giá mức độ nghiêm trọng',
+  'Hoàn tất — Kết quả sẵn sàng',
+];
+
+interface Props {
+  navigate: (s: string) => void;
+  goBack: () => void;
+  draft: ReportDraft;
+  setDraft: (d: ReportDraft) => void;
+}
+
+export default function AIAnalysisScreen({ navigate, goBack, draft, setDraft }: Props) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [done, setDone] = useState(false);
+  const [confidence, setConfidence] = useState(0);
+  const [userDescription, setUserDescription] = useState(draft.userDescription || '');
+
+  useEffect(() => {
+    let cur = 0;
+    const interval = setInterval(() => {
+      cur++;
+      setCurrentStep(cur);
+      if (cur >= AI_STEPS.length - 1) {
+        clearInterval(interval);
+        setTimeout(() => {
+          setDraft({
+            ...draft,
+            aiAnalysis: SIMULATED_AI_RESULT,
+            userCategoryId: 'cat-001',
+          });
+          setDone(true);
+        }, 400);
+      }
+    }, 500);
+
+    const confInterval = setInterval(() => {
+      setConfidence((c) => Math.min(c + 3.2, 87.4));
+    }, 50);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(confInterval);
+    };
+  }, []);
+
+  const handleNext = () => {
+    setDraft({ ...draft, userDescription });
+    navigate('review-draft');
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <View style={styles.topAccentBar} />
+
+      {/* Top Bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={[styles.backBtn, !done && { opacity: 0.4 }]}
+          disabled={!done}
+          onPress={goBack}
+        >
+          <Ionicons name="arrow-back" size={20} color="#0f172a" />
+        </TouchableOpacity>
+        <Text style={styles.topBarTitle}>Tạo báo cáo (Bước 3/4)</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      {/* Step Header */}
+      <View style={styles.stepHeader}>
+        <View style={styles.stepTrack}>
+          <View style={[styles.stepFill, { width: '75%' }]} />
+        </View>
+        <View style={styles.stepTextRow}>
+          <Text style={styles.stepBadgeText}>BƯỚC 03</Text>
+          <Text style={styles.stepTitleText}>PHÂN TÍCH BẰNG AI</Text>
+        </View>
+      </View>
+
+      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+        <View style={styles.contentPadding}>
+          {/* Scan Image Preview */}
+          <View style={styles.scanImageCard}>
+            {draft.imageUrls[0] ? (
+              <Image source={{ uri: draft.imageUrls[0] }} style={styles.scanImage} />
+            ) : null}
+            <View style={styles.imageOverlay} />
+
+            {!done ? (
+              <View style={styles.scanningOverlay}>
+                <ActivityIndicator size="large" color="#f97316" />
+                <Text style={styles.scanningText}>
+                  {AI_STEPS[currentStep] || 'Đang quét phân tích...'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.doneBadgeTag}>
+                <Ionicons name="checkmark-circle" size={16} color="#ffffff" />
+                <Text style={styles.doneBadgeText}>AI ĐÃ PHÂN TÍCH</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Loading Confidence Bar */}
+          {!done ? (
+            <View style={styles.card}>
+              <View style={styles.confidenceHeader}>
+                <Text style={styles.confidenceTitle}>Tính toán độ tin cậy...</Text>
+                <Text style={styles.confidenceScoreText}>
+                  {Math.round(confidence)}%
+                </Text>
+              </View>
+              <View style={styles.progressBarTrack}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.round(confidence)}%` },
+                  ]}
+                />
+              </View>
+            </View>
+          ) : null}
+
+          {/* AI Result Card */}
+          {done ? (
+            <View style={styles.resultCard}>
+              <View style={styles.resultHeader}>
+                <Ionicons name="sparkles" size={18} color="#f97316" />
+                <Text style={styles.resultTitle}>KẾT QUẢ PHÂN TÍCH AI</Text>
+                <View style={styles.confidenceBadge}>
+                  <Text style={styles.confidenceBadgeText}>
+                    {SIMULATED_AI_RESULT.confidenceScore}% tin cậy
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.resultRowsList}>
+                <View style={styles.resultRow}>
+                  <Text style={styles.rowLabel}>Loại sự cố</Text>
+                  <Text style={[styles.rowValue, { color: '#ea580c' }]}>
+                    Ổ gà / Hư hỏng mặt đường
+                  </Text>
+                </View>
+
+                <View style={styles.resultRow}>
+                  <Text style={styles.rowLabel}>Mức độ nghiêm trọng</Text>
+                  <View style={styles.chipHigh}>
+                    <Text style={styles.chipHighText}>CAO</Text>
+                  </View>
+                </View>
+
+                <View style={styles.resultRow}>
+                  <Text style={styles.rowLabel}>Đánh giá nguy hiểm</Text>
+                  <View style={styles.chipDanger}>
+                    <Text style={styles.chipDangerText}>NGUY HIỂM</Text>
+                  </View>
+                </View>
+
+                <View style={styles.descBlock}>
+                  <Text style={styles.descLabel}>Mô tả AI đề xuất:</Text>
+                  <Text style={styles.descContent}>
+                    {SIMULATED_AI_RESULT.description}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {/* Citizen Description Textarea */}
+          {done ? (
+            <View style={styles.card}>
+              <Text style={styles.inputTitle}>
+                BỔ SUNG MÔ TẢ CỦA BẠN (TÙY CHỌN)
+              </Text>
+              <TextInput
+                style={styles.textAreaInput}
+                placeholder="Nhập thêm chi tiết về sự cố nếu cần..."
+                placeholderTextColor="#9ca3af"
+                multiline
+                numberOfLines={3}
+                value={userDescription}
+                onChangeText={setUserDescription}
+              />
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+
+      {/* Footer CTA Next */}
+      {done ? (
+        <View style={styles.footerContainer}>
+          <TouchableOpacity
+            style={styles.nextBtn}
+            onPress={handleNext}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.nextBtnText}>XEM & XÁC NHẬN BẢN NHÁP</Text>
+            <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  topAccentBar: {
+    height: 3,
+    backgroundColor: '#f97316',
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topBarTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  stepHeader: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  stepTrack: {
+    height: 4,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  stepFill: {
+    height: '100%',
+    backgroundColor: '#f97316',
+  },
+  stepTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  stepBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ea580c',
+    letterSpacing: 1,
+  },
+  stepTitleText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  contentPadding: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 16,
+  },
+
+  /* Scan Image Card */
+  scanImageCard: {
+    height: 180,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    position: 'relative',
+  },
+  scanImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.3)',
+  },
+  scanningOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scanningText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ea580c',
+    letterSpacing: 0.5,
+  },
+  doneBadgeTag: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  doneBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+
+  /* Card */
+  card: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  confidenceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  confidenceTitle: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  confidenceScoreText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#f97316',
+    borderRadius: 4,
+  },
+
+  /* Result Card */
+  resultCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.3)',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(249, 115, 22, 0.15)',
+    gap: 8,
+  },
+  resultTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ea580c',
+    flex: 1,
+  },
+  confidenceBadge: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  confidenceBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
+  resultRowsList: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  rowLabel: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  rowValue: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  chipHigh: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  chipHighText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#dc2626',
+  },
+  chipDanger: {
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  chipDangerText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
+  descBlock: {
+    paddingVertical: 10,
+    gap: 4,
+  },
+  descLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  descContent: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+    fontStyle: 'italic',
+  },
+
+  /* Input */
+  inputTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: 1,
+  },
+  textAreaInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#0f172a',
+    textAlignVertical: 'top',
+    minHeight: 80,
+  },
+
+  /* Footer CTA */
+  footerContainer: {
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  nextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f97316',
+    borderRadius: 16,
+    paddingVertical: 16,
+    gap: 8,
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  nextBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.8,
+  },
+});
