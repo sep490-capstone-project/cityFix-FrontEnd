@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
+import * as Location from 'expo-location';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
-  Image,
   StyleSheet,
-  ActivityIndicator,
-  Modal,
+  Switch,
   StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft } from '../types';
 
@@ -41,20 +45,75 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
   const hasLocation = mode === 'gps-done' || mode === 'manual-done';
   const canProceed = draft.location !== null;
 
-  const handleUseGPS = () => {
-    if (mode === 'gps-done') return;
+  const handleUseGPS = async () => {
+  if (mode === 'gps-done' || mode === 'gps-loading') return;
+
+  try {
     setLocationConfirmed(false);
     setMode('gps-loading');
-    setTimeout(() => {
-      setDraft({
-        ...draft,
-        location: { lat: 10.7769, lng: 106.7009 },
-        address: GPS_ADDRESS,
-        locationMethod: 'AUTO_GPS',
+
+    // Xin quyền truy cập vị trí
+    const { status } =
+      await Location.requestForegroundPermissionsAsync();
+
+    if (status !== 'granted') {
+      setMode('idle');
+      alert('Ứng dụng cần quyền truy cập vị trí để sử dụng GPS.');
+      return;
+    }
+
+    // Lấy vị trí hiện tại
+    const currentLocation =
+      await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
       });
-      setMode('gps-done');
-    }, 1800);
-  };
+
+    const { latitude, longitude } = currentLocation.coords;
+
+    // Chuyển tọa độ thành địa chỉ
+    const [address] = await Location.reverseGeocodeAsync({
+      latitude,
+      longitude,
+    });
+
+    const formattedAddress = [
+      address?.name,
+      address?.street,
+      address?.district,
+      address?.city,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    setDraft({
+      ...draft,
+      location: {
+        lat: latitude,
+        lng: longitude,
+      },
+      address:
+        formattedAddress ||
+        `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+      locationMethod: 'AUTO_GPS',
+    });
+    console.log('==============================');
+console.log('📍 LOCATION FOR SWAGGER');
+console.log('📍 location.lat:', latitude);
+console.log('📍 location.lng:', longitude);
+console.log(
+  '📍 address:',
+  formattedAddress ||
+    `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+);
+console.log('==============================');
+
+    setMode('gps-done');
+  } catch (error) {
+    console.error('GPS error:', error);
+    setMode('idle');
+    alert('Không thể lấy vị trí hiện tại. Vui lòng thử lại.');
+  }
+};
 
   const handleOpenManual = () => {
     setLocationConfirmed(false);
@@ -63,21 +122,63 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
     setShowManualModal(true);
   };
 
-  const handleConfirmManual = () => {
-    const trimmed = manualText.trim();
-    if (!trimmed) {
-      setManualError(true);
+  const handleConfirmManual = async () => {
+  const trimmed = manualText.trim();
+
+  if (!trimmed) {
+    setManualError(true);
+    return;
+  }
+
+  try {
+    console.log('📍 GEOCODING ADDRESS:', trimmed);
+
+    // Chuyển địa chỉ người dùng nhập thành tọa độ
+    const results = await Location.geocodeAsync(trimmed);
+
+    console.log('📍 GEOCODING RESULTS:', results);
+
+    if (!results || results.length === 0) {
+      alert(
+        'Không tìm thấy vị trí này. Vui lòng nhập địa chỉ rõ hơn.'
+      );
       return;
     }
+
+    const { latitude, longitude } = results[0];
+
+    console.log('📍 MANUAL LOCATION:');
+    console.log('📍 address:', trimmed);
+    console.log('📍 latitude:', latitude);
+    console.log('📍 longitude:', longitude);
+
     setDraft({
       ...draft,
-      location: { lat: 10.7751, lng: 106.6989 },
+
+      location: {
+        lat: latitude,
+        lng: longitude,
+      },
+
       address: trimmed,
+
       locationMethod: 'MANUAL_ENTRY',
     });
+
     setMode('manual-done');
     setShowManualModal(false);
-  };
+
+  } catch (error) {
+    console.error(
+      '❌ GEOCODING ERROR:',
+      error
+    );
+
+    alert(
+      'Không thể xác định vị trí từ địa chỉ này. Vui lòng thử lại.'
+    );
+  }
+};
 
   const handleConfirmLocation = () => {
     setLocationConfirmed(true);
@@ -112,43 +213,56 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
         <View style={styles.contentPadding}>
           {/* Map Preview Box */}
           <View style={styles.mapContainer}>
-            <Image
-              source={{ uri: 'https://images.unsplash.com/photo-1524661135-423995f22d0b?w=800&h=600&fit=crop&auto=format' }}
-              style={styles.mapImage}
-            />
-            <View style={styles.mapOverlay} />
+  <MapView
+    style={styles.map}
+    showsUserLocation={false}
+    showsMyLocationButton={false}
+    initialRegion={{
+      latitude: draft.location?.lat ?? 10.7769,
+      longitude: draft.location?.lng ?? 106.7009,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }}
+    region={
+      draft.location
+        ? {
+            latitude: draft.location.lat,
+            longitude: draft.location.lng,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }
+        : undefined
+    }
+  >
+    {draft.location && (
+      <Marker
+        coordinate={{
+          latitude: draft.location.lat,
+          longitude: draft.location.lng,
+        }}
+        title="Vị trí sự cố"
+        description={draft.address || 'Vị trí hiện tại'}
+      />
+    )}
+  </MapView>
 
-            {/* Pin Indicator */}
-            {hasLocation ? (
-              <View style={styles.pinWrapper}>
-                <View style={styles.pinOuter}>
-                  <Ionicons name="location" size={32} color="#f97316" />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.crosshairWrapper}>
-                <Ionicons name="scan-outline" size={36} color="rgba(249, 115, 22, 0.6)" />
-                <Text style={styles.crosshairText}>CHƯA CÓ VỊ TRÍ</Text>
-              </View>
-            )}
+  {hasLocation && (
+    <View style={styles.methodBadge}>
+      <Text style={styles.methodBadgeText}>
+        {mode === 'gps-done' ? 'GPS TỰ ĐỘNG' : 'NHẬP THỦ CÔNG'}
+      </Text>
+    </View>
+  )}
 
-            {/* GPS Loading Indicator */}
-            {mode === 'gps-loading' ? (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#f97316" />
-                <Text style={styles.loadingText}>ĐANG ĐỊNH VỊ GPS...</Text>
-              </View>
-            ) : null}
-
-            {/* Method Badge Tag */}
-            {hasLocation ? (
-              <View style={styles.methodBadge}>
-                <Text style={styles.methodBadgeText}>
-                  {mode === 'gps-done' ? 'GPS TỰ ĐỘNG' : 'NHẬP THỦ CÔNG'}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+  {mode === 'gps-loading' && (
+    <View style={styles.loadingOverlay}>
+      <ActivityIndicator size="large" color="#f97316" />
+      <Text style={styles.loadingText}>
+        ĐANG ĐỊNH VỊ GPS...
+      </Text>
+    </View>
+  )}
+</View>
 
           {/* Address Strip */}
           {hasLocation ? (
@@ -226,53 +340,73 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
 
       {/* Manual Input Modal Sheet */}
       <Modal
-        visible={showManualModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowManualModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Ionicons name="location-outline" size={20} color="#f97316" />
-              <Text style={styles.modalTitle}>Nhập địa chỉ thủ công</Text>
-            </View>
+  visible={showManualModal}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setShowManualModal(false)}
+>
+  <KeyboardAvoidingView
+    style={styles.keyboardAvoidingView}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <View style={styles.modalHeader}>
+          <Ionicons
+            name="location-outline"
+            size={20}
+            color="#f97316"
+          />
 
-            <TextInput
-              style={[styles.modalInput, manualError && styles.modalInputError]}
-              placeholder="Số nhà, tên đường, phường, quận..."
-              placeholderTextColor="#9ca3af"
-              value={manualText}
-              onChangeText={(t) => {
-                setManualText(t);
-                setManualError(false);
-              }}
-              autoFocus
-            />
-
-            {manualError ? (
-              <Text style={styles.errorHintText}>
-                Vui lòng nhập địa chỉ trước khi xác nhận.
-              </Text>
-            ) : null}
-
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setShowManualModal(false)}
-              >
-                <Text style={styles.modalCancelText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSubmitBtn}
-                onPress={handleConfirmManual}
-              >
-                <Text style={styles.modalSubmitText}>Xác nhận địa chỉ</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <Text style={styles.modalTitle}>
+            Nhập địa chỉ thủ công
+          </Text>
         </View>
-      </Modal>
+
+        <TextInput
+          style={[
+            styles.modalInput,
+            manualError && styles.modalInputError,
+          ]}
+          placeholder="Số nhà, tên đường, phường, quận..."
+          placeholderTextColor="#9ca3af"
+          value={manualText}
+          onChangeText={(t) => {
+            setManualText(t);
+            setManualError(false);
+          }}
+          autoFocus
+        />
+
+        {manualError ? (
+          <Text style={styles.errorHintText}>
+            Vui lòng nhập địa chỉ trước khi xác nhận.
+          </Text>
+        ) : null}
+
+        <View style={styles.modalActionRow}>
+          <TouchableOpacity
+            style={styles.modalCancelBtn}
+            onPress={() => setShowManualModal(false)}
+          >
+            <Text style={styles.modalCancelText}>
+              Hủy
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.modalSubmitBtn}
+            onPress={handleConfirmManual}
+          >
+            <Text style={styles.modalSubmitText}>
+              Xác nhận địa chỉ
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </KeyboardAvoidingView>
+</Modal>
 
       {/* Bottom CTA Next */}
       <View style={styles.footerContainer}>
@@ -651,4 +785,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#ffffff',
   },
+  map: {
+  width: '100%',
+  height: '100%',
+},
+keyboardAvoidingView: {
+  flex: 1,
+},
 });

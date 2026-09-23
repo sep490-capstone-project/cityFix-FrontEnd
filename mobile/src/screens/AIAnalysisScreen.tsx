@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { analyzeReportImage } from '../api';
 import {
   View,
   Text,
@@ -11,18 +13,9 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ReportDraft, AIAnalysis } from '../types';
+import { ReportDraft } from '../types';
 
-const SIMULATED_AI_RESULT: AIAnalysis = {
-  analysisId: 'ai-demo',
-  categoryId: 'cat-001',
-  severity: 'HIGH',
-  dangerLevel: 'DANGEROUS',
-  confidenceScore: 87.4,
-  description:
-    'Phát hiện vùng hư hỏng mặt đường diện tích lớn. Bề mặt lún sâu có nguy cơ gây mất kiểm soát phương tiện.',
-  isAcceptedByHuman: false,
-};
+
 
 const AI_STEPS = [
   'Tải ảnh lên hệ thống',
@@ -46,33 +39,107 @@ export default function AIAnalysisScreen({ navigate, goBack, draft, setDraft }: 
   const [confidence, setConfidence] = useState(0);
   const [userDescription, setUserDescription] = useState(draft.userDescription || '');
 
-  useEffect(() => {
-    let cur = 0;
-    const interval = setInterval(() => {
-      cur++;
-      setCurrentStep(cur);
-      if (cur >= AI_STEPS.length - 1) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setDraft({
-            ...draft,
-            aiAnalysis: SIMULATED_AI_RESULT,
-            userCategoryId: 'cat-001',
-          });
-          setDone(true);
-        }, 400);
+useEffect(() => {
+  let mounted = true;
+
+  const analyzeImage = async () => {
+    try {
+      setCurrentStep(0);
+      setConfidence(0);
+      setDone(false);
+
+      // Step 1: lấy access token
+      const accessToken = await AsyncStorage.getItem('accessToken');
+
+      if (!accessToken) {
+        throw new Error('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.');
       }
-    }, 500);
 
-    const confInterval = setInterval(() => {
-      setConfidence((c) => Math.min(c + 3.2, 87.4));
-    }, 50);
+      // Lấy ảnh đầu tiên đã upload lên Cloudinary
+      const imageUrl = draft.imageUrls?.[0];
 
-    return () => {
-      clearInterval(interval);
-      clearInterval(confInterval);
-    };
-  }, []);
+      if (!imageUrl) {
+        throw new Error('Không tìm thấy ảnh để phân tích.');
+      }
+
+      console.log('🤖 START AI ANALYSIS');
+      console.log('🖼️ Image URL:', imageUrl);
+
+      // UI progress - bước upload
+      if (mounted) {
+        setCurrentStep(0);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // UI progress - preprocessing
+      if (mounted) {
+        setCurrentStep(1);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // UI progress - AI
+      if (mounted) {
+        setCurrentStep(2);
+      }
+
+      console.log('🤖 Calling analyzeReportImage...');
+
+      // GỌI AI BACKEND THẬT
+      const result = await analyzeReportImage(
+        imageUrl,
+        accessToken
+      );
+
+      console.log('✅ AI RESULT:', result);
+
+      if (!mounted) return;
+
+      // Progress animation đến 100%
+      setCurrentStep(3);
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setCurrentStep(4);
+
+      setConfidence(result.confidenceScore);
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setCurrentStep(5);
+
+      // Lưu kết quả AI vào draft
+      setDraft({
+        ...draft,
+        aiAnalysis: result,
+        userCategoryId: result.categoryId,
+      });
+
+      setDone(true);
+
+    } catch (error) {
+      console.error('❌ AI ANALYSIS ERROR:', error);
+
+      if (!mounted) return;
+
+      // Có thể xử lý UI error sau
+      setCurrentStep(0);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Không thể phân tích hình ảnh. Vui lòng thử lại.'
+      );
+    }
+  };
+
+  analyzeImage();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
 
   const handleNext = () => {
     setDraft({ ...draft, userDescription });
@@ -160,7 +227,7 @@ export default function AIAnalysisScreen({ navigate, goBack, draft, setDraft }: 
                 <Text style={styles.resultTitle}>KẾT QUẢ PHÂN TÍCH AI</Text>
                 <View style={styles.confidenceBadge}>
                   <Text style={styles.confidenceBadgeText}>
-                    {SIMULATED_AI_RESULT.confidenceScore}% tin cậy
+                    {draft.aiAnalysis?.confidenceScore ?? 0}% tin cậy
                   </Text>
                 </View>
               </View>
@@ -169,28 +236,32 @@ export default function AIAnalysisScreen({ navigate, goBack, draft, setDraft }: 
                 <View style={styles.resultRow}>
                   <Text style={styles.rowLabel}>Loại sự cố</Text>
                   <Text style={[styles.rowValue, { color: '#ea580c' }]}>
-                    Ổ gà / Hư hỏng mặt đường
-                  </Text>
+  {draft.aiAnalysis?.categoryId || 'Chưa xác định'}
+</Text>
                 </View>
 
                 <View style={styles.resultRow}>
                   <Text style={styles.rowLabel}>Mức độ nghiêm trọng</Text>
                   <View style={styles.chipHigh}>
-                    <Text style={styles.chipHighText}>CAO</Text>
+                    <Text style={styles.chipHighText}>
+  {draft.aiAnalysis?.severity || 'UNKNOWN'}
+</Text>
                   </View>
                 </View>
 
                 <View style={styles.resultRow}>
                   <Text style={styles.rowLabel}>Đánh giá nguy hiểm</Text>
                   <View style={styles.chipDanger}>
-                    <Text style={styles.chipDangerText}>NGUY HIỂM</Text>
+                    <Text style={styles.chipDangerText}>
+  {draft.aiAnalysis?.dangerLevel || 'UNKNOWN'}
+</Text>
                   </View>
                 </View>
 
                 <View style={styles.descBlock}>
                   <Text style={styles.descLabel}>Mô tả AI đề xuất:</Text>
                   <Text style={styles.descContent}>
-                    {SIMULATED_AI_RESULT.description}
+                    {draft.aiAnalysis?.description || 'Không có mô tả.'}
                   </Text>
                 </View>
               </View>
