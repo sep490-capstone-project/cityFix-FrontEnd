@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft, CATEGORIES } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createTicket } from '../api';
 
 interface Props {
   navigate: (s: string) => void;
@@ -35,14 +37,128 @@ export default function ReviewDraftScreen({ navigate, goBack, draft, setDraft }:
   const currentCatId = draft.userCategoryId || (ai?.categoryId ?? 'cat-001');
   const currentCat = CATEGORIES.find((c) => c.categoryId === currentCatId) ?? CATEGORIES[0];
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+  if (submitting) return;
+
+  try {
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      // Simulate PostGIS duplicate detection: 40% chance of duplicate nearby screen
-      navigate(Math.random() < 0.4 ? 'duplicate' : 'success');
-    }, 1800);
-  };
+
+    // 1. Lấy access token
+    const accessToken =
+      await AsyncStorage.getItem('accessToken');
+
+    if (!accessToken) {
+      throw new Error(
+        'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.'
+      );
+    }
+
+    // 2. Kiểm tra dữ liệu bắt buộc
+    if (!draft.imageUrls?.length) {
+      throw new Error(
+        'Chưa có ảnh sự cố.'
+      );
+    }
+
+    if (!draft.location) {
+      throw new Error(
+        'Chưa có vị trí sự cố.'
+      );
+    }
+
+    if (!draft.aiAnalysis) {
+      throw new Error(
+        'Chưa có kết quả phân tích AI.'
+      );
+    }
+
+    // 3. Build request body theo đúng Swagger
+    const requestBody = {
+      description:
+        draft.userDescription ||
+        draft.aiAnalysis.description ||
+        '',
+
+      imageUrl:
+        draft.imageUrls[0],
+
+      categoryId:
+        draft.userCategoryId ||
+        draft.aiAnalysis.categoryId,
+
+      severity:
+        draft.aiAnalysis.severity,
+
+      dangerLevel:
+        draft.aiAnalysis.dangerLevel,
+
+      locationMethod:
+        draft.locationMethod ||
+        'AUTO_GPS',
+
+      address:
+        draft.address || '',
+
+      latitude:
+        draft.location.lat,
+
+      longitude:
+        draft.location.lng,
+
+      aiCategoryId:
+        draft.aiAnalysis.categoryId,
+
+      aiSeverity:
+        draft.aiAnalysis.severity,
+
+      aiDangerLevel:
+        draft.aiAnalysis.dangerLevel,
+
+      aiDescription:
+        draft.aiAnalysis.description,
+
+      aiConfidenceScore:
+        draft.aiAnalysis.confidenceScore,
+
+      isAiAccepted:
+        draft.aiAnalysis.isAcceptedByHuman ?? true,
+    };
+
+    console.log('🎫 CREATE TICKET BODY:');
+    console.log(
+      JSON.stringify(requestBody, null, 2)
+    );
+
+    // 4. Gọi API Backend
+    const result = await createTicket(
+      requestBody,
+      accessToken
+    );
+
+    console.log(
+      '✅ TICKET CREATED:',
+      result
+    );
+
+    // 5. Thành công
+    navigate('success');
+
+  } catch (error) {
+    console.error(
+      '❌ CREATE TICKET ERROR:',
+      error
+    );
+
+    alert(
+      error instanceof Error
+        ? error.message
+        : 'Không thể gửi báo cáo. Vui lòng thử lại.'
+    );
+
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
     <View style={styles.container}>

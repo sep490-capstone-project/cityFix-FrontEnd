@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import LoginScreen, { AuthUser } from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import VerifyEmailScreen from '../screens/VerifyEmailScreen';
 import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -29,6 +30,7 @@ export default function AppNavigator() {
   const [previousScreen, setPreviousScreen] = useState<string>('home');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [verificationEmail, setVerificationEmail] = useState('');
   const [draft, setDraft] = useState<ReportDraft>(INITIAL_DRAFT);
 
   const handleLoginSuccess = (authUser: AuthUser, token: string) => {
@@ -66,7 +68,20 @@ export default function AppNavigator() {
       <RegisterScreen
         navigate={handleNavigate}
         goBack={() => setCurrentScreen('login')}
-        onLogin={handleLoginSuccess}
+        onRegistered={(email) => {
+          setVerificationEmail(email);
+          setCurrentScreen('verify-email');
+        }}
+      />
+    );
+  }
+
+  if (currentScreen === 'verify-email') {
+    return (
+      <VerifyEmailScreen
+        email={verificationEmail}
+        goBack={() => setCurrentScreen('register')}
+        onVerified={() => setCurrentScreen('login')}
       />
     );
   }

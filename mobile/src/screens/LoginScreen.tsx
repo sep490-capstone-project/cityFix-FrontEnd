@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -12,6 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { ApiError, login } from '../api';
 
 export interface AuthUser {
   userId: string;
@@ -26,29 +28,17 @@ interface Props {
   onLogin?: (user: AuthUser, token: string) => void;
 }
 
-const MOCK_CREDENTIALS = {
-  phone: '0901234567',
-  password: 'cityfix123',
-  user: {
-    userId: 'user-001',
-    fullName: 'Nguyễn Văn An',
-    phone: '0901234567',
-    email: 'nguyenvanan@gmail.com',
-    ward: 'Phường 2, Quận 5, TP.HCM',
-  },
-};
-
 export default function LoginScreen({ navigate, onLogin }: Props) {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
-    if (!phone.trim()) {
-      setError('Vui lòng nhập số điện thoại.');
+    if (!email.trim()) {
+      setError('Vui lòng nhập email.');
       return;
     }
     if (!password) {
@@ -57,21 +47,39 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const normalised = phone.replace(/\s/g, '');
-      if (
-        normalised === MOCK_CREDENTIALS.phone &&
-        password === MOCK_CREDENTIALS.password
-      ) {
-        const token = `mock_token_${Date.now()}`;
-        if (onLogin) {
-          onLogin(MOCK_CREDENTIALS.user, token);
-        }
-      } else {
-        setLoading(false);
-        setError('Số điện thoại hoặc mật khẩu không đúng.');
-      }
-    }, 1200);
+    try {
+      const result = await login(email, password);
+
+// Lưu access token để các API khác sử dụng
+await AsyncStorage.setItem(
+  'accessToken',
+  result.accessToken
+);
+
+console.log(
+  '✅ Access token saved:',
+  result.accessToken
+);
+
+onLogin?.(
+  {
+    userId: email.trim(),
+    fullName: email.trim().split('@')[0],
+    phone: '',
+    email: email.trim(),
+    ward: '',
+  },
+  result.accessToken,
+);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Đăng nhập không thành công. Vui lòng thử lại.',
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -121,24 +129,26 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
             </View>
           ) : null}
 
-          {/* Phone Input Field */}
+          {/* Email Input Field */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>SỐ ĐIỆN THOẠI</Text>
+            <Text style={styles.label}>EMAIL</Text>
             <View style={styles.inputWrapper}>
               <Ionicons
-                name="call-outline"
+                name="mail-outline"
                 size={18}
                 color="#9ca3af"
                 style={styles.inputIcon}
               />
               <TextInput
                 style={styles.input}
-                placeholder="0901 234 567"
+                placeholder="example@email.com"
                 placeholderTextColor="#9ca3af"
-                keyboardType="phone-pad"
-                value={phone}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={email}
                 onChangeText={(text) => {
-                  setPhone(text);
+                  setEmail(text);
                   setError('');
                 }}
               />
@@ -177,20 +187,6 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
                 />
               </TouchableOpacity>
             </View>
-          </View>
-
-          {/* Demo Hint Banner */}
-          <View style={styles.hintBox}>
-            <Ionicons
-              name="information-circle-outline"
-              size={18}
-              color="#ea580c"
-              style={{ marginTop: 1 }}
-            />
-            <Text style={styles.hintText}>
-              Demo: SĐT <Text style={styles.boldDark}>0901234567</Text> · Mật
-              khẩu <Text style={styles.boldDark}>cityfix123</Text>
-            </Text>
           </View>
 
           {/* Login Action Button */}

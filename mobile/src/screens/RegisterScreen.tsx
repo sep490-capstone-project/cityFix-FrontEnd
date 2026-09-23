@@ -11,12 +11,12 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthUser } from './LoginScreen';
+import { ApiError, register } from '../api';
 
 interface Props {
   navigate: (screen: string) => void;
   goBack: () => void;
-  onLogin: (user: AuthUser, token: string) => void;
+  onRegistered: (email: string) => void;
 }
 
 interface FieldProps {
@@ -84,46 +84,58 @@ function Field({
   );
 }
 
-export default function RegisterScreen({ navigate, goBack, onLogin }: Props) {
+export default function RegisterScreen({ navigate, goBack, onRegistered }: Props) {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [province, setProvince] = useState('');
   const [ward, setWard] = useState('');
+  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState('');
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!fullName.trim()) e.fullName = 'Vui lòng nhập họ tên.';
     if (!/^0\d{9}$/.test(phone.replace(/\s/g, '')))
       e.phone = 'Số điện thoại không hợp lệ (10 chữ số, bắt đầu bằng 0).';
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       e.email = 'Email không hợp lệ.';
+    if (!province.trim()) e.province = 'Vui lòng nhập tỉnh/thành phố.';
     if (!ward.trim()) e.ward = 'Vui lòng nhập phường/quận.';
     if (password.length < 8) e.password = 'Mật khẩu tối thiểu 8 ký tự.';
     if (confirmPw !== password) e.confirmPw = 'Mật khẩu xác nhận không khớp.';
     return e;
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length > 0) return;
 
     setLoading(true);
-    setTimeout(() => {
-      const newUser: AuthUser = {
-        userId: `user-${Date.now()}`,
-        fullName: fullName.trim(),
-        phone: phone.replace(/\s/g, ''),
-        email: email.trim(),
-        ward: ward.trim(),
-      };
-      const token = `mock_token_${Date.now()}`;
-      onLogin(newUser, token);
-    }, 1500);
+    setFormError('');
+    try {
+      await register({
+        fullName,
+        phoneNumber: phone,
+        email,
+        province,
+        ward,
+        address,
+        password,
+      });
+      onRegistered(email.trim());
+    } catch (err) {
+      setFormError(
+        err instanceof ApiError ? err.message : 'Không thể tạo tài khoản. Vui lòng thử lại.',
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getPasswordStrength = () => {
@@ -167,9 +179,11 @@ export default function RegisterScreen({ navigate, goBack, onLogin }: Props) {
               <Text style={styles.brandTag}>CITYFIX</Text>
             </View>
             <Text style={styles.mainTitle}>TẠO TÀI KHOẢN</Text>
-            <Text style={styles.subTitle}>
-              Điền thông tin để bắt đầu báo cáo sự cố hạ tầng đô thị.
-            </Text>
+          <Text style={styles.subTitle}>
+            Điền thông tin để bắt đầu báo cáo sự cố hạ tầng đô thị.
+          </Text>
+
+          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
           </View>
 
           {/* Form Fields */}
@@ -207,7 +221,18 @@ export default function RegisterScreen({ navigate, goBack, onLogin }: Props) {
               setErrors((prev) => ({ ...prev, email: '' }));
             }}
             error={errors.email}
-            hint="Không bắt buộc."
+            hint="Dùng để xác thực và đăng nhập tài khoản."
+          />
+
+          <Field
+            label="TỈNH / THÀNH PHỐ *"
+            placeholder="TP. Hồ Chí Minh"
+            value={province}
+            onChange={(v) => {
+              setProvince(v);
+              setErrors((prev) => ({ ...prev, province: '' }));
+            }}
+            error={errors.province}
           />
 
           <Field
@@ -219,6 +244,14 @@ export default function RegisterScreen({ navigate, goBack, onLogin }: Props) {
               setErrors((prev) => ({ ...prev, ward: '' }));
             }}
             error={errors.ward}
+          />
+
+          <Field
+            label="ĐỊA CHỈ"
+            placeholder="Số nhà, tên đường (nếu có)"
+            value={address}
+            onChange={setAddress}
+            hint="Không bắt buộc."
           />
 
           <View style={styles.divider} />
@@ -389,6 +422,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     marginTop: 4,
+  },
+  formError: {
+    color: '#dc2626',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fca5a5',
+    borderWidth: 1,
+    borderRadius: 10,
+    fontSize: 12,
+    padding: 10,
   },
   fieldContainer: {
     gap: 6,
