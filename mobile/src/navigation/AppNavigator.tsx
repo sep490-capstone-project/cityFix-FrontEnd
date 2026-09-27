@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen, { AuthUser } from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import VerifyEmailScreen from '../screens/VerifyEmailScreen';
@@ -38,7 +39,12 @@ export default function AppNavigator() {
     setCurrentScreen('splash');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('accessToken');
+    } catch (e) {
+      console.warn('Lỗi khi xóa token:', e);
+    }
     setUser(null);
     setDraft(INITIAL_DRAFT);
     setCurrentScreen('login');

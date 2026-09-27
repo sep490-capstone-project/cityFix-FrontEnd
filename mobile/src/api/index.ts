@@ -3,8 +3,9 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { File } from 'expo-file-system';
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL;
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+console.log('🌐 API BASE URL:', API_BASE_URL);
 
 interface ApiResponse<T> {
   success: boolean;
@@ -22,6 +23,14 @@ export interface LoginResult {
   accessToken: string;
   refreshToken?: string;
   role?: string;
+}
+
+export interface UserProfile {
+  fullName: string;
+  phoneNumber: string;
+  address: string;
+  province: string;
+  ward: string;
 }
 
 export interface RegisterPayload {
@@ -89,6 +98,39 @@ export async function login(
     !payload?.success ||
     !payload.data?.accessToken
   ) {
+    throw new ApiError(message, response.status);
+  }
+
+  return payload.data;
+}
+
+/* =========================================================
+   USER PROFILE
+   ========================================================= */
+
+export async function getProfile(accessToken: string): Promise<UserProfile> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/profile`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch {
+    throw new ApiError('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | ApiResponse<UserProfile>
+    | null;
+
+  const message =
+    payload?.message || 'Không thể lấy thông tin profile người dùng.';
+
+  if (!response.ok || !payload?.success || !payload.data) {
     throw new ApiError(message, response.status);
   }
 
@@ -354,12 +396,14 @@ export async function uploadReportImage(
    ========================================================= */
 
 export interface AIAnalysisResponse {
-  analysisId: string;
+  analysisId?: string;
   categoryId: string;
+  categoryName?: string | null;
   severity: string;
   dangerLevel: string;
   confidenceScore: number;
   description: string;
+  isValidIssue?: boolean;
 }
 
 export async function analyzeReportImage(
@@ -386,7 +430,7 @@ export async function analyzeReportImage(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        imageUrl,
+        mediaUrl: imageUrl,
       }),
     });
   } catch (error) {

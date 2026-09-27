@@ -13,7 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ApiError, login } from '../api';
+import { ApiError, login, getProfile, UserProfile } from '../api';
 
 export interface AuthUser {
   userId: string;
@@ -21,6 +21,8 @@ export interface AuthUser {
   phone: string;
   email: string;
   ward: string;
+  address?: string;
+  province?: string;
 }
 
 interface Props {
@@ -50,27 +52,30 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
     try {
       const result = await login(email, password);
 
-// Lưu access token để các API khác sử dụng
-await AsyncStorage.setItem(
-  'accessToken',
-  result.accessToken
-);
+      // Lưu access token để các API khác sử dụng
+      await AsyncStorage.setItem('accessToken', result.accessToken);
 
-console.log(
-  '✅ Access token saved:',
-  result.accessToken
-);
+      console.log('✅ Access token saved:', result.accessToken);
 
-onLogin?.(
-  {
-    userId: email.trim(),
-    fullName: email.trim().split('@')[0],
-    phone: '',
-    email: email.trim(),
-    ward: '',
-  },
-  result.accessToken,
-);
+      // Lấy thông tin profile chính xác từ server
+      let profile: UserProfile | null = null;
+      try {
+        profile = await getProfile(result.accessToken);
+      } catch (profileErr) {
+        console.warn('⚠️ Lỗi khi tải profile ngay sau đăng nhập:', profileErr);
+      }
+
+      const formattedUser: AuthUser = {
+        userId: email.trim(),
+        fullName: profile?.fullName?.trim() || email.trim().split('@')[0],
+        phone: profile?.phoneNumber?.trim() || '',
+        email: email.trim(),
+        ward: profile?.ward?.trim() || '',
+        address: profile?.address?.trim() || '',
+        province: profile?.province?.trim() || '',
+      };
+
+      onLogin?.(formattedUser, result.accessToken);
     } catch (err) {
       setError(
         err instanceof ApiError

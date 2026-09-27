@@ -120,8 +120,8 @@ export default function HomeScreen({ navigate, authUser }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'my-reports' | 'profile'>('home');
 
-  const initials = (authUser?.fullName ?? '?')
-    .split(' ')
+  const initials = (authUser?.fullName?.trim() || '?')
+    .split(/\s+/)
     .map((w) => w[0])
     .slice(-2)
     .join('')
@@ -138,7 +138,7 @@ export default function HomeScreen({ navigate, authUser }: Props) {
           <View style={styles.greetingRow}>
             <View style={styles.pingDot} />
             <Text style={styles.greetingText}>
-              {getGreeting()} · {authUser?.ward ?? 'TP.HCM'}
+              {getGreeting()} · {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') || 'TP.HCM'}
             </Text>
           </View>
           <Text style={styles.userName} numberOfLines={1}>
