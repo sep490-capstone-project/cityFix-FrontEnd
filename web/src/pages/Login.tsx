@@ -182,10 +182,6 @@ export default function Login({ onLogin, onGoRegister }: Props) {
               </p>
 
               <p className="font-mono-cf text-[11px] text-gray-500">
-                huuvinh05926@gmail.com / password
-              </p>
-
-              <p className="font-mono-cf text-[11px] text-gray-500">
                 admin@cityfix.gov.vn / admin123
               </p>
             </div>

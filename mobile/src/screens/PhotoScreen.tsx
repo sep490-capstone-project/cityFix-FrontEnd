@@ -107,10 +107,10 @@ export default function PhotoScreen({
         accessToken
       );
 
-      console.log(
-        '☁️ Cloudinary URL:',
-        secureUrl
-      );
+     console.log('================================');
+console.log('☁️ UPLOAD ẢNH THÀNH CÔNG');
+console.log('🔗 CLOUDINARY URL:', secureUrl);
+console.log('================================');
 
       // 5. Lưu URL Cloudinary vào draft
       const nextImages = [

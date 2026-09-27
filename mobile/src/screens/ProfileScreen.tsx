@@ -60,10 +60,12 @@ export default function ProfileScreen({
   const [editFullName, setEditFullName] = useState(authUser?.fullName ?? '');
   const [editEmail, setEditEmail] = useState(authUser?.email ?? '');
   const [editWard, setEditWard] = useState(authUser?.ward ?? '');
+  const [editAddress, setEditAddress] = useState(authUser?.address ?? '');
+  const [editProvince, setEditProvince] = useState(authUser?.province ?? '');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const initials = (authUser?.fullName ?? '?')
-    .split(' ')
+  const initials = (authUser?.fullName?.trim() || '?')
+    .split(/\s+/)
     .map((w: string) => w[0])
     .slice(-2)
     .join('')
@@ -83,6 +85,8 @@ export default function ProfileScreen({
     setEditFullName(authUser?.fullName ?? '');
     setEditEmail(authUser?.email ?? '');
     setEditWard(authUser?.ward ?? '');
+    setEditAddress(authUser?.address ?? '');
+    setEditProvince(authUser?.province ?? '');
     setEditMode(true);
     setSaveSuccess(false);
   }
@@ -94,6 +98,8 @@ export default function ProfileScreen({
       fullName: editFullName.trim(),
       email: editEmail.trim(),
       ward: editWard.trim(),
+      address: editAddress.trim(),
+      province: editProvince.trim(),
     });
     setEditMode(false);
     setSaveSuccess(true);
@@ -117,8 +123,10 @@ export default function ProfileScreen({
               <Text style={styles.userName} numberOfLines={1}>
                 {authUser?.fullName ?? 'Chưa cập nhật'}
               </Text>
-              <Text style={styles.userPhone}>{authUser?.phone ?? '—'}</Text>
-              <Text style={styles.userWard}>{authUser?.ward ?? '—'}</Text>
+              <Text style={styles.userPhone}>{authUser?.phone || '—'}</Text>
+              <Text style={styles.userWard}>
+                {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') || '—'}
+              </Text>
             </View>
           </View>
 
@@ -180,17 +188,19 @@ export default function ProfileScreen({
                 )}
               </View>
 
-              {/* Phone (Read Only) */}
+              {/* Phone */}
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>SĐT</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.infoValue, { color: '#64748b' }]}>
-                    {authUser?.phone ?? '—'}
-                  </Text>
-                  <View style={styles.readOnlyBadge}>
-                    <Text style={styles.readOnlyBadgeText}>Cố định</Text>
+                {editMode ? (
+                  <View style={styles.disabledInputWrapper}>
+                    <Text style={styles.disabledInputText}>{authUser?.phone || '—'}</Text>
+                    <View style={styles.readOnlyBadge}>
+                      <Text style={styles.readOnlyBadgeText}>Cố định</Text>
+                    </View>
                   </View>
-                </View>
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.phone || '—'}</Text>
+                )}
               </View>
 
               {/* Email */}
@@ -213,16 +223,46 @@ export default function ProfileScreen({
 
               {/* Ward / Area */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Khu vực</Text>
+                <Text style={styles.infoLabel}>Phường/Xã</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
                     value={editWard}
                     onChangeText={setEditWard}
-                    placeholder="Phường / Quận"
+                    placeholder="Phường / Xã"
                   />
                 ) : (
-                  <Text style={styles.infoValue}>{authUser?.ward ?? '—'}</Text>
+                  <Text style={styles.infoValue}>{authUser?.ward || '—'}</Text>
+                )}
+              </View>
+
+              {/* Address */}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Địa chỉ</Text>
+                {editMode ? (
+                  <TextInput
+                    style={styles.infoInput}
+                    value={editAddress}
+                    onChangeText={setEditAddress}
+                    placeholder="Số nhà, đường"
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.address || '—'}</Text>
+                )}
+              </View>
+
+              {/* Province */}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Tỉnh/TP</Text>
+                {editMode ? (
+                  <TextInput
+                    style={styles.infoInput}
+                    value={editProvince}
+                    onChangeText={setEditProvince}
+                    placeholder="Tỉnh / Thành phố"
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.province || '—'}</Text>
                 )}
               </View>
             </View>
@@ -608,15 +648,34 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     textAlign: 'right',
   },
-  readOnlyBadge: {
+  disabledInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
     backgroundColor: '#f1f5f9',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 6,
+  },
+  disabledInputText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  readOnlyBadge: {
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     borderRadius: 4,
   },
   readOnlyBadgeText: {
-    fontSize: 8,
-    color: '#94a3b8',
+    fontSize: 9,
+    color: '#64748b',
+    fontWeight: '600',
   },
 
   /* My Recent Tickets Header */

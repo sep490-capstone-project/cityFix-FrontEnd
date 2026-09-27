@@ -37,13 +37,15 @@ export interface LocationData {
 }
 
 export interface AIAnalysis {
-  analysisId: string;
+  analysisId?: string;
   categoryId: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  dangerLevel: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL';
+  categoryName?: string | null;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
+  dangerLevel: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL' | string;
   confidenceScore: number;
   description: string;
-  isAcceptedByHuman: boolean;
+  isAcceptedByHuman?: boolean;
+  isValidIssue?: boolean;
 }
 
 export interface ReportDraft {
