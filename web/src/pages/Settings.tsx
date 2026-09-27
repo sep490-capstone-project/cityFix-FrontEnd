@@ -1,5 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CATEGORIES, DEPARTMENTS, ROUTING_RULES, Category, Department, RoutingRule, DeptLevel } from '../data';
+import {
+  getAdminCategories,
+  createAdminCategory,
+  updateAdminCategory,
+  deleteAdminCategory,
+  AdminCategory,
+  ApiError,
+} from '../services';
 
 type Tab = 'categories' | 'departments' | 'routing';
 
@@ -32,61 +40,226 @@ export default function Settings() {
 
 // ── Category Management ───────────────────────────────────────────────────────
 function CategoryMgmt() {
-  const [cats, setCats] = useState<Category[]>(CATEGORIES);
+  const [cats, setCats] = useState<AdminCategory[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
-  const [sel, setSel] = useState<Category | null>(null);
-  const [form, setForm] = useState({ name: '', description: '', isActive: true });
+  const [sel, setSel] = useState<AdminCategory | null>(null);
+  const [form, setForm] = useState({ name: '', description: '', sla: 24, isActive: true });
+  const [actionError, setActionError] = useState('');
 
-  function openCreate() { setForm({ name: '', description: '', isActive: true }); setSel(null); setModal('create'); }
-  function openEdit(c: Category) { setForm({ name: c.name, description: c.description, isActive: c.isActive }); setSel(c); setModal('edit'); }
-  function save() {
-    if (modal === 'create') {
-      setCats(c => [...c, { categoryId: `CAT${Date.now()}`, ...form }]);
-    } else if (sel) {
-      setCats(c => c.map(x => x.categoryId === sel.categoryId ? { ...x, ...form } : x));
+  // 1. Lấy danh sách danh mục (GET /api/v1/admin/categories)
+  async function fetchCategories() {
+    setLoading(true);
+    setActionError('');
+    try {
+      const data = await getAdminCategories();
+      if (data && data.length > 0) {
+        setCats(data);
+      } else {
+        // Fallback mock nếu database rỗng
+        setCats(
+          CATEGORIES.map((c) => ({
+            id: c.categoryId,
+            categoryId: c.categoryId,
+            name: c.name,
+            description: c.description,
+            sla: 24,
+            isActive: c.isActive,
+          }))
+        );
+      }
+    } catch (err: any) {
+      console.warn('Lỗi khi tải danh mục từ API:', err);
+      // Fallback hiển thị dữ liệu sẵn có
+      setCats(
+        CATEGORIES.map((c) => ({
+          id: c.categoryId,
+          categoryId: c.categoryId,
+          name: c.name,
+          description: c.description,
+          sla: 24,
+          isActive: c.isActive,
+        }))
+      );
+    } finally {
+      setLoading(false);
     }
-    setModal(null);
   }
-  function toggle(c: Category) { setCats(cs => cs.map(x => x.categoryId === c.categoryId ? { ...x, isActive: !x.isActive } : x)); }
-  function del(c: Category) { setCats(cs => cs.filter(x => x.categoryId !== c.categoryId)); }
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  function openCreate() {
+    setForm({ name: '', description: '', sla: 24, isActive: true });
+    setSel(null);
+    setActionError('');
+    setModal('create');
+  }
+
+  function openEdit(c: AdminCategory) {
+    setForm({
+      name: c.name || '',
+      description: c.description || '',
+      sla: c.sla || c.slaHours || 24,
+      isActive: c.isActive !== false,
+    });
+    setSel(c);
+    setActionError('');
+    setModal('edit');
+  }
+
+  // 2. Tạo mới & 3. Cập nhật danh mục (POST / PUT /api/v1/admin/categories)
+  async function save() {
+    if (!form.name.trim()) {
+      setActionError('Vui lòng nhập tên danh mục');
+      return;
+    }
+
+    setSaving(true);
+    setActionError('');
+
+    try {
+      if (modal === 'create') {
+        const created = await createAdminCategory({
+          name: form.name,
+          description: form.description,
+          sla: Number(form.sla) || 24,
+        });
+
+        setCats((prev) => [created, ...prev]);
+      } else if (sel) {
+        const targetId = sel.id || sel.categoryId || '';
+        const updated = await updateAdminCategory(targetId, {
+          name: form.name,
+          description: form.description,
+          sla: Number(form.sla) || 24,
+        });
+
+        setCats((prev) =>
+          prev.map((x) =>
+            (x.id || x.categoryId) === targetId ? { ...x, ...updated, ...form } : x
+          )
+        );
+      }
+      setModal(null);
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Không thể lưu danh mục. Vui lòng thử lại.';
+      setActionError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // 4. Xóa danh mục (DELETE /api/v1/admin/categories/{id})
+  async function del(c: AdminCategory) {
+    const targetId = c.id || c.categoryId || '';
+    if (!targetId) return;
+
+    if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${c.name}" không?`)) {
+      return;
+    }
+
+    try {
+      await deleteAdminCategory(targetId);
+      setCats((cs) => cs.filter((x) => (x.id || x.categoryId) !== targetId));
+    } catch (err: any) {
+      alert(err instanceof ApiError ? err.message : 'Xóa danh mục thất bại.');
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[12px] text-gray-400">{cats.length} danh mục</p>
-        <CTA onClick={openCreate} label="+ Thêm danh mục" />
+        <div className="flex items-center gap-3">
+          <p className="text-[12px] text-gray-500 font-medium">
+            {cats.length} danh mục sự cố
+          </p>
+          <button
+            onClick={fetchCategories}
+            disabled={loading}
+            className="text-[11px] text-orange-600 hover:text-orange-700 font-semibold cursor-pointer disabled:opacity-50"
+          >
+            {loading ? 'Đang tải...' : '↻ Làm mới'}
+          </button>
+        </div>
+        <CTA onClick={openCreate} label="+ Thêm danh mục mới" />
       </div>
-      <Table headers={['ID', 'Tên danh mục', 'Mô tả', 'Trạng thái', 'Hành động']}>
-        {cats.map(c => (
-          <tr key={c.categoryId} className="hover:bg-orange-50/50 transition-colors">
-            <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">{c.categoryId}</td>
-            <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold">{c.name}</td>
-            <td className="px-4 py-3 text-[12px] text-gray-500 max-w-[200px] truncate">{c.description}</td>
-            <td className="px-4 py-3">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border inline-flex items-center gap-1
-                ${c.isActive ? 'text-green-400 bg-green-500/12 border-green-500/20' : 'text-gray-500 bg-zinc-700/30 border-gray-300'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${c.isActive ? 'bg-green-400' : 'bg-zinc-500'}`} />
-                {c.isActive ? 'Hoạt động' : 'Tắt'}
-              </span>
-            </td>
-            <td className="px-4 py-3">
-              <div className="flex gap-1.5">
-                <SmBtn onClick={() => openEdit(c)}>Sửa</SmBtn>
-                <SmBtn onClick={() => toggle(c)} warn>{c.isActive ? 'Tắt' : 'Bật'}</SmBtn>
-                <SmBtn onClick={() => del(c)} danger>Xóa</SmBtn>
-              </div>
-            </td>
-          </tr>
-        ))}
+
+      <Table headers={['ID', 'Tên danh mục', 'Mô tả', 'SLA (Giờ)', 'Hành động']}>
+        {cats.map((c) => {
+          const catId = c.id || c.categoryId || '—';
+          return (
+            <tr key={catId} className="hover:bg-orange-50/50 transition-colors">
+              <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">
+                {catId}
+              </td>
+              <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold">
+                {c.name}
+              </td>
+              <td className="px-4 py-3 text-[12px] text-gray-500 max-w-[240px] truncate">
+                {c.description || '—'}
+              </td>
+              <td className="px-4 py-3">
+                <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-[11px] font-bold">
+                  {c.sla || c.slaHours || 24}h
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex gap-1.5">
+                  <SmBtn onClick={() => openEdit(c)}>Sửa</SmBtn>
+                  <SmBtn onClick={() => del(c)} danger>
+                    Xóa
+                  </SmBtn>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
       </Table>
+
       {modal && (
-        <Modal title={modal === 'create' ? 'Thêm danh mục' : 'Sửa danh mục'} onClose={() => setModal(null)} onSave={save}>
-          <FormField label="Tên"><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inp} /></FormField>
-          <FormField label="Mô tả"><input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={inp} /></FormField>
-          <FormField label="Trạng thái">
-            <select value={form.isActive ? 'active' : 'inactive'} onChange={e => setForm(f => ({ ...f, isActive: e.target.value === 'active' }))} className={inp}>
-              <option value="active">Hoạt động</option><option value="inactive">Tắt</option>
-            </select>
+        <Modal
+          title={modal === 'create' ? 'Thêm danh mục mới' : 'Cập nhật danh mục'}
+          onClose={() => setModal(null)}
+          onSave={save}
+        >
+          {actionError && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-[12px] text-red-600">{actionError}</p>
+            </div>
+          )}
+          <FormField label="Tên danh mục *">
+            <input
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="VD: Ổ gà / Mặt đường"
+              className={inp}
+            />
+          </FormField>
+          <FormField label="Mô tả danh mục">
+            <textarea
+              rows={3}
+              value={form.description}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
+              placeholder="VD: Hư hỏng, sụt lún lòng lề đường..."
+              className={inp}
+            />
+          </FormField>
+          <FormField label="Thời gian xử lý chuẩn SLA (giờ) *">
+            <input
+              type="number"
+              min={1}
+              value={form.sla}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, sla: Number(e.target.value) || 1 }))
+              }
+              placeholder="24"
+              className={inp}
+            />
           </FormField>
         </Modal>
       )}

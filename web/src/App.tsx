@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ConfigProvider, App as AntdApp, message } from 'antd';
 import { cityFixTheme } from './theme/antdTheme';
 import Login from './pages/Login';
@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import StaffApp from './staff/StaffApp';
 import { TICKETS } from './data';
 import cityfixLogo from './assets/cityfix-logo.png';
+import { logout, getAccessToken, decodeJwt, getProfile } from './services';
 
 type Page = 'dashboard' | 'tickets' | 'ticket-detail' | 'manual-review' | 'analytics' | 'users' | 'settings';
 type AuthPage = 'login' | 'register' | 'app';
@@ -31,11 +32,43 @@ function MainApp() {
   const [userEmail, setUserEmail] = useState('');
   const [userRole, setUserRole] = useState<'STAFF' | 'ADMIN'>('ADMIN');
   const [userId, setUserId] = useState('U006');
+  const [verifyEmailTarget, setVerifyEmailTarget] = useState('');
   const [page, setPage] = useState<Page>('dashboard');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+
+  // Tự động phục hồi phiên đăng nhập nếu đã có token
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) return;
+
+    try {
+      const decoded = decodeJwt(token);
+      if (decoded) {
+        const now = Date.now() / 1000;
+        if (decoded.exp && decoded.exp < now) {
+          logout();
+          return;
+        }
+
+        const email = decoded.sub || decoded.email || '';
+        const rawRole = String(decoded.role || decoded.roles?.[0] || '').toUpperCase();
+        const role = rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
+        const uid = decoded.userId || decoded.sub || 'U006';
+
+        setUserEmail(email);
+        setUserRole(role);
+        setUserId(uid);
+        setAuthPage('app');
+
+        getProfile(token).catch(() => {});
+      }
+    } catch {
+      logout();
+    }
+  }, []);
 
   function showToast(msg: string) {
     messageApi.open({
@@ -53,9 +86,20 @@ function MainApp() {
     messageApi.success('Đăng nhập thành công');
   }
 
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch (e) {
+      console.warn('Lỗi khi đăng xuất:', e);
+    }
+    setUserEmail('');
+    setAuthPage('login');
+    messageApi.info('Đã đăng xuất');
+  }
+
   function handleRegisterSuccess() {
     setAuthPage('login');
-    messageApi.success('Đăng ký thành công! Tài khoản đang chờ xét duyệt.');
+    messageApi.success('Đăng ký và xác thực tài khoản thành công! Bạn có thể đăng nhập ngay.');
   }
 
   function navigate(p: Page, id?: string) {
@@ -63,9 +107,38 @@ function MainApp() {
     if (id) setSelectedId(id);
   }
 
-  if (authPage === 'login') return <>{contextHolder}<Login onLogin={handleLogin} onGoRegister={() => setAuthPage('register')} /></>;
-  if (authPage === 'register') return <>{contextHolder}<Register onGoLogin={() => setAuthPage('login')} onRegisterSuccess={handleRegisterSuccess} /></>;
-  if (authPage === 'app' && userRole === 'STAFF') return <>{contextHolder}<StaffApp userId={userId} onLogout={() => setAuthPage('login')} /></>;
+  if (authPage === 'login') {
+    return (
+      <>
+        {contextHolder}
+        <Login
+          onLogin={handleLogin}
+          onGoRegister={() => {
+            setVerifyEmailTarget('');
+            setAuthPage('register');
+          }}
+        />
+      </>
+    );
+  }
+
+  if (authPage === 'register') {
+    return (
+      <>
+        {contextHolder}
+        <Register
+          initialEmail={verifyEmailTarget}
+          initialStep={verifyEmailTarget ? 3 : 1}
+          onGoLogin={() => setAuthPage('login')}
+          onRegisterSuccess={handleRegisterSuccess}
+        />
+      </>
+    );
+  }
+
+  if (authPage === 'app' && userRole === 'STAFF') {
+    return <>{contextHolder}<StaffApp userId={userId} onLogout={handleLogout} /></>;
+  }
 
   const ticket = TICKETS.find(t => t.ticketId === selectedId) ?? TICKETS[0];
   const manualCount = TICKETS.filter(t => t.needsManualReview).length;
@@ -172,7 +245,7 @@ function MainApp() {
               </div>
             )}
             {!collapsed && (
-              <button onClick={() => setAuthPage('login')} title="Đăng xuất" className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 cursor-pointer">
+              <button onClick={handleLogout} title="Đăng xuất" className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 cursor-pointer">
                 <LogoutIcon />
               </button>
             )}
