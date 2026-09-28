@@ -13,152 +13,130 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft, CATEGORIES } from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createTicket } from '../api';
+import { createTicket, checkDuplicates, DuplicateTicketItem } from '../api';
+import { AuthUser } from './LoginScreen';
 
 interface Props {
   navigate: (s: string) => void;
   goBack: () => void;
   draft: ReportDraft;
   setDraft: (d: ReportDraft) => void;
+  authUser?: AuthUser | null;
+  onDuplicatesFound?: (dupes: DuplicateTicketItem[]) => void;
 }
 
-const MOCK_USER = {
-  name: 'Nguyễn Văn An',
-  phone: '0901 234 567',
-  email: 'nguyenvanan@gmail.com',
-};
-
-export default function ReviewDraftScreen({ navigate, goBack, draft, setDraft }: Props) {
+export default function ReviewDraftScreen({
+  navigate,
+  goBack,
+  draft,
+  setDraft,
+  authUser,
+  onDuplicatesFound,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCatPicker, setShowCatPicker] = useState(false);
 
   const ai = draft.aiAnalysis;
   const currentCatId = draft.userCategoryId || (ai?.categoryId ?? 'cat-001');
-  const currentCat = CATEGORIES.find((c) => c.categoryId === currentCatId) ?? CATEGORIES[0];
+  const matchedCat = CATEGORIES.find((c) => c.categoryId === currentCatId);
+  const currentCatName =
+    matchedCat?.name ||
+    ai?.categoryName ||
+    ai?.categoryId ||
+    'Chưa xác định';
 
   const handleSubmit = async () => {
-  if (submitting) return;
+    if (submitting) return;
 
-  try {
-    setSubmitting(true);
+    try {
+      setSubmitting(true);
 
-    // 1. Lấy access token
-    const accessToken =
-      await AsyncStorage.getItem('accessToken');
+      // 1. Lấy access token
+      const accessToken = await AsyncStorage.getItem('accessToken');
 
-    if (!accessToken) {
-      throw new Error(
-        'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.'
+      if (!accessToken) {
+        throw new Error('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.');
+      }
+
+      // 2. Kiểm tra dữ liệu bắt buộc
+      if (!draft.imageUrls?.length) {
+        throw new Error('Chưa có ảnh sự cố.');
+      }
+
+      if (!draft.location) {
+        throw new Error('Chưa có vị trí sự cố.');
+      }
+
+      if (!draft.aiAnalysis) {
+        throw new Error('Chưa có kết quả phân tích AI.');
+      }
+
+      const effectiveCatId =
+        draft.userCategoryId || draft.aiAnalysis.categoryId;
+
+      // 3. Gọi API check-duplicates trước khi tạo
+      try {
+        console.log('🔍 Checking duplicates before submit...');
+        const dupes = await checkDuplicates(
+          {
+            categoryId: effectiveCatId,
+            latitude: draft.location.lat,
+            longitude: draft.location.lng,
+            location: draft.address,
+          },
+          accessToken
+        );
+
+        if (dupes && dupes.length > 0) {
+          console.log('⚠️ Duplicates found:', dupes.length);
+          if (onDuplicatesFound) {
+            onDuplicatesFound(dupes);
+            return;
+          }
+        }
+      } catch (dupErr) {
+        console.warn('Check duplicates API warning:', dupErr);
+      }
+
+      // 4. Build request body theo đúng Swagger
+      const requestBody = {
+        description:
+          draft.userDescription ||
+          draft.aiAnalysis.description ||
+          '',
+        imageUrl: draft.imageUrls[0],
+        categoryId: effectiveCatId,
+        severity: draft.aiAnalysis.severity,
+        dangerLevel: draft.aiAnalysis.dangerLevel,
+        locationMethod: draft.locationMethod || 'AUTO_GPS',
+        address: draft.address || '',
+        latitude: draft.location.lat,
+        longitude: draft.location.lng,
+        confidenceScore: draft.aiAnalysis.confidenceScore || 0,
+      };
+
+      console.log('🎫 CREATE TICKET BODY:', JSON.stringify(requestBody, null, 2));
+
+      // 5. Gọi API Backend
+      const result = await createTicket(requestBody, accessToken);
+
+      console.log('✅ TICKET CREATED:', result);
+
+      // 6. Thành công
+      navigate('success');
+    } catch (error) {
+      console.error('❌ CREATE TICKET ERROR:', error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Không thể gửi báo cáo. Vui lòng thử lại.'
       );
+    } finally {
+      setSubmitting(false);
     }
-
-    // 2. Kiểm tra dữ liệu bắt buộc
-    if (!draft.imageUrls?.length) {
-      throw new Error(
-        'Chưa có ảnh sự cố.'
-      );
-    }
-
-    if (!draft.location) {
-      throw new Error(
-        'Chưa có vị trí sự cố.'
-      );
-    }
-
-    if (!draft.aiAnalysis) {
-      throw new Error(
-        'Chưa có kết quả phân tích AI.'
-      );
-    }
-
-    // 3. Build request body theo đúng Swagger
-    const requestBody = {
-      description:
-        draft.userDescription ||
-        draft.aiAnalysis.description ||
-        '',
-
-      imageUrl:
-        draft.imageUrls[0],
-
-      categoryId:
-        draft.userCategoryId ||
-        draft.aiAnalysis.categoryId,
-
-      severity:
-        draft.aiAnalysis.severity,
-
-      dangerLevel:
-        draft.aiAnalysis.dangerLevel,
-
-      locationMethod:
-        draft.locationMethod ||
-        'AUTO_GPS',
-
-      address:
-        draft.address || '',
-
-      latitude:
-        draft.location.lat,
-
-      longitude:
-        draft.location.lng,
-
-      aiCategoryId:
-        draft.aiAnalysis.categoryId,
-
-      aiSeverity:
-        draft.aiAnalysis.severity,
-
-      aiDangerLevel:
-        draft.aiAnalysis.dangerLevel,
-
-      aiDescription:
-        draft.aiAnalysis.description,
-
-      aiConfidenceScore:
-        draft.aiAnalysis.confidenceScore,
-
-      isAiAccepted:
-        draft.aiAnalysis.isAcceptedByHuman ?? true,
-    };
-
-    console.log('🎫 CREATE TICKET BODY:');
-    console.log(
-      JSON.stringify(requestBody, null, 2)
-    );
-
-    // 4. Gọi API Backend
-    const result = await createTicket(
-      requestBody,
-      accessToken
-    );
-
-    console.log(
-      '✅ TICKET CREATED:',
-      result
-    );
-
-    // 5. Thành công
-    navigate('success');
-
-  } catch (error) {
-    console.error(
-      '❌ CREATE TICKET ERROR:',
-      error
-    );
-
-    alert(
-      error instanceof Error
-        ? error.message
-        : 'Không thể gửi báo cáo. Vui lòng thử lại.'
-    );
-
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   return (
     <View style={styles.container}>
@@ -214,7 +192,9 @@ export default function ReviewDraftScreen({ navigate, goBack, draft, setDraft }:
                   <Ionicons name="person" size={20} color="#f97316" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.userName}>{MOCK_USER.name}</Text>
+                  <Text style={styles.userName}>
+                    {authUser?.fullName || authUser?.name || 'Người dân'}
+                  </Text>
                   <Text style={styles.userSub}>Tài khoản đã xác thực</Text>
                 </View>
                 <View style={styles.verifiedBadge}>
@@ -225,11 +205,15 @@ export default function ReviewDraftScreen({ navigate, goBack, draft, setDraft }:
               <View style={styles.infoList}>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Số điện thoại</Text>
-                  <Text style={styles.infoValue}>{MOCK_USER.phone}</Text>
+                  <Text style={styles.infoValue}>
+                    {authUser?.phone || authUser?.phoneNumber || '—'}
+                  </Text>
                 </View>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Email</Text>
-                  <Text style={styles.infoValue}>{MOCK_USER.email}</Text>
+                  <Text style={styles.infoValue}>
+                    {authUser?.email || '—'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -278,7 +262,7 @@ export default function ReviewDraftScreen({ navigate, goBack, draft, setDraft }:
                     style={styles.catPickerBtn}
                     onPress={() => setShowCatPicker(!showCatPicker)}
                   >
-                    <Text style={styles.catPickerText}>{currentCat.name}</Text>
+                    <Text style={styles.catPickerText}>{currentCatName}</Text>
                     <Ionicons name="chevron-down" size={16} color="#f97316" />
                   </TouchableOpacity>
 
@@ -308,21 +292,33 @@ export default function ReviewDraftScreen({ navigate, goBack, draft, setDraft }:
                 </View>
               ) : (
                 <View style={styles.catStaticBox}>
-                  <Text style={styles.catStaticText}>{currentCat.name}</Text>
+                  <Text style={styles.catStaticText}>{currentCatName}</Text>
                 </View>
               )}
 
               <View style={styles.aiMetaRow}>
                 <View style={styles.aiMetaItem}>
                   <Text style={styles.metaLabel}>Nghiêm trọng:</Text>
-                  <Text style={[styles.metaValue, { color: '#dc2626' }]}>
-                    {ai?.severity ?? 'CAO'}
-                  </Text>
+                  {(() => {
+                    const sev = (ai?.severity || '').toUpperCase();
+                    const sevMap: Record<string, { label: string; color: string }> = {
+                      LOW: { label: 'Thấp', color: '#16a34a' },
+                      MEDIUM: { label: 'Trung bình', color: '#d97706' },
+                      HIGH: { label: 'Cao', color: '#dc2626' },
+                      CRITICAL: { label: 'Khẩn cấp', color: '#be185d' },
+                    };
+                    const item = sevMap[sev] || { label: ai?.severity || 'Chưa rõ', color: '#dc2626' };
+                    return (
+                      <Text style={[styles.metaValue, { color: item.color }]}>
+                        {item.label}
+                      </Text>
+                    );
+                  })()}
                 </View>
                 <View style={styles.aiMetaItem}>
                   <Text style={styles.metaLabel}>Độ tin cậy AI:</Text>
                   <Text style={[styles.metaValue, { color: '#ea580c' }]}>
-                    {ai?.confidenceScore ?? 87.4}%
+                    {Math.round(ai?.confidenceScore ?? 87)}%
                   </Text>
                 </View>
               </View>

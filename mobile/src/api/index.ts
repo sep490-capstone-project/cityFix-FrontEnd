@@ -489,22 +489,58 @@ export interface CreateTicketRequest {
   categoryId: string;
   severity: string;
   dangerLevel: string;
-  locationMethod: 'AUTO_GPS' | 'MANUAL_ENTRY';
+  locationMethod: 'AUTO_GPS' | 'MANUAL_ENTRY' | string;
   address: string;
   latitude: number;
   longitude: number;
-  aiCategoryId: string;
-  aiSeverity: string;
-  aiDangerLevel: string;
-  aiDescription: string;
-  aiConfidenceScore: number;
-  isAiAccepted: boolean;
+  confidenceScore?: number;
+  aiCategoryId?: string;
+  aiSeverity?: string;
+  aiDangerLevel?: string;
+  aiDescription?: string;
+  aiConfidenceScore?: number;
+  isAiAccepted?: boolean;
 }
+
+export interface DuplicateTicketItem {
+  id?: string;
+  ticketId?: string;
+  categoryId?: string;
+  categoryName?: string;
+  description?: string;
+  address?: string;
+  imageUrl?: string;
+  latitude?: number;
+  longitude?: number;
+  distance?: number | string;
+  upvotes?: number;
+  status?: string;
+  createdAt?: string;
+  similarity?: number;
+}
+
+/* =========================================================
+   CREATE TICKET
+   POST /api/v1/tickets
+   ========================================================= */
 
 export async function createTicket(
   data: CreateTicketRequest,
   accessToken: string
 ) {
+  const payloadBody = {
+    description: data.description,
+    imageUrl: data.imageUrl,
+    categoryId: data.categoryId,
+    severity: data.severity,
+    dangerLevel: data.dangerLevel,
+    locationMethod: data.locationMethod,
+    address: data.address,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    confidenceScore: data.confidenceScore ?? data.aiConfidenceScore ?? 0,
+  };
+
   const response = await fetch(
     `${API_BASE_URL}/api/v1/tickets`,
     {
@@ -514,7 +550,7 @@ export async function createTicket(
         Accept: 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(payloadBody),
     }
   );
 
@@ -540,4 +576,104 @@ export async function createTicket(
   }
 
   return payload.data;
+}
+
+/* =========================================================
+   CHECK DUPLICATES
+   GET /api/v1/tickets/check-duplicates
+   ========================================================= */
+
+export interface CheckDuplicatesParams {
+  categoryId: string;
+  latitude?: number;
+  longitude?: number;
+  location?: string;
+}
+
+export async function checkDuplicates(
+  params: CheckDuplicatesParams,
+  accessToken: string
+): Promise<DuplicateTicketItem[]> {
+  const query = new URLSearchParams();
+  query.append('categoryId', params.categoryId);
+  if (params.latitude !== undefined) {
+    query.append('latitude', params.latitude.toString());
+  }
+  if (params.longitude !== undefined) {
+    query.append('longitude', params.longitude.toString());
+  }
+  if (params.location) {
+    query.append('location', params.location);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/tickets/check-duplicates?${query.toString()}`;
+
+  console.log('🔍 CHECK DUPLICATES URL:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('🔍 CHECK DUPLICATES RESPONSE:', text);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    //
+  }
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message ||
+        `Kiểm tra trùng lặp thất bại (${response.status})`,
+      response.status
+    );
+  }
+
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+/* =========================================================
+   UPVOTE TICKET
+   POST /api/v1/tickets/{id}/upvote
+   ========================================================= */
+
+export async function upvoteTicket(
+  ticketId: string,
+  accessToken: string
+): Promise<void> {
+  const url = `${API_BASE_URL}/api/v1/tickets/${ticketId}/upvote`;
+  console.log('👍 UPVOTE TICKET URL:', url);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('👍 UPVOTE TICKET RESPONSE:', text);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    //
+  }
+
+  if (!response.ok || (payload && payload.success === false)) {
+    throw new ApiError(
+      payload?.message ||
+        `Upvote thất bại (${response.status})`,
+      response.status
+    );
+  }
 }

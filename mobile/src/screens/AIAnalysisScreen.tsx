@@ -37,7 +37,6 @@ export default function AIAnalysisScreen({ navigate, goBack, draft, setDraft }: 
   const [currentStep, setCurrentStep] = useState(0);
   const [done, setDone] = useState(false);
   const [confidence, setConfidence] = useState(0);
-  const [userDescription, setUserDescription] = useState(draft.userDescription || '');
 
 useEffect(() => {
   let mounted = true;
@@ -55,12 +54,20 @@ useEffect(() => {
         throw new Error('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.');
       }
 
-      // Lấy ảnh đầu tiên đã upload lên Cloudinary
-      const imageUrl = draft.imageUrls?.[0];
+      // Lấy ảnh/video đầu tiên để phân tích
+      // Normalize .mov → .mp4 vì backend chỉ hỗ trợ mp4, không hỗ trợ .mov (QuickTime)
+      let imageUrl = draft.imageUrls?.[0];
 
       if (!imageUrl) {
-        throw new Error('Không tìm thấy ảnh để phân tích.');
+        throw new Error('Không tìm thấy ảnh/video để phân tích.');
       }
+
+      // Cloudinary hỗ trợ convert format qua URL: đổi đuôi .mov → .mp4
+      if (imageUrl.toLowerCase().endsWith('.mov')) {
+        imageUrl = imageUrl.slice(0, -4) + '.mp4';
+        console.log('🔄 Converted .mov → .mp4:', imageUrl);
+      }
+
 
       console.log('🤖 START AI ANALYSIS');
       console.log('🖼️ Image URL:', imageUrl);
@@ -142,7 +149,6 @@ useEffect(() => {
 }, []);
 
   const handleNext = () => {
-    setDraft({ ...draft, userDescription });
     navigate('review-draft');
   };
 
@@ -227,7 +233,7 @@ useEffect(() => {
                 <Text style={styles.resultTitle}>KẾT QUẢ PHÂN TÍCH AI</Text>
                 <View style={styles.confidenceBadge}>
                   <Text style={styles.confidenceBadgeText}>
-                    {draft.aiAnalysis?.confidenceScore ?? 0}% tin cậy
+                    {Math.round(draft.aiAnalysis?.confidenceScore ?? 0)}% tin cậy
                   </Text>
                 </View>
               </View>
@@ -236,26 +242,62 @@ useEffect(() => {
                 <View style={styles.resultRow}>
                   <Text style={styles.rowLabel}>Loại sự cố</Text>
                   <Text style={[styles.rowValue, { color: '#ea580c' }]}>
-  {draft.aiAnalysis?.categoryId || 'Chưa xác định'}
-</Text>
+                    {draft.aiAnalysis?.categoryName ||
+                      draft.aiAnalysis?.categoryId ||
+                      'Chưa xác định'}
+                  </Text>
                 </View>
 
                 <View style={styles.resultRow}>
                   <Text style={styles.rowLabel}>Mức độ nghiêm trọng</Text>
-                  <View style={styles.chipHigh}>
-                    <Text style={styles.chipHighText}>
-  {draft.aiAnalysis?.severity || 'UNKNOWN'}
-</Text>
-                  </View>
+                  {(() => {
+                    const sev = (draft.aiAnalysis?.severity || '').toUpperCase();
+                    const sevMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
+                      LOW: { label: 'Thấp', bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
+                      MEDIUM: { label: 'Trung bình', bg: '#fffbeb', border: '#fde68a', text: '#d97706' },
+                      HIGH: { label: 'Cao', bg: '#fef2f2', border: '#fca5a5', text: '#dc2626' },
+                      CRITICAL: { label: 'Khẩn cấp', bg: '#fdf2f8', border: '#fbcfe8', text: '#be185d' },
+                    };
+                    const badge = sevMap[sev] || {
+                      label: draft.aiAnalysis?.severity || 'Không xác định',
+                      bg: '#f8fafc',
+                      border: '#e2e8f0',
+                      text: '#475569',
+                    };
+                    return (
+                      <View style={{ backgroundColor: badge.bg, borderWidth: 1, borderColor: badge.border, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: badge.text }}>
+                          {badge.label}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 <View style={styles.resultRow}>
                   <Text style={styles.rowLabel}>Đánh giá nguy hiểm</Text>
-                  <View style={styles.chipDanger}>
-                    <Text style={styles.chipDangerText}>
-  {draft.aiAnalysis?.dangerLevel || 'UNKNOWN'}
-</Text>
-                  </View>
+                  {(() => {
+                    const danger = (draft.aiAnalysis?.dangerLevel || '').toUpperCase();
+                    const dangerMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
+                      SAFE: { label: 'An toàn', bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
+                      CAUTION: { label: 'Cần chú ý', bg: '#fffbeb', border: '#fde68a', text: '#d97706' },
+                      DANGEROUS: { label: 'Nguy hiểm', bg: '#fef2f2', border: '#fca5a5', text: '#dc2626' },
+                      CRITICAL: { label: 'Rất nguy hiểm', bg: '#fdf2f8', border: '#fbcfe8', text: '#be185d' },
+                    };
+                    const badge = dangerMap[danger] || {
+                      label: draft.aiAnalysis?.dangerLevel || 'Không xác định',
+                      bg: '#f8fafc',
+                      border: '#e2e8f0',
+                      text: '#475569',
+                    };
+                    return (
+                      <View style={{ backgroundColor: badge.bg, borderWidth: 1, borderColor: badge.border, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: badge.text }}>
+                          {badge.label}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 <View style={styles.descBlock}>
@@ -265,24 +307,6 @@ useEffect(() => {
                   </Text>
                 </View>
               </View>
-            </View>
-          ) : null}
-
-          {/* Citizen Description Textarea */}
-          {done ? (
-            <View style={styles.card}>
-              <Text style={styles.inputTitle}>
-                BỔ SUNG MÔ TẢ CỦA BẠN (TÙY CHỌN)
-              </Text>
-              <TextInput
-                style={styles.textAreaInput}
-                placeholder="Nhập thêm chi tiết về sự cố nếu cần..."
-                placeholderTextColor="#9ca3af"
-                multiline
-                numberOfLines={3}
-                value={userDescription}
-                onChangeText={setUserDescription}
-              />
             </View>
           ) : null}
         </View>
@@ -574,24 +598,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  /* Input */
-  inputTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: 1,
-  },
-  textAreaInput: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 14,
-    color: '#0f172a',
-    textAlignVertical: 'top',
-    minHeight: 80,
-  },
 
   /* Footer CTA */
   footerContainer: {
