@@ -33,6 +33,7 @@ export default function AppNavigator() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [verificationEmail, setVerificationEmail] = useState('');
   const [draft, setDraft] = useState<ReportDraft>(INITIAL_DRAFT);
+  const [duplicateTickets, setDuplicateTickets] = useState<any[]>([]);
 
   const handleLoginSuccess = (authUser: AuthUser, token: string) => {
     setUser(authUser);
@@ -47,6 +48,7 @@ export default function AppNavigator() {
     }
     setUser(null);
     setDraft(INITIAL_DRAFT);
+    setDuplicateTickets([]);
     setCurrentScreen('login');
   };
 
@@ -62,6 +64,7 @@ export default function AppNavigator() {
 
   const resetReport = () => {
     setDraft(INITIAL_DRAFT);
+    setDuplicateTickets([]);
     setCurrentScreen('home');
   };
 
@@ -150,6 +153,11 @@ export default function AppNavigator() {
         goBack={() => setCurrentScreen('ai-analysis')}
         draft={draft}
         setDraft={setDraft}
+        authUser={user}
+        onDuplicatesFound={(dupes) => {
+          setDuplicateTickets(dupes);
+          setCurrentScreen('duplicate');
+        }}
       />
     );
   }
@@ -160,6 +168,7 @@ export default function AppNavigator() {
         navigate={handleNavigate}
         goBack={() => setCurrentScreen('review-draft')}
         draft={draft}
+        duplicateTickets={duplicateTickets}
         resetReport={resetReport}
       />
     );

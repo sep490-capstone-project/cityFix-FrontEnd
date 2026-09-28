@@ -39,10 +39,7 @@ export default function PhotoScreen({
   const images = draft.imageUrls;
   const canAddMore = images.length < MAX_IMAGES;
 
-  // GPS -> chỉ Camera
-  // Manual Entry -> cho phép Gallery
-  const galleryAllowed =
-    draft.locationMethod === 'MANUAL_ENTRY';
+  // Cả Camera lẫn Thư viện đều luôn được phép
 
   // =========================================================
   // CAMERA
@@ -170,10 +167,10 @@ console.log('================================');
         return;
       }
 
-      // 2. Mở Gallery
+      // 2. Mở Gallery (ảnh lẫn video)
       const result =
         await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ImagePicker.MediaTypeOptions.All,
           quality: 0.8,
           allowsEditing: false,
           allowsMultipleSelection: true,
@@ -396,15 +393,13 @@ console.log('================================');
                   <TouchableOpacity
                     style={styles.addSlotBtn}
                     onPress={() =>
-                      galleryAllowed
-                        ? setShowGalleryModal(true)
-                        : handleTakePhoto()
+                      setShowGalleryModal(true)
                     }
                     disabled={uploading}
                     activeOpacity={0.8}
                   >
                     <Ionicons
-                      name="camera-outline"
+                      name="add-circle-outline"
                       size={24}
                       color="#ea580c"
                     />
@@ -467,25 +462,15 @@ console.log('================================');
               <View
                 style={styles.sourceBtnRow}
               >
-                {/* Camera / Add */}
+                {/* Camera */}
                 <TouchableOpacity
                   style={styles.addTile}
-                  onPress={() =>
-                    galleryAllowed
-                      ? setShowGalleryModal(
-                          true
-                        )
-                      : handleTakePhoto()
-                  }
+                  onPress={handleTakePhoto}
                   disabled={uploading}
                   activeOpacity={0.8}
                 >
                   <Ionicons
-                    name={
-                      galleryAllowed
-                        ? 'images-outline'
-                        : 'camera-outline'
-                    }
+                    name="camera-outline"
                     size={24}
                     color="#ea580c"
                   />
@@ -495,70 +480,35 @@ console.log('================================');
                   >
                     {uploading
                       ? 'ĐANG TẢI...'
-                      : galleryAllowed
-                      ? 'Chọn ảnh'
                       : 'Camera'}
                   </Text>
                 </TouchableOpacity>
 
-                {/* Gallery button */}
-                {galleryAllowed ? (
-                  <TouchableOpacity
-                    style={styles.galleryBtn}
-                    onPress={() =>
-                      setShowGalleryModal(
-                        true
-                      )
-                    }
-                    disabled={uploading}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons
-                      name="images-outline"
-                      size={16}
-                      color="#0f172a"
-                    />
+                {/* Thư viện */}
+                <TouchableOpacity
+                  style={styles.galleryBtn}
+                  onPress={() =>
+                    setShowGalleryModal(true)
+                  }
+                  disabled={uploading}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="images-outline"
+                    size={16}
+                    color="#0f172a"
+                  />
 
-                    <Text
-                      style={
-                        styles.galleryBtnText
-                      }
-                    >
-                      Chọn Thư viện
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View
+                  <Text
                     style={
-                      styles.galleryDisabledBtn
+                      styles.galleryBtnText
                     }
                   >
-                    <Ionicons
-                      name="images-outline"
-                      size={16}
-                      color="#94a3b8"
-                    />
-
-                    <Text
-                      style={
-                        styles.galleryDisabledText
-                      }
-                    >
-                      GPS chỉ chụp ảnh
-                    </Text>
-                  </View>
-                )}
+                    Thư viện
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              {!galleryAllowed ? (
-                <Text
-                  style={styles.gpsNoticeText}
-                >
-                  * Vị trí GPS tự động bắt buộc
-                  chụp trực tiếp từ Camera để đảm
-                  bảo tính xác thực.
-                </Text>
-              ) : null}
             </View>
           ) : null}
 
@@ -615,7 +565,7 @@ console.log('================================');
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                Chọn ảnh từ thư viện
+                Thêm ảnh / video
               </Text>
 
               <TouchableOpacity
@@ -634,12 +584,41 @@ console.log('================================');
             <Text
               style={styles.modalDescription}
             >
-              Bạn có thể chọn tối đa{' '}
-              {MAX_IMAGES - images.length} ảnh.
+              Còn có thể thêm tối đa{' '}
+              {MAX_IMAGES - images.length} file.
             </Text>
 
+            {/* Camera button */}
             <TouchableOpacity
               style={styles.modalGalleryBtn}
+              onPress={() => {
+                setShowGalleryModal(false);
+                handleTakePhoto();
+              }}
+              disabled={uploading}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={22}
+                color="#ffffff"
+              />
+
+              <Text
+                style={
+                  styles.modalGalleryBtnText
+                }
+              >
+                CHỤP ẢNH BẰNG CAMERA
+              </Text>
+            </TouchableOpacity>
+
+            {/* Gallery button */}
+            <TouchableOpacity
+              style={[
+                styles.modalGalleryBtn,
+                { backgroundColor: '#0f172a', marginTop: 10 },
+              ]}
               onPress={handlePickFromGallery}
               disabled={uploading}
               activeOpacity={0.8}
@@ -656,8 +635,8 @@ console.log('================================');
                 }
               >
                 {uploading
-                  ? 'ĐANG TẢI ẢNH LÊN...'
-                  : 'CHỌN ẢNH TỪ THƯ VIỆN'}
+                  ? 'ĐANG TẢI LÊN...'
+                  : 'CHỌN TỪ THƯ VIỆN (ẢNH / VIDEO)'}
               </Text>
             </TouchableOpacity>
 
