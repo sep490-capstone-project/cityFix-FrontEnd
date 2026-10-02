@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { USERS, DEPARTMENTS } from '../data';
+import { USERS, DEPARTMENTS as FALLBACK_DEPARTMENTS } from '../data';
 import {
   getAdminUsers,
   createAdminUser,
   updateAdminUser,
   deleteAdminUser,
   AdminUser,
+  getDepartments,
+  DepartmentItem,
   ApiError,
 } from '../services';
 
@@ -38,7 +40,7 @@ const ROLE_MAP: Record<string, { label: string; cls: string }> = {
   },
 };
 
-export function extractUserRole(u: any): string {
+function extractUserRole(u: any): string {
   if (!u) return 'CITIZEN';
   if (typeof u.role === 'string' && u.role.trim()) {
     return u.role.trim();
@@ -77,6 +79,7 @@ const EMPTY_FORM = {
 
 export default function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalMode>(null);
@@ -86,7 +89,7 @@ export default function UserManagement() {
   const [roleF, setRoleF] = useState<string>('all');
   const [formError, setFormError] = useState('');
 
-  // 1. Tải danh sách người dùng (GET /api/v1/admin/users)
+  // 1. Tải danh sách người dùng (GET /api/v1/admin/users) & Cơ quan (GET /api/v1/departments)
   async function fetchUsers() {
     setLoading(true);
     try {
@@ -134,8 +137,30 @@ export default function UserManagement() {
     }
   }
 
+  async function fetchDepartmentsList() {
+    try {
+      const res = await getDepartments({ page: 0, size: 100 });
+      let list: DepartmentItem[] = [];
+      if (Array.isArray(res)) {
+        list = res;
+      } else if (res && Array.isArray((res as any).content)) {
+        list = (res as any).content;
+      }
+
+      if (list.length > 0) {
+        setDepartments(list);
+      } else {
+        setDepartments(FALLBACK_DEPARTMENTS as any);
+      }
+    } catch (err) {
+      console.warn('Lỗi khi tải danh sách cơ quan:', err);
+      setDepartments(FALLBACK_DEPARTMENTS as any);
+    }
+  }
+
   useEffect(() => {
     fetchUsers();
+    fetchDepartmentsList();
   }, []);
 
   const filtered = users.filter((u) => {
@@ -431,7 +456,7 @@ export default function UserManagement() {
             <tbody className="divide-y divide-gray-100">
               {filtered.map((u) => {
                 const uid = u.id || u.userId || u.email;
-                const dept = DEPARTMENTS.find(
+                const dept = departments.find(
                   (d) => d.departmentId === u.departmentId
                 );
                 const roleKey = extractUserRole(u).toUpperCase();
@@ -568,7 +593,7 @@ export default function UserManagement() {
                     {
                       label: 'Cơ quan',
                       val:
-                        DEPARTMENTS.find(
+                        departments.find(
                           (d) => d.departmentId === selected.departmentId
                         )?.name ?? '—',
                     },
@@ -733,9 +758,9 @@ export default function UserManagement() {
                     className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
                   >
                     <option value="">— Không có —</option>
-                    {DEPARTMENTS.map((d) => (
+                    {departments.map((d) => (
                       <option key={d.departmentId} value={d.departmentId}>
-                        {d.name}
+                        {d.name} ({d.level || 'Cơ quan'})
                       </option>
                     ))}
                   </select>
