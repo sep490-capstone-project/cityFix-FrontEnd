@@ -170,45 +170,166 @@ export default function Register({
   );
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center relative py-8 overflow-hidden">
+    <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center relative py-10 overflow-hidden select-none">
+      {/* 1. NỀN THÀNH PHỐ VIỆT NAM HIỆN ĐẠI (Ánh hoàng hôn / Bình minh rạng rỡ) */}
       <img
         src={registerBackground}
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
+        alt="CityFix Smart City"
+        className="absolute inset-0 w-full h-full object-cover object-right md:object-center pointer-events-none opacity-80"
       />
-      <div className="absolute inset-0 bg-white/35 pointer-events-none" />
-      <div className="absolute top-0 left-0 right-0 h-[3px] hazard-stripe-thin" />
 
-      <div className="relative z-10 w-full max-w-md px-4 screen-enter">
+      {/* Lớp phủ Gradient: Giữ ánh sáng ấm và làm nổi bật form đăng ký */}
+      <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-white/75 to-white/15 pointer-events-none" />
+      <div className="absolute inset-0 bg-radial from-white/30 via-transparent to-transparent pointer-events-none" />
+
+      {/* 2. BẢN SẮC VIỆT NAM — HỌA TIẾT TRỐNG ĐỒNG ĐÔNG SƠN ĐẬM RÕ & XOAY CHUYỂN ĐỘNG */}
+      <div className="absolute -left-40 -top-28 md:-left-20 md:-top-16 pointer-events-none opacity-[0.30] text-[#ea580c] animate-dongson-spin">
+        <svg width="900" height="900" viewBox="0 0 700 700" fill="none" stroke="currentColor">
+          <circle cx="350" cy="350" r="335" strokeWidth="3.5" />
+          <circle cx="350" cy="350" r="315" strokeWidth="2" strokeDasharray="6 4" />
+          <circle cx="350" cy="350" r="295" strokeWidth="2.5" />
+
+          {/* Vành chim Lạc bay lượn */}
+          <circle cx="350" cy="350" r="270" strokeWidth="2" />
+          <circle cx="350" cy="350" r="235" strokeWidth="2" />
+          {[...Array(16)].map((_, i) => {
+            const angle = (i * 360) / 16;
+            return (
+              <g key={`lac-reg-${i}`} transform={`rotate(${angle} 350 350)`}>
+                <path
+                  d="M 350,90 Q 368,98 380,93 Q 364,110 342,105 Q 330,102 322,95 Q 336,98 350,90 Z"
+                  fill="currentColor"
+                  fillOpacity="0.95"
+                />
+                <circle cx="376" cy="95" r="2" fill="currentColor" />
+              </g>
+            );
+          })}
+
+          <circle cx="350" cy="350" r="210" strokeWidth="2" />
+          <circle cx="350" cy="350" r="180" strokeWidth="2" />
+          {[...Array(20)].map((_, i) => {
+            const angle = (i * 360) / 20;
+            return (
+              <g key={`geom-reg-${i}`} transform={`rotate(${angle} 350 350)`}>
+                <polygon points="350,182 342,195 350,208 358,195" fill="currentColor" fillOpacity="0.75" />
+              </g>
+            );
+          })}
+
+          <circle cx="350" cy="350" r="155" strokeWidth="2.5" strokeDasharray="6 5" />
+          <circle cx="350" cy="350" r="125" strokeWidth="2" />
+          <circle cx="350" cy="350" r="90" strokeWidth="2" />
+
+          {/* Ngôi sao 14 cánh */}
+          <circle cx="350" cy="350" r="55" fill="currentColor" fillOpacity="0.35" />
+          {[...Array(14)].map((_, i) => {
+            const angle = (i * 360) / 14;
+            return (
+              <g key={`sun-reg-${i}`} transform={`rotate(${angle} 350 350)`}>
+                <polygon points="350,220 336,275 364,275" fill="currentColor" fillOpacity="0.95" />
+                <polygon points="350,280 340,312 360,312" fill="currentColor" fillOpacity="0.55" />
+                <line x1="350" y1="270" x2="350" y2="190" strokeWidth="2.2" stroke="currentColor" />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* 2.1 CÀNH LÁ CÂY XANH ĐÔ THỊ & RUY BĂNG NGHỆ THUẬT */}
+      <div className="absolute top-0 left-0 w-80 h-80 pointer-events-none z-0 animate-leaf-sway">
+        <svg viewBox="0 0 250 250" className="w-full h-full fill-none">
+          <path d="M-20,50 Q70,20 90,130 T200,200" stroke="#f97316" strokeWidth="22" strokeLinecap="round" opacity="0.75" />
+          <path d="M-10,20 Q90,-5 120,80 T220,160" stroke="#ea580c" strokeWidth="14" strokeLinecap="round" opacity="0.65" />
+          <g transform="translate(10, 5)">
+            <path d="M0,0 Q60,40 110,100" stroke="#15803d" strokeWidth="3.5" strokeLinecap="round" />
+            <path d="M25,20 C55,0 95,15 90,48 C70,60 35,48 25,20 Z" fill="#16a34a" fillOpacity="0.95" />
+            <path d="M25,20 Q55,28 90,48" stroke="#15803d" strokeWidth="1.8" />
+            <path d="M60,45 C90,25 128,40 120,72 C100,85 68,72 60,45 Z" fill="#22c55e" fillOpacity="0.95" />
+            <path d="M60,45 Q90,52 120,72" stroke="#15803d" strokeWidth="1.8" />
+          </g>
+        </svg>
+      </div>
+
+      {/* Góc dưới bên trái */}
+      <div className="absolute -bottom-8 -left-8 w-[380px] h-[340px] pointer-events-none z-0 animate-leaf-sway" style={{ animationDelay: '2s' }}>
+        <svg viewBox="0 0 350 300" className="w-full h-full fill-none">
+          <path d="M-30,240 Q120,200 160,90 T290,10" stroke="#f97316" strokeWidth="32" strokeLinecap="round" opacity="0.8" />
+          <path d="M-10,270 Q140,230 190,120 T320,40" stroke="#ea580c" strokeWidth="20" strokeLinecap="round" opacity="0.75" />
+          <g transform="translate(30, 130) rotate(-18)">
+            <path d="M0,120 Q60,50 130,0" stroke="#15803d" strokeWidth="3.5" strokeLinecap="round" />
+            <path d="M30,80 C10,45 35,10 75,28 C85,60 60,90 30,80 Z" fill="#16a34a" fillOpacity="0.95" />
+            <path d="M75,50 C65,15 95,-12 130,5 C135,38 105,65 75,50 Z" fill="#22c55e" fillOpacity="0.95" />
+          </g>
+        </svg>
+      </div>
+
+      {/* 2.2 BLUEPRINT GRID */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(249,115,22,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(249,115,22,0.03)_1px,transparent_1px)] bg-[size:48px_48px] pointer-events-none" />
+
+      {/* 2.3 TOP CIVIC BAR */}
+      <div className="hidden sm:flex items-center absolute top-4 left-8 z-10 pointer-events-none text-[11px] font-semibold text-slate-500">
+        <div className="flex items-center gap-3 bg-white/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-200/80 shadow-2xs">
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+          <span className="text-slate-700 font-bold uppercase tracking-wider text-[10px]">Cổng Quản Trị Đô Thị TP.HCM</span>
+          <span className="text-slate-300">|</span>
+          <span className="font-mono-cf text-[10px] text-slate-500">Đăng ký Tài khoản Cán bộ</span>
+        </div>
+      </div>
+
+      {/* 3. SMART CITY MAP ROUTE LINES */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-55" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M 120 700 C 450 650, 700 750, 1100 600 C 1450 480, 1700 520, 2000 450"
+          fill="none"
+          stroke="#f97316"
+          strokeWidth="1.8"
+          className="animate-route-dash"
+        />
+        <path
+          d="M 600 200 C 850 180, 1150 350, 1500 380 C 1750 400, 1950 320, 2150 260"
+          fill="none"
+          stroke="#ea580c"
+          strokeWidth="1.5"
+          strokeOpacity="0.75"
+          className="animate-route-dash"
+        />
+      </svg>
+
+      {/* 4. MAIN HERO: REGISTER CARD */}
+      <div className="relative z-10 w-full max-w-lg px-4 screen-enter">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-6">
-          <img src={cityfixLogo} alt="CityFix" className="w-36 h-36 object-contain -mb-5" />
-          <p className="text-[11px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-0.5">
-            Đăng ký tài khoản Staff / Admin
-          </p>
+        <div className="flex flex-col items-center mb-4 text-center">
+          <img src={cityfixLogo} alt="CityFix" className="w-36 h-28 object-contain -mb-3 drop-shadow-2xs" />
+          <h2 className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">
+            ĐĂNG KÝ TÀI KHOẢN CÁN BỘ / ADMIN
+          </h2>
         </div>
 
-        {/* Steps */}
-        <div className="flex items-center gap-2 mb-5">
+        {/* Steps Progress */}
+        <div className="flex items-center gap-2 mb-4 bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-slate-200/80 shadow-2xs">
           {[1, 2, 3].map((s) => (
             <div key={s} className="flex items-center gap-2 flex-1">
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold flex-shrink-0 transition-colors
-                ${step >= s ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400'}`}
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 transition-all
+                ${step >= s ? 'bg-orange-500 text-white shadow-xs' : 'bg-slate-200 text-slate-400'}`}
               >
                 {s}
               </div>
               <span
-                className={`text-[10px] font-semibold truncate ${
-                  step >= s ? 'text-gray-800' : 'text-gray-400'
+                className={`text-[10px] font-bold uppercase tracking-wider truncate ${
+                  step >= s ? 'text-slate-800' : 'text-slate-400'
                 }`}
               >
-                {s === 1 ? 'Thông tin' : s === 2 ? 'Địa chỉ' : 'Xác thực'}
+                {s === 1 ? 'Thông tin' : s === 2 ? 'Địa bàn' : 'Xác thực'}
               </span>
               {s < 3 && (
                 <div
-                  className={`flex-1 h-px ${
-                    step > s ? 'bg-orange-500/60' : 'bg-gray-200'
+                  className={`flex-1 h-0.5 ${
+                    step > s ? 'bg-orange-500' : 'bg-slate-200'
                   }`}
                 />
               )}
@@ -216,8 +337,9 @@ export default function Register({
           ))}
         </div>
 
-        <div className="bg-white/95 backdrop-blur-sm border border-white/80 rounded-2xl overflow-hidden card-depth shadow-sm">
-          <div className="h-[2px] hazard-stripe-thin" />
+        {/* Card Frame */}
+        <div className="bg-white/98 backdrop-blur-md border border-slate-200/90 rounded-2xl overflow-hidden shadow-xl">
+          <div className="h-[3px] bg-gradient-to-r from-[#ea580c] via-[#f97316] to-[#fb923c]" />
 
           {/* Server Error Alert */}
           {serverError && (

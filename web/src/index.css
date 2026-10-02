@@ -1,44 +1,68 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  --color-bg-base:    #f5f5f5;
-  --color-bg-card:    #ffffff;
-  --color-bg-inner:   #f9fafb;
-  --color-accent:     #f97316;
-  --color-accent-dark:#c2410c;
+  --color-bg-base: #f5f5f5;
+  --color-bg-card: #ffffff;
+  --color-bg-inner: #f9fafb;
+  --color-accent: #f97316;
+  --color-accent-dark: #c2410c;
   --font-display: 'Barlow Condensed', sans-serif;
-  --font-body:    'Noto Sans', sans-serif;
-  --font-mono:    'JetBrains Mono', monospace;
+  --font-body: 'Noto Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   font-family: 'Noto Sans', sans-serif;
   background: #f5f5f5;
   color: #111827;
 }
 
-.font-display { font-family: 'Barlow Condensed', sans-serif; }
-.font-mono-cf { font-family: 'JetBrains Mono', monospace; }
+.font-display {
+  font-family: 'Barlow Condensed', sans-serif;
+}
 
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-.scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-thin::-webkit-scrollbar { width: 4px; }
-.scrollbar-thin::-webkit-scrollbar-track { background: #f3f4f6; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+.font-mono-cf {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
 
 .hazard-stripe {
   background: repeating-linear-gradient(-45deg, #f97316, #f97316 5px, #fff7ed 5px, #fff7ed 10px);
 }
+
 .hazard-stripe-thin {
   background: repeating-linear-gradient(-45deg, #f97316, #f97316 3px, #fff7ed 3px, #fff7ed 6px);
 }
 
 .blueprint-grid {
   background-image:
-    linear-gradient(rgba(249,115,22,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(249,115,22,0.06) 1px, transparent 1px);
+    linear-gradient(rgba(249, 115, 22, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(249, 115, 22, 0.06) 1px, transparent 1px);
   background-size: 24px 24px;
   background-color: #f9fafb;
 }
@@ -50,30 +74,122 @@ html, body, #root {
 }
 
 .glow-orange {
-  box-shadow: 0 0 20px rgba(249,115,22,0.30), 0 0 40px rgba(249,115,22,0.10);
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.30), 0 0 40px rgba(249, 115, 22, 0.10);
 }
+
 .card-depth {
-  box-shadow: 0 1px 8px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.8) inset;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
 }
 
 @keyframes screen-enter {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes ping-slow {
-  0%   { transform: scale(1);   opacity: 0.7; }
-  70%  { transform: scale(1.9); opacity: 0;   }
-  100% { transform: scale(1.9); opacity: 0;   }
-}
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.screen-enter { animation: screen-enter 0.28s ease-out both; }
-.animate-ping-slow { animation: ping-slow 2s ease-in-out infinite; }
+@keyframes ping-slow {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+
+  70% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.screen-enter {
+  animation: screen-enter 0.28s ease-out both;
+}
+
+.animate-ping-slow {
+  animation: ping-slow 2s ease-in-out infinite;
+}
+
 .shimmer {
   background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
+}
+
+/* ========================================================
+   MODERN CIVIC SMART CITY SUBTLE & DYNAMIC ANIMATIONS
+   ======================================================== */
+@keyframes dongson-spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes route-glow-dash {
+  0% { stroke-dashoffset: 140; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes marker-float-gentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes beacon-ping {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  70%, 100% { transform: scale(2.3); opacity: 0; }
+}
+
+@keyframes leaf-sway-subtle {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(3deg); }
+}
+
+.animate-dongson-spin {
+  animation: dongson-spin-slow 180s linear infinite;
+}
+
+.animate-route-dash {
+  stroke-dasharray: 6 6;
+  animation: route-glow-dash 20s linear infinite;
+}
+
+.animate-marker-float {
+  animation: marker-float-gentle 4s ease-in-out infinite;
+}
+
+.animate-beacon {
+  animation: beacon-ping 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.animate-leaf-sway {
+  transform-origin: top left;
+  animation: leaf-sway-subtle 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-dongson-spin,
+  .animate-route-dash,
+  .animate-marker-float,
+  .animate-beacon,
+  .animate-leaf-sway {
+    animation: none !important;
+  }
 }

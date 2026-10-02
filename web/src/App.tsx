@@ -3,17 +3,20 @@ import { ConfigProvider, App as AntdApp, message } from 'antd';
 import { cityFixTheme } from './theme/antdTheme';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import TicketList from './pages/TicketList';
-import TicketDetail from './pages/TicketDetail';
-import ManualReview from './pages/ManualReview';
-import Analytics from './pages/Analytics';
-import UserManagement from './pages/UserManagement';
-import Settings from './pages/Settings';
+import Dashboard from './admin/AdminDashboard';
+import TicketList from './admin/AdminTickets';
+import TicketDetail from './admin/AdminTicketDetail';
+import ManualReview from './admin/AdminManualReview';
+import Analytics from './admin/AdminAnalytics';
+import UserManagement from './admin/AdminUserManagement';
+import Settings, { SettingsTab } from './admin/AdminSettings';
 import StaffApp from './staff/StaffApp';
 import { TICKETS } from './data';
 import cityfixLogo from './assets/cityfix-logo.png';
 import { logout, getAccessToken, decodeJwt, getProfile } from './services';
+
+import { useAppDispatch, useAppSelector } from './store';
+import { setCurrentPage, setSettingsTab, setUserInfo, resetUser } from './store/appSlice';
 
 type Page = 'dashboard' | 'tickets' | 'ticket-detail' | 'manual-review' | 'analytics' | 'users' | 'settings';
 type AuthPage = 'login' | 'register' | 'app';
@@ -28,16 +31,21 @@ const NAV: { key: string; label: string; icon: () => React.ReactElement; hasSubm
 ];
 
 function MainApp() {
+  const dispatch = useAppDispatch();
+  const reduxState = useAppSelector((s) => s.app);
+
   const [authPage, setAuthPage] = useState<AuthPage>('login');
-  const [userEmail, setUserEmail] = useState('');
-  const [userRole, setUserRole] = useState<'STAFF' | 'ADMIN'>('ADMIN');
-  const [userId, setUserId] = useState('U006');
   const [verifyEmailTarget, setVerifyEmailTarget] = useState('');
-  const [page, setPage] = useState<Page>('dashboard');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+
+  const userEmail = reduxState.userEmail;
+  const userRole = reduxState.userRole;
+  const userId = reduxState.userId;
+  const page = reduxState.currentPage;
+  const selectedId = reduxState.selectedTicketId;
+  const settingsTab = reduxState.settingsTab;
 
   // Tự động phục hồi phiên đăng nhập nếu đã có token
   useEffect(() => {
@@ -50,6 +58,7 @@ function MainApp() {
         const now = Date.now() / 1000;
         if (decoded.exp && decoded.exp < now) {
           logout();
+          dispatch(resetUser());
           return;
         }
 
@@ -58,17 +67,16 @@ function MainApp() {
         const role = rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
         const uid = decoded.userId || decoded.sub || 'U006';
 
-        setUserEmail(email);
-        setUserRole(role);
-        setUserId(uid);
+        dispatch(setUserInfo({ email, role, userId: uid }));
         setAuthPage('app');
 
         getProfile(token).catch(() => {});
       }
     } catch {
       logout();
+      dispatch(resetUser());
     }
-  }, []);
+  }, [dispatch]);
 
   function showToast(msg: string) {
     messageApi.open({
@@ -79,9 +87,7 @@ function MainApp() {
   }
 
   function handleLogin(email: string, role: 'STAFF' | 'ADMIN', uid: string) {
-    setUserEmail(email);
-    setUserRole(role);
-    setUserId(uid);
+    dispatch(setUserInfo({ email, role, userId: uid }));
     setAuthPage('app');
     messageApi.success('Đăng nhập thành công');
   }
@@ -92,7 +98,7 @@ function MainApp() {
     } catch (e) {
       console.warn('Lỗi khi đăng xuất:', e);
     }
-    setUserEmail('');
+    dispatch(resetUser());
     setAuthPage('login');
     messageApi.info('Đã đăng xuất');
   }
@@ -103,8 +109,7 @@ function MainApp() {
   }
 
   function navigate(p: Page, id?: string) {
-    setPage(p);
-    if (id) setSelectedId(id);
+    dispatch(setCurrentPage({ page: p, id }));
   }
 
   if (authPage === 'login') {
@@ -197,16 +202,26 @@ function MainApp() {
                 {item.hasSubmenu && settingsOpen && !collapsed && (
                   <div className="ml-4 mt-0.5 space-y-0.5 border-l border-gray-200 pl-3">
                     {[
-                      { label: 'Danh mục sự cố', sub: 'categories' },
-                      { label: 'Cơ quan',          sub: 'departments' },
-                      { label: 'Quy tắc định tuyến', sub: 'routing' },
-                    ].map(s => (
-                      <button key={s.sub}
-                        onClick={() => navigate('settings')}
-                        className="w-full text-left px-3 py-2 rounded-xl text-[12px] text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all cursor-pointer">
-                        {s.label}
-                      </button>
-                    ))}
+                      { label: 'Danh mục sự cố', sub: 'categories' as SettingsTab },
+                      { label: 'Cơ quan',          sub: 'departments' as SettingsTab },
+                      { label: 'Quy tắc định tuyến', sub: 'routing' as SettingsTab },
+                    ].map(s => {
+                      const isSubActive = page === 'settings' && settingsTab === s.sub;
+                      return (
+                        <button key={s.sub}
+                          onClick={() => {
+                            dispatch(setSettingsTab(s.sub));
+                            navigate('settings');
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-[12px] font-medium transition-all cursor-pointer ${
+                            isSubActive
+                              ? 'bg-orange-100/70 text-orange-600 font-semibold'
+                              : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                          }`}>
+                          {s.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -287,7 +302,12 @@ function MainApp() {
           {page === 'manual-review' && <ManualReview onOpenTicket={id => navigate('ticket-detail', id)} />}
           {page === 'analytics' && <Analytics />}
           {page === 'users' && <UserManagement />}
-          {page === 'settings' && <Settings />}
+          {page === 'settings' && (
+            <Settings
+              initialTab={settingsTab}
+              onTabChange={(t) => dispatch(setSettingsTab(t))}
+            />
+          )}
         </main>
       </div>
     </div>
