@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { ConfigProvider, App as AntdApp, message } from 'antd';
 import { cityFixTheme } from './theme/antdTheme';
 import Login from './pages/Login';
@@ -23,7 +23,7 @@ type AuthPage = 'login' | 'register' | 'app';
 
 const NAV: { key: string; label: string; icon: () => React.ReactElement; hasSubmenu?: boolean }[] = [
   { key: 'dashboard',     label: 'Dashboard',          icon: GridIcon     },
-  { key: 'tickets',       label: 'Quản lý vé',         icon: TicketIcon   },
+  { key: 'tickets',       label: 'Quản lý Hồ sơ',         icon: TicketIcon   },
   { key: 'manual-review', label: 'Xét duyệt thủ công', icon: ReviewIcon   },
   { key: 'analytics',     label: 'Phân tích',          icon: ChartIcon    },
   { key: 'users',         label: 'Người dùng',         icon: UsersIcon    },
@@ -275,7 +275,7 @@ function MainApp() {
           <div className="flex-1">
             <h1 className="font-display text-[22px] font-extrabold text-gray-900 uppercase tracking-tight">
               {page === 'dashboard' ? 'Dashboard' :
-               page === 'tickets' || page === 'ticket-detail' ? 'Quản lý vé' :
+               page === 'tickets' || page === 'ticket-detail' ? 'Quản lý Hồ sơ' :
                page === 'manual-review' ? 'Xét duyệt thủ công' :
                page === 'analytics' ? 'Phân tích & Báo cáo' :
                page === 'users' ? 'Người dùng' : 'Cài đặt hệ thống'}
@@ -337,3 +337,4 @@ function BellIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" f
 function ChevLIcon()  { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>; }
 function ChevRIcon()  { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>; }
 function LogoutIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>; }
+

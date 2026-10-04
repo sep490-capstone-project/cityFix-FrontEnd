@@ -1,4 +1,4 @@
-# CityFix Design System — Web Admin / Staff
+﻿# CityFix Design System — Web Admin / Staff
 > Trích xuất từ bản mobile CityFix. Dùng làm nền tảng cho portal web role Staff & Admin.
 > Stack giả định: React + Vite + Tailwind CSS v4 (hoặc v3 với config)
 
@@ -96,7 +96,7 @@
 
 ### Font Stack
 ```css
-/* Display / Heading — dùng cho số liệu lớn, tiêu đề dashboard, ID vé */
+/* Display / Heading — dùng cho số liệu lớn, tiêu đề dashboard, ID Hồ sơ */
 font-family: 'Barlow Condensed', sans-serif;
 /* weights: 500, 600, 700, 800 */
 
@@ -128,7 +128,7 @@ Mono ID:          10–12px  JetBrains Mono 500  tracking-wider
 ### Typography Rules
 - Tiêu đề section luôn **UPPERCASE** với Barlow Condensed
 - Label nhỏ (section header kiểu "THÔNG TIN CHUNG") dùng `text-[9px] font-bold text-zinc-600 uppercase tracking-[0.18em]`
-- ID vé (CF-xxxx) dùng mono: `font-mono text-zinc-600 tracking-wider`
+- ID Hồ sơ (CF-xxxx) dùng mono: `font-mono text-zinc-600 tracking-wider`
 - Không dùng italic trừ AI-generated text (hiện italic + màu orange/muted)
 
 ---
@@ -653,17 +653,17 @@ const CATEGORIES = [
 ### Role: Staff
 | Trang | Mô tả |
 |---|---|
-| Dashboard | KPI stats, bản đồ nhiệt khu vực, danh sách vé được giao, activity feed |
-| Danh sách vé | Table filter (status/severity/category/date), search, sort, pagination |
-| Chi tiết vé | Full info + ảnh, timeline, ghi chú nội bộ, cập nhật trạng thái |
-| Xử lý vé | Upload ảnh bằng chứng, ghi chú kết quả, chuyển sang Done |
+| Dashboard | KPI stats, bản đồ nhiệt khu vực, danh sách Hồ sơ được giao, activity feed |
+| Danh sách Hồ sơ | Table filter (status/severity/category/date), search, sort, pagination |
+| Chi tiết Hồ sơ | Full info + ảnh, timeline, ghi chú nội bộ, cập nhật trạng thái |
+| Xử lý Hồ sơ | Upload ảnh bằng chứng, ghi chú kết quả, chuyển sang Done |
 | Cảnh báo khẩn cấp | Xem danh sách vùng nguy hiểm đang hoạt động |
 
 ### Role: Admin
 | Trang | Mô tả |
 |---|---|
 | Dashboard | Toàn cục: stats theo quận, hiệu suất theo cơ quan, trending issues |
-| Quản lý vé | Tất cả vé, phân công staff, bulk actions, export CSV |
+| Quản lý Hồ sơ | Tất cả Hồ sơ, phân công staff, bulk actions, export CSV |
 | Quản lý người dùng | Danh sách citizen + staff, CRUD, phân quyền |
 | Quản lý cơ quan | Danh sách agency, staff assignment, SLA config |
 | Analytics | Biểu đồ xu hướng (recharts), heatmap theo thời gian |
@@ -710,7 +710,7 @@ Dùng **SVG inline** (không dùng icon font). Stroke-based, không fill.
 
 ```
 1. Mọi heading/label lớn → Barlow Condensed, UPPERCASE
-2. Mọi ID vé → font-mono + text-zinc-600
+2. Mọi ID Hồ sơ → font-mono + text-zinc-600
 3. Không dùng màu sắc đa dạng (rainbow) — chỉ orange + zinc + red/green cho status
 4. Card luôn có border border-zinc-800/60, background #141414
 5. Mọi scroll container → thêm class scrollbar-hide hoặc scrollbar-thin
@@ -724,3 +724,4 @@ Dùng **SVG inline** (không dùng icon font). Stroke-based, không fill.
 ---
 
 *Script này trích xuất 100% từ bản mobile CityFix. Paste toàn bộ vào `DESIGN_SYSTEM.md` của workspace mới.*
+

@@ -40,7 +40,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
               <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping-slow" />
             </div>
             <p className="text-[13px] font-bold text-red-300">
-              {critical.filter(t => t.isLifeThreatening).length} vé trong khu vực của bạn có nguy cơ đe dọa tính mạng
+              {critical.filter(t => t.isLifeThreatening).length} hồ sơ trong khu vực của bạn có nguy cơ đe dọa tính mạng
             </p>
           </div>
         </div>
@@ -63,7 +63,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         {/* My Recent Tickets */}
         <div className="xl:col-span-2 bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
           <div className="px-5 pt-3.5 pb-3 border-b border-gray-200 flex items-center justify-between">
-            <SectionLabel>Vé được giao cho tôi</SectionLabel>
+            <SectionLabel>Hồ sơ được giao cho tôi</SectionLabel>
             <button onClick={onViewAll} className="text-[11px] text-orange-400 hover:text-orange-300 font-semibold transition-colors">
               Xem tất cả →
             </button>
@@ -81,7 +81,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
               <tbody className="divide-y divide-gray-100">
                 {myTickets.filter(t => t.assigneeId === currentUser.userId).length === 0 && (
                   <tr><td colSpan={7} className="px-4 py-10 text-center">
-                    <p className="text-gray-400 text-[13px]">Chưa có vé nào được giao cho bạn</p>
+                    <p className="text-gray-400 text-[13px]">Chưa có hồ sơ nào được giao cho bạn</p>
                   </td></tr>
                 )}
                 {myTickets.filter(t => t.assigneeId === currentUser.userId).slice(0, 6).map(t => {
@@ -130,7 +130,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
               <span className="font-display text-[18px] font-bold text-gray-500">{deptQueue.length}</span>
             </div>
             {deptQueue.length === 0
-              ? <p className="px-5 py-6 text-[12px] text-gray-300">Không có vé chờ phân công</p>
+              ? <p className="px-5 py-6 text-[12px] text-gray-300">Không có hồ sơ chờ phân công</p>
               : (
                 <div className="divide-y divide-gray-100">
                   {deptQueue.slice(0, 5).map(t => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { TICKETS, SEV_MAP, DANGER_MAP, getCat, getDept, Severity, DangerLevel, sevInfo, dangerInfo, ROUTING_RULES } from '../data';
 
 interface Props { onOpenTicket: (id: string) => void; }
@@ -58,11 +58,11 @@ export default function ManualReview({ onOpenTicket }: Props) {
           <div className="space-y-4">
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
               <div className="px-5 pt-3 pb-2.5 border-b border-gray-200">
-                <p className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-[0.12em]">Thông tin vé gốc</p>
+                <p className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-[0.12em]">Thông tin Hồ sơ gốc</p>
               </div>
               <div className="divide-y divide-gray-100">
                 {[
-                  { label: 'Mã vé', val: ticket.ticketId, mono: true },
+                  { label: 'Mã Hồ sơ', val: ticket.ticketId, mono: true },
                   { label: 'Danh mục', val: cat?.name ?? '' },
                   { label: 'Mô tả', val: ticket.description },
                   { label: 'Địa chỉ', val: `${ticket.address}, ${ticket.ward}` },
@@ -156,7 +156,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
                     <p className="text-[12px] text-amber-300 mb-3">
                       Xác nhận{' '}
                       <strong>{action === 'approve' ? 'phê duyệt' : action === 'modify' ? 'chỉnh sửa và duyệt' : 'từ chối'}</strong>{' '}
-                      vé <span className="font-mono-cf">{ticket.ticketId}</span>?
+                      Hồ sơ <span className="font-mono-cf">{ticket.ticketId}</span>?
                     </p>
                     <div className="flex gap-2">
                       <button onClick={() => setAction(null)}
@@ -176,7 +176,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
 
             <button onClick={() => onOpenTicket(ticket.ticketId)}
               className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-600 hover:text-gray-800 text-[12px] font-semibold uppercase tracking-wide transition-colors active:scale-[0.97]">
-              Xem toàn bộ chi tiết vé →
+              Xem toàn bộ chi tiết Hồ sơ →
             </button>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-display text-[18px] font-bold text-gray-900 uppercase tracking-wide">Xét duyệt thủ công</h2>
-          <p className="text-[12px] text-gray-400 mt-0.5">Chỉ hiển thị vé cần xác nhận bởi Admin</p>
+          <p className="text-[12px] text-gray-400 mt-0.5">Chỉ hiển thị Hồ sơ cần xác nhận bởi Admin</p>
         </div>
         <span className="font-display text-[28px] font-bold text-amber-400">{pending.filter(t => !done.includes(t.ticketId)).length}</span>
       </div>
@@ -203,7 +203,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"/></svg>
             <div className="flex-1">
               <p className="text-[13px] font-bold text-green-400">
-                Vé <span className="font-mono-cf">{routingResult.ticketId}</span> đã được duyệt và định tuyến tự động
+                Hồ sơ <span className="font-mono-cf">{routingResult.ticketId}</span> đã được duyệt và định tuyến tự động
               </p>
               <div className="flex items-center gap-4 mt-2 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -233,7 +233,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
         <div className="relative flex items-center gap-3 px-5 py-3.5">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <p className="text-[13px] text-amber-300 font-semibold">
-            Các vé dưới đây có confidence AI thấp hoặc được đánh dấu đe dọa tính mạng — cần Admin phê duyệt trước khi định tuyến.
+            Các Hồ sơ dưới đây có confidence AI thấp hoặc được đánh dấu đe dọa tính mạng — cần Admin phê duyệt trước khi định tuyến.
           </p>
         </div>
       </div>
@@ -252,7 +252,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
             <tbody className="divide-y divide-gray-100">
               {pending.length === 0 && (
                 <tr><td colSpan={10} className="px-4 py-12 text-center">
-                  <p className="font-display text-2xl font-bold text-gray-300 uppercase">Không có vé cần xét duyệt</p>
+                  <p className="font-display text-2xl font-bold text-gray-300 uppercase">Không có Hồ sơ cần xét duyệt</p>
                 </td></tr>
               )}
               {pending.map(t => {
@@ -309,3 +309,4 @@ export default function ManualReview({ onOpenTicket }: Props) {
     </div>
   );
 }
+

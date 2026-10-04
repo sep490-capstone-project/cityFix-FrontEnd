@@ -28,7 +28,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
 
   const NAV = [
     { key: 'dashboard', label: 'Dashboard',    icon: <GridIcon /> },
-    { key: 'tickets',   label: 'Vé của tôi',   icon: <TicketIcon /> },
+    { key: 'tickets',   label: 'Hồ sơ của tôi',   icon: <TicketIcon /> },
     { key: 'profile',   label: 'Hồ sơ',        icon: <UserIcon /> },
   ] as const;
 
@@ -101,7 +101,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
           <div className="flex-1">
             <h1 className="font-display text-[20px] font-extrabold text-gray-900 uppercase tracking-tight">
               {page === 'dashboard' ? 'Dashboard' :
-               page === 'tickets' || page === 'ticket-detail' ? 'Vé của tôi' : 'Hồ sơ cá nhân'}
+               page === 'tickets' || page === 'ticket-detail' ? 'Hồ sơ của tôi' : 'Hồ sơ cá nhân'}
             </h1>
           </div>
           <p className="font-mono-cf text-[11px] text-gray-400 tracking-wider">10/09/2026</p>
@@ -123,7 +123,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
           )}
           {page === 'ticket-detail' && !selectedTicket && (
             <div className="flex items-center justify-center h-full">
-              <p className="text-gray-400">Không tìm thấy vé</p>
+              <p className="text-gray-400">Không tìm thấy hồ sơ</p>
             </div>
           )}
           {page === 'profile' && <StaffProfile currentUser={currentUser} />}
