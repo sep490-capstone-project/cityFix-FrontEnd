@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { USERS, TICKETS, DEPARTMENTS, getUser } from '../data';
+import { useState, useEffect } from 'react';
+import { USERS, TICKETS, DEPARTMENTS, getUser, User } from '../data';
 import StaffDashboard from './StaffDashboard';
 import StaffTickets from './StaffTickets';
 import StaffTicketDetail from './StaffTicketDetail';
 import StaffProfile from './StaffProfile';
 import cityfixLogo from '../assets/cityfix-logo.png';
+import { getProfile, getDepartments, getDepartmentById, DepartmentItem, UserProfile } from '../services';
 
 type StaffPage = 'dashboard' | 'tickets' | 'ticket-detail' | 'profile';
 
@@ -18,12 +19,97 @@ export default function StaffApp({ userId, onLogout }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Resolve current staff user — fallback to U010 (Trần Minh Quân) for demo
-  const currentUser = getUser(userId) ?? USERS.find(u => u.role === 'STAFF') ?? USERS[2];
+  const initialUser = getUser(userId) ?? USERS.find(u => u.role === 'STAFF') ?? USERS[2];
+  const [currentUser, setCurrentUser] = useState<User>(initialUser);
+  const [departmentName, setDepartmentName] = useState<string>('');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function fetchUserData() {
+      try {
+        const [profileRes, deptListRes] = await Promise.allSettled([
+          getProfile(),
+          getDepartments(),
+        ]);
+
+        let currentDeptId = currentUser.departmentId;
+
+        if (profileRes.status === 'fulfilled' && profileRes.value && mounted) {
+          const p = profileRes.value;
+          currentDeptId = p.departmentId || currentDeptId;
+          setCurrentUser((prev) => ({
+            ...prev,
+            fullName: p.fullName || prev.fullName,
+            phoneNumber: p.phoneNumber || prev.phoneNumber,
+            address: p.address || prev.address,
+            province: p.province || prev.province,
+            ward: p.ward || prev.ward,
+            departmentId: p.departmentId || prev.departmentId,
+            email: p.email || prev.email,
+          }));
+        }
+
+        if (currentDeptId) {
+          // 1. Thử tìm trong danh sách departments vừa tải
+          let foundName = '';
+          if (deptListRes.status === 'fulfilled' && deptListRes.value) {
+            const list: DepartmentItem[] = Array.isArray(deptListRes.value)
+              ? deptListRes.value
+              : (deptListRes.value as any).content || [];
+            const d = list.find((item) => item.departmentId === currentDeptId);
+            if (d?.name) foundName = d.name;
+          }
+
+          // 2. Thử tìm trong mock data nếu có
+          if (!foundName) {
+            const mockD = DEPARTMENTS.find((d) => d.departmentId === currentDeptId);
+            if (mockD?.name) foundName = mockD.name;
+          }
+
+          // 3. Nếu vẫn chưa có và là UUID từ backend, gọi trực tiếp API chi tiết cơ quan
+          if (!foundName && currentDeptId.length > 5) {
+            try {
+              const dDetail = await getDepartmentById(currentDeptId);
+              if (dDetail?.name) foundName = dDetail.name;
+            } catch (e) {
+              console.warn('Không thể lấy chi tiết cơ quan:', e);
+            }
+          }
+
+          if (mounted && foundName) {
+            setDepartmentName(foundName);
+          }
+        }
+      } catch (err) {
+        console.warn('Lỗi khi tải thông tin StaffApp:', err);
+      }
+    }
+
+    fetchUserData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
   const selectedTicket = TICKETS.find(t => t.ticketId === selectedId);
 
   function openTicket(id: string) {
     setSelectedId(id);
     setPage('ticket-detail');
+  }
+
+  function handleProfileUpdated(updated: UserProfile) {
+    setCurrentUser((prev) => ({
+      ...prev,
+      fullName: updated.fullName || prev.fullName,
+      phoneNumber: updated.phoneNumber || prev.phoneNumber,
+      address: updated.address || prev.address,
+      province: updated.province || prev.province,
+      ward: updated.ward || prev.ward,
+      departmentId: updated.departmentId || prev.departmentId,
+    }));
   }
 
   const NAV = [
@@ -77,10 +163,11 @@ export default function StaffApp({ userId, onLogout }: Props) {
         {/* Dept info */}
         <div className="mx-3 mb-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
           <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-1">Cơ quan</p>
-          <p className="text-[11px] text-gray-600 leading-tight">
-            {currentUser.departmentId
-              ? (DEPARTMENTS.find(d => d.departmentId === currentUser.departmentId)?.name ?? currentUser.departmentId)
-              : 'Chưa phân công'}
+          <p className="text-[11px] text-gray-700 font-medium leading-snug">
+            {departmentName ||
+              (currentUser.departmentId
+                ? (DEPARTMENTS.find((d) => d.departmentId === currentUser.departmentId)?.name ?? 'Đang tải...')
+                : 'Chưa phân công')}
           </p>
         </div>
 
@@ -126,7 +213,9 @@ export default function StaffApp({ userId, onLogout }: Props) {
               <p className="text-gray-400">Không tìm thấy hồ sơ</p>
             </div>
           )}
-          {page === 'profile' && <StaffProfile currentUser={currentUser} />}
+          {page === 'profile' && (
+            <StaffProfile currentUser={currentUser} onProfileUpdated={handleProfileUpdated} />
+          )}
         </main>
       </div>
     </div>
