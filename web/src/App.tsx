@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ConfigProvider, App as AntdApp, message } from 'antd';
 import { cityFixTheme } from './theme/antdTheme';
 import Login from './pages/Login';
@@ -30,6 +30,8 @@ const NAV: { key: string; label: string; icon: () => React.ReactElement; hasSubm
   { key: 'settings',      label: 'Cài đặt',            icon: GearIcon,    hasSubmenu: true },
 ];
 
+import RouteSync from './components/RouteSync';
+
 function MainApp() {
   const dispatch = useAppDispatch();
   const reduxState = useAppSelector((s) => s.app);
@@ -38,7 +40,7 @@ function MainApp() {
   const [verifyEmailTarget, setVerifyEmailTarget] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [messageApi, contextHolder] = message.useMessage();
+  const { message: messageApi, modal } = AntdApp.useApp();
 
   const userEmail = reduxState.userEmail;
   const userRole = reduxState.userRole;
@@ -92,15 +94,24 @@ function MainApp() {
     messageApi.success('Đăng nhập thành công');
   }
 
-  async function handleLogout() {
-    try {
-      await logout();
-    } catch (e) {
-      console.warn('Lỗi khi đăng xuất:', e);
-    }
-    dispatch(resetUser());
-    setAuthPage('login');
-    messageApi.info('Đã đăng xuất');
+  function handleLogout() {
+    modal.confirm({
+      title: 'Xác nhận đăng xuất',
+      content: 'Bạn có chắc chắn muốn đăng xuất khỏi hệ thống?',
+      okText: 'Đăng xuất',
+      cancelText: 'Hủy',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await logout();
+        } catch (e) {
+          console.warn('Lỗi khi đăng xuất:', e);
+        }
+        dispatch(resetUser());
+        setAuthPage('login');
+        messageApi.info('Đã đăng xuất');
+      }
+    });
   }
 
   function handleRegisterSuccess() {
@@ -115,7 +126,7 @@ function MainApp() {
   if (authPage === 'login') {
     return (
       <>
-        {contextHolder}
+        <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
         <Login
           onLogin={handleLogin}
           onGoRegister={() => {
@@ -130,7 +141,7 @@ function MainApp() {
   if (authPage === 'register') {
     return (
       <>
-        {contextHolder}
+        <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
         <Register
           initialEmail={verifyEmailTarget}
           initialStep={verifyEmailTarget ? 3 : 1}
@@ -142,7 +153,7 @@ function MainApp() {
   }
 
   if (authPage === 'app' && userRole === 'STAFF') {
-    return <>{contextHolder}<StaffApp userId={userId} onLogout={handleLogout} /></>;
+    return <><RouteSync authPage={authPage} setAuthPage={setAuthPage} /><StaffApp userId={userId} onLogout={handleLogout} /></>;
   }
 
   const ticket = TICKETS.find(t => t.ticketId === selectedId) ?? TICKETS[0];
@@ -150,7 +161,7 @@ function MainApp() {
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
-      {contextHolder}
+      <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
       {/* Sidebar */}
       <aside className={`${collapsed ? 'w-16' : 'w-64'} h-screen bg-white border-r border-gray-200 flex flex-col flex-shrink-0 transition-all duration-200 shadow-sm`}>
         {/* Logo */}
