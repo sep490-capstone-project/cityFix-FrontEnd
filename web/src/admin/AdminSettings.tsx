@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { CATEGORIES, DEPARTMENTS, ROUTING_RULES } from '../data';
 import {
   getAdminCategories,
@@ -267,8 +267,7 @@ function CategoryMgmt() {
         >
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Tên danh mục sự cố *
-            </label>
+              Tên danh mục sự cố <span className="text-red-500">*</span></label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -279,8 +278,7 @@ function CategoryMgmt() {
 
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Thời gian xử lý chuẩn SLA (giờ) *
-            </label>
+              Thời gian xử lý chuẩn SLA (giờ) <span className="text-red-500">*</span></label>
             <input
               type="number"
               min={1}
@@ -588,8 +586,7 @@ function DepartmentMgmt() {
         >
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Tên cơ quan phụ trách *
-            </label>
+              Tên cơ quan phụ trách <span className="text-red-500">*</span></label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -600,8 +597,7 @@ function DepartmentMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Cấp quản lý *
-            </label>
+              Cấp quản lý <span className="text-red-500">*</span></label>
             <select
               value={form.level}
               onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
@@ -630,8 +626,7 @@ function DepartmentMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Email liên hệ *
-            </label>
+              Email liên hệ <span className="text-red-500">*</span></label>
             <input
               type="email"
               value={form.contactEmail}
@@ -643,8 +638,7 @@ function DepartmentMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Số điện thoại liên hệ *
-            </label>
+              Số điện thoại liên hệ <span className="text-red-500">*</span></label>
             <input
               value={form.phoneNumber}
               onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))}
@@ -1008,8 +1002,7 @@ function RoutingMgmt() {
         >
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Danh mục sự cố *
-            </label>
+              Danh mục sự cố <span className="text-red-500">*</span></label>
             <select
               value={form.categoryId}
               onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
@@ -1029,8 +1022,7 @@ function RoutingMgmt() {
 
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Cơ quan xử lý *
-            </label>
+              Cơ quan xử lý <span className="text-red-500">*</span></label>
             <select
               value={form.departmentId}
               onChange={(e) => setForm((f) => ({ ...f, departmentId: e.target.value }))}
@@ -1047,8 +1039,7 @@ function RoutingMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Tỉnh / Thành phố *
-            </label>
+              Tỉnh / Thành phố <span className="text-red-500">*</span></label>
             <input
               value={form.province}
               onChange={(e) => setForm((f) => ({ ...f, province: e.target.value }))}
@@ -1059,8 +1050,7 @@ function RoutingMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Phường / Xã *
-            </label>
+              Phường / Xã <span className="text-red-500">*</span></label>
             <input
               value={form.ward}
               onChange={(e) => setForm((f) => ({ ...f, ward: e.target.value }))}
@@ -1191,3 +1181,4 @@ function SmBtn({ onClick, children, danger, warn }: { onClick: () => void; child
     </button>
   );
 }
+

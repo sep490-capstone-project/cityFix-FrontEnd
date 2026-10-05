@@ -1,4 +1,4 @@
-const MONTHLY = [
+﻿const MONTHLY = [
   { month: 'T4', total: 89,  done: 71 },
   { month: 'T5', total: 104, done: 88 },
   { month: 'T6', total: 97,  done: 79 },
@@ -45,7 +45,7 @@ export default function Analytics() {
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
           <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
             <p className="font-display text-[14px] font-bold text-gray-900 uppercase tracking-[0.12em]">Xu hướng theo tháng</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">Tổng vé báo cáo vs hoàn thành</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Tổng Hồ sơ báo cáo vs hoàn thành</p>
           </div>
           <div className="px-5 py-5">
             <div className="flex items-end gap-4 h-40">
@@ -68,7 +68,7 @@ export default function Analytics() {
             <div className="flex items-center gap-5 mt-4">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded bg-orange-500/20 border border-orange-500/20" />
-                <span className="text-[11px] text-gray-500">Tổng vé</span>
+                <span className="text-[11px] text-gray-500">Tổng Hồ sơ</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded bg-gradient-to-t from-orange-700 to-orange-400" />
@@ -82,7 +82,7 @@ export default function Analytics() {
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
           <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
             <p className="font-display text-[14px] font-bold text-gray-900 uppercase tracking-[0.12em]">Phân bố theo quận</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">Số lượng vé tháng 9/2026</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Số lượng Hồ sơ tháng 9/2026</p>
           </div>
           <div className="px-5 py-4 space-y-3.5">
             {DISTRICTS.map(d => (
@@ -91,7 +91,7 @@ export default function Analytics() {
                   <p className="text-[12px] text-gray-700">{d.name}</p>
                   <div className="flex items-center gap-2">
                     <p className="font-display text-[16px] font-bold text-orange-400">{d.count}</p>
-                    <p className="text-[10px] text-gray-400">vé</p>
+                    <p className="text-[10px] text-gray-400">Hồ sơ</p>
                   </div>
                 </div>
                 <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -109,7 +109,7 @@ export default function Analytics() {
       {/* Status breakdown */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
         <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
-          <p className="font-display text-[14px] font-bold text-gray-900 uppercase tracking-[0.12em]">Phân tích trạng thái vé</p>
+          <p className="font-display text-[14px] font-bold text-gray-900 uppercase tracking-[0.12em]">Phân tích trạng thái Hồ sơ</p>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-gray-100">
           {[
@@ -132,3 +132,4 @@ export default function Analytics() {
     </div>
   );
 }
+

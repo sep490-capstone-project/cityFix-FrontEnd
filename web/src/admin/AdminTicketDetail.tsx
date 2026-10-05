@@ -1,13 +1,13 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Ticket, STATUS_MAP, StatusKey, getDept, getCat, getUser, USERS, DEPARTMENTS, ROUTING_RULES, TICKET_HISTORY, statusInfo, sevInfo, dangerInfo } from '../data';
 
 interface Props { ticket: Ticket; onBack: () => void; }
 
 const HISTORY_LABELS: Record<string, string> = {
-  CREATED: 'Tạo vé', AI_REVIEWED: 'AI xem xét', MANUAL_APPROVED: 'Duyệt thủ công',
+  CREATED: 'Tạo Hồ sơ', AI_REVIEWED: 'AI xem xét', MANUAL_APPROVED: 'Duyệt thủ công',
   ROUTED: 'Định tuyến', ASSIGNED: 'Phân công', REASSIGNED: 'Phân công lại',
   REROUTED: 'Định tuyến lại', WORK_STARTED: 'Bắt đầu xử lý',
-  EVIDENCE_SUBMITTED: 'Nộp bằng chứng', CLOSED: 'Đóng vé',
+  EVIDENCE_SUBMITTED: 'Nộp bằng chứng', CLOSED: 'Đóng Hồ sơ',
 };
 
 export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
@@ -101,7 +101,7 @@ export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
           <div className="relative flex items-center gap-3 px-5 py-3">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             <p className="text-[13px] font-bold text-blue-600">
-              Đã định tuyến lại → {getDept(rerouteDept)?.name ?? rerouteDept}. Vé đang chờ tiếp nhận.
+              Đã định tuyến lại → {getDept(rerouteDept)?.name ?? rerouteDept}. Hồ sơ đang chờ tiếp nhận.
             </p>
           </div>
         </div>
@@ -122,8 +122,8 @@ export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
         {/* Left */}
         <div className="xl:col-span-2 space-y-4">
           {/* A. Ticket Info */}
-          <Card label="A. Thông tin vé">
-            <Row label="Mã vé"><span className="font-mono-cf text-orange-500">{ticket.ticketId}</span></Row>
+          <Card label="A. Thông tin Hồ sơ">
+            <Row label="Mã Hồ sơ"><span className="font-mono-cf text-orange-500">{ticket.ticketId}</span></Row>
             <Row label="Danh mục">{cat?.name}</Row>
             <Row label="Mô tả"><span className="text-gray-700 leading-relaxed">{ticket.description}</span></Row>
             <Row label="Mức độ nghiêm trọng">
@@ -458,3 +458,4 @@ function MetaRow({ label, val, mono }: { label: string; val: string; mono?: bool
     </div>
   );
 }
+

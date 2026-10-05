@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 
 import {
   TICKETS,
@@ -148,7 +148,7 @@ export default function TicketList({ onOpenTicket }: Props) {
 
         {/* Result count */}
         <span className="font-mono-cf text-[11px] text-gray-400">
-          {filtered.length} vé
+          {filtered.length} Hồ sơ
         </span>
 
         {/* Export */}

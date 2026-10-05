@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Ticket, User, getCat, getDept, getUser, statusInfo, sevInfo, dangerInfo, TICKET_HISTORY, DEPARTMENTS } from '../data';
 
 interface Props {
@@ -82,7 +82,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           <div className="absolute inset-0 opacity-[0.03]" style={{ background: 'repeating-linear-gradient(-45deg,#ef4444,#ef4444 8px,transparent 8px,transparent 16px)' }} />
           <div className="relative flex items-center gap-3 px-5 py-3">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <p className="text-[13px] font-bold text-red-300">Cảnh báo: Vé này có nguy cơ đe dọa tính mạng người dân</p>
+            <p className="text-[13px] font-bold text-red-300">Cảnh báo: Hồ sơ này có nguy cơ đe dọa tính mạng người dân</p>
           </div>
         </div>
       )}
@@ -92,17 +92,17 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           <div className="absolute inset-0 bg-green-50" />
           <div className="relative flex items-center gap-3 px-5 py-3">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <p className="text-[13px] font-bold text-green-400">Đã ghi nhận kết quả xử lý. Vé chuyển sang trạng thái Đã giải quyết.</p>
+            <p className="text-[13px] font-bold text-green-400">Đã ghi nhận kết quả xử lý. Hồ sơ chuyển sang trạng thái Đã giải quyết.</p>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 space-y-4">
-          {/* A – Thông tin vé */}
-          <Section title="A — Thông tin vé">
+          {/* A – Thông tin hồ sơ */}
+          <Section title="A — Thông tin hồ sơ">
             <InfoGrid items={[
-              { label: 'ID vé', val: ticket.ticketId, mono: true },
+              { label: 'ID hồ sơ', val: ticket.ticketId, mono: true },
               { label: 'Danh mục', val: cat?.name },
               { label: 'Địa chỉ', val: ticket.address },
               { label: 'Phường / Quận', val: `${ticket.ward} — ${ticket.district}` },
@@ -174,8 +174,8 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           {/* Action buttons */}
           {canStartWork && (
             <div className="bg-white border border-orange-500/20 rounded-2xl p-4 space-y-3">
-              <p className="text-[11px] text-orange-400/80 font-semibold uppercase tracking-wider">Vé được giao cho bạn</p>
-              <p className="text-[12px] text-gray-500">Nhấn nút bên dưới để bắt đầu xử lý vé này</p>
+              <p className="text-[11px] text-orange-400/80 font-semibold uppercase tracking-wider">Hồ sơ được giao cho bạn</p>
+              <p className="text-[12px] text-gray-500">Nhấn nút bên dưới để bắt đầu xử lý hồ sơ này</p>
               <button onClick={startWork}
                 className="w-full relative rounded-xl overflow-hidden px-4 py-3 active:scale-[0.97] transition-transform">
                 <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
@@ -203,7 +203,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <div className="bg-white border border-amber-500/20 rounded-2xl overflow-hidden card-depth">
               <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
                 <p className="text-[11px] font-bold text-amber-400/80 uppercase tracking-wider">Phát hiện vượt thẩm quyền?</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Nếu vé thuộc thẩm quyền cơ quan khác, chuyển giao ngay</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Nếu hồ sơ thuộc thẩm quyền cơ quan khác, chuyển giao ngay</p>
               </div>
               {!showTransfer ? (
                 <div className="px-5 py-3">
@@ -293,7 +293,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                     className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-[12px] text-gray-900 placeholder-zinc-700 outline-none focus:border-orange-500/50 transition-colors" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">Ghi chú xử lý *</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">Ghi chú xử lý <span className="text-red-500">*</span></label>
                   <textarea value={resNote} onChange={e => setResNote(e.target.value)}
                     rows={4} placeholder="Mô tả công việc đã thực hiện..."
                     className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-[12px] text-gray-900 placeholder-zinc-700 outline-none focus:border-orange-500/50 transition-colors resize-none" />
@@ -316,7 +316,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           {/* F – Timeline */}
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
             <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
-              <SectionLabel>F — Lịch sử vé</SectionLabel>
+              <SectionLabel>F — Lịch sử hồ sơ</SectionLabel>
             </div>
             {history.length === 0
               ? <p className="px-5 py-5 text-[12px] text-gray-300">Chưa có lịch sử</p>
@@ -383,3 +383,4 @@ function InfoItem({ label, val, mono, badge, cls }: { label: string; val?: strin
     </div>
   );
 }
+

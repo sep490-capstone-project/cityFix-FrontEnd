@@ -53,7 +53,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
           <button onClick={() => setViewMode('mine')}
             className={`px-4 py-2 rounded-lg text-[12px] font-semibold transition-all
               ${viewMode === 'mine' ? 'bg-orange-500/15 text-orange-400 border border-orange-500/20' : 'text-gray-500 hover:text-gray-700'}`}>
-            Vé của tôi
+            Hồ sơ của tôi
           </button>
           <button onClick={() => setViewMode('dept')}
             className={`px-4 py-2 rounded-lg text-[12px] font-semibold transition-all
@@ -62,7 +62,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
           </button>
         </div>
         <div className="flex-1" />
-        <span className="font-mono-cf text-[11px] text-gray-400">{filtered.length} vé</span>
+        <span className="font-mono-cf text-[11px] text-gray-400">{filtered.length} hồ sơ</span>
       </div>
 
       {/* Filters */}
@@ -98,7 +98,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 && (
                 <tr><td colSpan={8} className="px-4 py-12 text-center">
-                  <p className="font-display text-xl font-bold text-gray-300 uppercase">Không có vé</p>
+                  <p className="font-display text-xl font-bold text-gray-300 uppercase">Không có hồ sơ</p>
                   <p className="text-gray-400 text-sm mt-1">Thử thay đổi bộ lọc hoặc chuyển tab</p>
                 </td></tr>
               )}

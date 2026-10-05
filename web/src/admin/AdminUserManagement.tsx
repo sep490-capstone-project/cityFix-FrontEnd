@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { USERS, DEPARTMENTS as FALLBACK_DEPARTMENTS } from '../data';
 import {
   getAdminUsers,
@@ -640,8 +640,7 @@ export default function UserManagement() {
               <div className="px-5 py-5 grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto bg-white">
                 <div className="space-y-1.5 col-span-2">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-                    Họ và tên *
-                  </label>
+                    Họ và tên <span className="text-red-500">*</span></label>
                   <input
                     value={form.fullName}
                     onChange={(e) => setField('fullName', e.target.value)}
@@ -652,8 +651,7 @@ export default function UserManagement() {
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-                    Email *
-                  </label>
+                    Email <span className="text-red-500">*</span></label>
                   <input
                     type="email"
                     disabled={modal === 'edit'}
@@ -849,3 +847,4 @@ function ActionBtn({
     </button>
   );
 }
+

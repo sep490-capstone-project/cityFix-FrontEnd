@@ -44,7 +44,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
 
   const KPIS = [
     {
-      label: 'Tổng vé',
+      label: 'Tổng hồ sơ',
       value: String(TICKETS.length),
       color: 'text-orange-500',
       trend: '↑19%',
@@ -106,7 +106,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
 
             <div>
               <p className="text-[13px] font-bold text-red-600">
-                {lifeThreats.length} vé có nguy cơ đe dọa tính mạng đang chờ xử lý
+                {lifeThreats.length} Hồ sơ có nguy cơ đe dọa tính mạng đang chờ xử lý
               </p>
 
               <p className="text-[11px] text-red-400 mt-0.5">
@@ -172,7 +172,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
         ========================== */}
         <div className="xl:col-span-2 self-start bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="px-5 pt-3.5 pb-3 border-b border-gray-100 flex items-center justify-between">
-            <SectionLabel>Vé mới nhất</SectionLabel>
+            <SectionLabel>Hồ sơ mới nhất</SectionLabel>
 
             <button
               onClick={onViewAll}
@@ -375,7 +375,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
                   </svg>
 
                   <p className="font-display text-[13px] font-bold text-amber-600 uppercase tracking-[0.12em]">
-                    Vé lặp lại (Flow 4)
+                    Hồ sơ lặp lại (Flow 4)
                   </p>
                 </div>
 
@@ -420,7 +420,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
 
               <div className="px-5 py-3 border-t border-gray-100">
                 <p className="text-[10px] text-gray-400">
-                  ⚠ Vé lặp lại ≥ 2 lần → Kích hoạt cảnh báo & trừ điểm hiệu suất cơ quan
+                  ⚠ Hồ sơ lặp lại ≥ 2 lần → Kích hoạt cảnh báo & trừ điểm hiệu suất cơ quan
                 </p>
               </div>
             </div>
