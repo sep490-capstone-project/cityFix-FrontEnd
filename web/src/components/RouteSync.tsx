@@ -36,18 +36,13 @@ export default function RouteSync({ authPage, setAuthPage }: { authPage: string,
   useEffect(() => {
     const path = location.pathname;
     if (path === '/login') {
-      if (authPage !== 'login') setAuthPage('login');
+      // Chỉ ép về 'login' nếu hiện tại không phải là 'app'
+      if (authPage !== 'login' && authPage !== 'app') setAuthPage('login');
       return;
     }
     if (path === '/register') {
-      if (authPage !== 'register') setAuthPage('register');
+      if (authPage !== 'register' && authPage !== 'app') setAuthPage('register');
       return;
-    }
-
-    // Default to app logic
-    if (authPage !== 'app' && path !== '/' && path !== '/login' && path !== '/register') {
-       // Ideally we don't force 'app' if not logged in, but let's assume they handle redirect in App.tsx
-       // But if token exists, App.tsx will set authPage to 'app'.
     }
 
     const parts = path.split('/').filter(Boolean);
@@ -59,7 +54,7 @@ export default function RouteSync({ authPage, setAuthPage }: { authPage: string,
          dispatch(setCurrentPage({ page: routePage as any, id: routeId }));
        }
     }
-  }, [location.pathname]);
+  }, [location.pathname, authPage]);
 
   return null;
 }

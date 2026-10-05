@@ -52,6 +52,19 @@ export interface VerifyEmailPayload {
 }
 
 export interface UserProfile {
+  userId?: string;
+  email?: string;
+  roleName?: string;
+  departmentId?: string;
+  status?: string;
+  fullName: string;
+  phoneNumber: string;
+  address: string;
+  province: string;
+  ward: string;
+}
+
+export interface UpdateProfilePayload {
   fullName: string;
   phoneNumber: string;
   address: string;
@@ -260,6 +273,29 @@ export async function getProfile(token?: string): Promise<UserProfile> {
 
   if (!res.data) {
     throw new ApiError(res.message || 'Không thể lấy thông tin profile.');
+  }
+
+  return res.data;
+}
+
+/**
+ * Cập nhật thông tin profile người dùng hiện tại
+ * PUT /api/v1/profile
+ */
+export async function updateProfile(payload: UpdateProfilePayload, token?: string): Promise<UserProfile> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await request<UserProfile>('/api/v1/profile', {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.data) {
+    throw new ApiError(res.message || 'Không thể cập nhật thông tin profile.');
   }
 
   return res.data;
