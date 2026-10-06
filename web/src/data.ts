@@ -1,7 +1,7 @@
 export type StatusKey = 'INITIATED' | 'PENDING_REVIEW' | 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'COMPLETED';
 export type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type DangerLevel = 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL';
-export type Role = 'RESIDENT' | 'STAFF' | 'ADMIN';
+export type Role = 'RESIDENT' | 'STAFF' | 'MANAGER' | 'ADMIN';
 export type DeptLevel = 'CITY' | 'WARD';
 
 export interface Ticket {
@@ -198,7 +198,7 @@ export const TICKETS: Ticket[] = [
   },
   {
     ticketId: 'CF-2844', userId: 'U008', departmentId: 'D002', categoryId: 'CAT001',
-    description: 'Mặt đường sụt lún tạo thành hố sâu sau mưa lớn, tiềm ẩn tai nạn giao thông nghiêm trọng.',
+    description: 'Mặt đường sụt lún tạo thành hố sâu làm đứt cáp điện ngầm bên dưới, cần phối hợp cả Điện lực và Giao thông.',
     severity: 'CRITICAL', dangerLevel: 'CRITICAL',
     locationMethod: 'AUTO_GPS', location: { lat: 10.7990, lng: 106.6760 },
     address: '56 Phan Đình Phùng', province: 'TP.HCM', ward: 'P.17, Q. Phú Nhuận',

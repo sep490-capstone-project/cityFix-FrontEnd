@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { USERS, DEPARTMENTS as FALLBACK_DEPARTMENTS } from '../data';
 import {
   getAdminUsers,
@@ -468,7 +468,13 @@ export default function UserManagement() {
                 return (
                   <tr
                     key={uid}
-                    className="hover:bg-orange-50/50 transition-colors"
+                    className="hover:bg-orange-50/50 transition-colors cursor-pointer"
+                    onClick={(e) => {
+                      if (!(e.target as HTMLElement).closest('td:last-child')) {
+                        setSelected(u);
+                        setModal('view');
+                      }
+                    }}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">

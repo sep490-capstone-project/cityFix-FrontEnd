@@ -7,7 +7,7 @@ import { login, decodeJwt, ApiError } from '../services';
 interface Props {
   onLogin: (
     email: string,
-    role: 'STAFF' | 'ADMIN',
+    role: 'STAFF' | 'MANAGER' | 'ADMIN',
     userId: string
   ) => void;
   onGoRegister: () => void;
@@ -38,7 +38,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
       const decoded = decodeJwt(res.accessToken);
       console.log('✅ Đăng nhập thành công:', { res, decoded });
 
-      let role: 'STAFF' | 'ADMIN' = 'ADMIN';
+      let role: 'STAFF' | 'MANAGER' | 'ADMIN' = 'ADMIN';
       const rawRole = String(res.role || decoded?.role || decoded?.roles?.[0] || '').toUpperCase();
 
       if (rawRole.includes('STAFF')) {
@@ -56,7 +56,10 @@ export default function Login({ onLogin, onGoRegister }: Props) {
 
       // Cho phép đăng nhập tài khoản mock demo nếu backend chưa có tài khoản admin này
       const found = USERS.find((u) => u.email === email);
-      if (email === 'admin@cityfix.gov.vn' && password === 'admin123') {
+      if (email === 'manager@cityfix.gov.vn' && password === 'manager123') {
+          onLogin(email, 'MANAGER', found?.userId ?? 'M001');
+          return;
+        } else if (email === 'admin@cityfix.gov.vn' && password === 'admin123') {
         onLogin(email, 'ADMIN', found?.userId ?? 'U006');
         return;
       } else if (
@@ -413,7 +416,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
                   TÀI KHOẢN THỬ NGHIỆM
                 </p>
                 <p className="font-mono-cf text-[11px] text-slate-600 font-medium">
-                  admin@cityfix.gov.vn <span className="text-slate-400">/</span> admin123
+                  admin@cityfix.gov.vn <span className="text-slate-400">/</span> admin123<br /> manager@cityfix.gov.vn <span className="text-slate-400">/</span> manager123
                 </p>
               </div>
             </div>
