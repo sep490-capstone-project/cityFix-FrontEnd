@@ -6,7 +6,7 @@ interface AppState {
   selectedTicketId: string | null;
   settingsTab: SettingsTab;
   userEmail: string;
-  userRole: 'STAFF' | 'ADMIN';
+  userRole: 'STAFF' | 'MANAGER' | 'ADMIN';
   userId: string;
 }
 
@@ -37,7 +37,7 @@ export const appSlice = createSlice({
     },
     setUserInfo: (
       state,
-      action: PayloadAction<{ email: string; role: 'STAFF' | 'ADMIN'; userId: string }>
+      action: PayloadAction<{ email: string; role: 'STAFF' | 'MANAGER' | 'ADMIN'; userId: string }>
     ) => {
       state.userEmail = action.payload.email;
       state.userRole = action.payload.role;

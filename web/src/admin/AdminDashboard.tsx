@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import {
   TICKETS,
   getDept,
@@ -47,39 +48,47 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
       label: 'Tổng hồ sơ',
       value: String(TICKETS.length),
       color: 'text-orange-500',
-      trend: '↑19%',
+      trend: '+19%',
+      path: '/tickets',
     },
     {
       label: 'Chờ xét duyệt',
       value: String(pendingReview.length),
       color: 'text-amber-500',
       trend: '',
+      path: '/manual-review',
     },
     {
       label: 'Đe dọa tính mạng',
       value: String(lifeThreats.length),
       color: 'text-red-500',
-      trend: '⚠',
+      trend: '!',
+      path: '/tickets',
     },
     {
       label: 'Đã phân công',
       value: String(assigned.length),
       color: 'text-purple-500',
       trend: '',
+      path: '/tickets',
     },
     {
       label: 'Đang xử lý',
       value: String(inProgress.length),
       color: 'text-orange-500',
       trend: '',
+      path: '/tickets',
     },
     {
       label: 'Hoàn thành',
       value: String(completed.length),
       color: 'text-green-600',
-      trend: '↑8%',
+      trend: '+8%',
+      path: '/tickets',
     },
   ];
+
+  const navigate = useNavigate();
 
   return (
     <div className="p-6 space-y-5 screen-enter">
@@ -131,7 +140,8 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
         {KPIS.map((k, i) => (
           <div
             key={i}
-            className="relative bg-white border border-gray-200 rounded-2xl px-4 py-4 overflow-hidden shadow-sm"
+            onClick={() => navigate(k.path)}
+              className="relative bg-white border border-gray-200 rounded-2xl px-4 py-4 overflow-hidden shadow-sm cursor-pointer hover:shadow-md hover:border-orange-200 transition-all active:scale-[0.98]"
           >
             <div className="absolute top-0 right-0 w-12 h-1.5 overflow-hidden rounded-bl-lg">
               <div

@@ -11,6 +11,7 @@ import Analytics from './admin/AdminAnalytics';
 import UserManagement from './admin/AdminUserManagement';
 import Settings, { SettingsTab } from './admin/AdminSettings';
 import StaffApp from './staff/StaffApp';
+import ManagerApp from './manager/ManagerApp';
 import { TICKETS } from './data';
 import cityfixLogo from './assets/cityfix-logo.png';
 import { logout, getAccessToken, decodeJwt, getProfile } from './services';
@@ -52,10 +53,11 @@ function MainApp() {
   // Tự động phục hồi phiên đăng nhập nếu đã có token
   useEffect(() => {
     const token = getAccessToken();
-    if (!token) return;
+    if (!token && !reduxState.userEmail) return;
+    if (!token && reduxState.userEmail) { setAuthPage('app'); return; }
 
     try {
-      const decoded = decodeJwt(token);
+      const decoded = decodeJwt(token as string);
       if (decoded) {
         const now = Date.now() / 1000;
         if (decoded.exp && decoded.exp < now) {
@@ -66,13 +68,13 @@ function MainApp() {
 
         const email = decoded.sub || decoded.email || '';
         const rawRole = String(decoded.role || decoded.roles?.[0] || '').toUpperCase();
-        const role = rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
+        const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
         const uid = decoded.userId || decoded.sub || 'U006';
 
         dispatch(setUserInfo({ email, role, userId: uid }));
         setAuthPage('app');
 
-        getProfile(token).catch(() => {});
+        getProfile(token as string).catch(() => {});
       }
     } catch {
       logout();
@@ -88,7 +90,7 @@ function MainApp() {
     });
   }
 
-  function handleLogin(email: string, role: 'STAFF' | 'ADMIN', uid: string) {
+  function handleLogin(email: string, role: 'STAFF' | 'MANAGER' | 'ADMIN', uid: string) {
     dispatch(setUserInfo({ email, role, userId: uid }));
     setAuthPage('app');
     messageApi.success('Đăng nhập thành công');
@@ -150,6 +152,10 @@ function MainApp() {
         />
       </>
     );
+  }
+
+  if (authPage === 'app' && userRole === 'MANAGER') {
+    return <><RouteSync authPage={authPage} setAuthPage={setAuthPage} /><ManagerApp userId={userId} onLogout={handleLogout} /></>;
   }
 
   if (authPage === 'app' && userRole === 'STAFF') {
