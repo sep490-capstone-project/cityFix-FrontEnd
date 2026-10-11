@@ -40,8 +40,11 @@ export interface AIAnalysis {
   analysisId?: string;
   categoryId: string;
   categoryName?: string | null;
+  subCategoryId?: string;
+  subCategoryName?: string | null;
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
-  dangerLevel: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL' | string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  dangerLevel?: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL' | string;
   confidenceScore: number;
   description: string;
   isAcceptedByHuman?: boolean;
@@ -55,6 +58,7 @@ export interface ReportDraft {
   imageUrls: string[];
   aiAnalysis: AIAnalysis | null;
   userCategoryId: string | null;
+  userSubCategoryId?: string | null;
   userDescription: string;
 }
 

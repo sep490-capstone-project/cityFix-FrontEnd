@@ -220,6 +220,7 @@ function MainApp() {
                   <div className="ml-4 mt-0.5 space-y-0.5 border-l border-gray-200 pl-3">
                     {[
                       { label: 'Danh mục sự cố', sub: 'categories' as SettingsTab },
+                      { label: 'Danh mục con',   sub: 'subcategories' as SettingsTab },
                       { label: 'Cơ quan',          sub: 'departments' as SettingsTab },
                       { label: 'Quy tắc định tuyến', sub: 'routing' as SettingsTab },
                     ].map(s => {
