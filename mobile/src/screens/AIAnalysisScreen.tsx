@@ -121,6 +121,7 @@ useEffect(() => {
         ...draft,
         aiAnalysis: result,
         userCategoryId: result.categoryId,
+        userSubCategoryId: result.subCategoryId,
       });
 
       setDone(true);
@@ -239,17 +240,29 @@ useEffect(() => {
               </View>
 
               <View style={styles.resultRowsList}>
+                {/* 1. Danh mục sự cố */}
                 <View style={styles.resultRow}>
-                  <Text style={styles.rowLabel}>Loại sự cố</Text>
-                  <Text style={[styles.rowValue, { color: '#ea580c' }]}>
+                  <Text style={styles.rowLabel}>Danh mục sự cố</Text>
+                  <Text style={[styles.rowValue, { color: '#0f172a' }]}>
                     {draft.aiAnalysis?.categoryName ||
                       draft.aiAnalysis?.categoryId ||
                       'Chưa xác định'}
                   </Text>
                 </View>
 
+                {/* 2. Danh mục con (subCategoryName) */}
+                {draft.aiAnalysis?.subCategoryName || draft.aiAnalysis?.subCategoryId ? (
+                  <View style={styles.resultRow}>
+                    <Text style={styles.rowLabel}>Chi tiết sự cố</Text>
+                    <Text style={[styles.rowValue, { color: '#ea580c' }]}>
+                      {draft.aiAnalysis?.subCategoryName || draft.aiAnalysis?.subCategoryId}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* 3. Mức độ nghiêm trọng (severity) */}
                 <View style={styles.resultRow}>
-                  <Text style={styles.rowLabel}>Mức độ nghiêm trọng</Text>
+                  <Text style={styles.rowLabel}>Nghiêm trọng</Text>
                   {(() => {
                     const sev = (draft.aiAnalysis?.severity || '').toUpperCase();
                     const sevMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
@@ -274,18 +287,18 @@ useEffect(() => {
                   })()}
                 </View>
 
+                {/* 4. Mức độ ưu tiên (priority) */}
                 <View style={styles.resultRow}>
-                  <Text style={styles.rowLabel}>Đánh giá nguy hiểm</Text>
+                  <Text style={styles.rowLabel}>Ưu tiên xử lý</Text>
                   {(() => {
-                    const danger = (draft.aiAnalysis?.dangerLevel || '').toUpperCase();
-                    const dangerMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
-                      SAFE: { label: 'An toàn', bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
-                      CAUTION: { label: 'Cần chú ý', bg: '#fffbeb', border: '#fde68a', text: '#d97706' },
-                      DANGEROUS: { label: 'Nguy hiểm', bg: '#fef2f2', border: '#fca5a5', text: '#dc2626' },
-                      CRITICAL: { label: 'Rất nguy hiểm', bg: '#fdf2f8', border: '#fbcfe8', text: '#be185d' },
+                    const prio = (draft.aiAnalysis?.priority || '').toUpperCase();
+                    const prioMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
+                      LOW: { label: 'Thấp', bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
+                      MEDIUM: { label: 'Trung bình', bg: '#eff6ff', border: '#bfdbfe', text: '#2563eb' },
+                      HIGH: { label: 'Cao', bg: '#fef2f2', border: '#fca5a5', text: '#dc2626' },
                     };
-                    const badge = dangerMap[danger] || {
-                      label: draft.aiAnalysis?.dangerLevel || 'Không xác định',
+                    const badge = prioMap[prio] || {
+                      label: draft.aiAnalysis?.priority || 'Trung bình',
                       bg: '#f8fafc',
                       border: '#e2e8f0',
                       text: '#475569',
@@ -300,6 +313,7 @@ useEffect(() => {
                   })()}
                 </View>
 
+                {/* 5. Mô tả AI đề xuất */}
                 <View style={styles.descBlock}>
                   <Text style={styles.descLabel}>Mô tả AI đề xuất:</Text>
                   <Text style={styles.descContent}>

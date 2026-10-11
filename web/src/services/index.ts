@@ -1,5 +1,6 @@
 export * from './auth';
 export * from './categories';
+export * from './subCategories';
 export * from './departments';
 export * from './users';
 export * from './routingRules';

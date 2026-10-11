@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { CATEGORIES, DEPARTMENTS, ROUTING_RULES } from '../data';
 import {
   getAdminCategories,
@@ -6,6 +6,13 @@ import {
   updateAdminCategory,
   deleteAdminCategory,
   AdminCategory,
+  getAllSubCategories,
+  getSubCategoriesByCategoryId,
+  createSubCategory,
+  updateSubCategory,
+  deleteSubCategory,
+  AdminSubCategory,
+  SubCategoryPriority,
   getRoutingRules,
   getRoutingRulesByDepartment,
   getRoutingRuleById,
@@ -22,7 +29,7 @@ import {
   ApiError,
 } from '../services';
 
-export type SettingsTab = 'categories' | 'departments' | 'routing';
+export type SettingsTab = 'categories' | 'subcategories' | 'departments' | 'routing';
 
 interface SettingsProps {
   initialTab?: SettingsTab;
@@ -31,6 +38,7 @@ interface SettingsProps {
 
 export default function Settings({ initialTab = 'categories', onTabChange }: SettingsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const [categoryFilterForSub, setCategoryFilterForSub] = useState<string>('');
 
   useEffect(() => {
     if (initialTab) {
@@ -45,12 +53,18 @@ export default function Settings({ initialTab = 'categories', onTabChange }: Set
     }
   }
 
+  function handleNavigateToSubCategories(categoryId: string) {
+    setCategoryFilterForSub(categoryId);
+    handleTabClick('subcategories');
+  }
+
   return (
     <div className="p-6">
       {/* Tabs */}
       <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 w-fit mb-5 shadow-xs">
         {([
           { key: 'categories', label: 'Danh mục sự cố' },
+          { key: 'subcategories', label: 'Danh mục con' },
           { key: 'departments', label: 'Cơ quan' },
           { key: 'routing', label: 'Quy tắc định tuyến' },
         ] as const).map((t) => (
@@ -68,7 +82,13 @@ export default function Settings({ initialTab = 'categories', onTabChange }: Set
         ))}
       </div>
 
-      {tab === 'categories' && <CategoryMgmt />}
+      {tab === 'categories' && <CategoryMgmt onGoToSubCategories={handleNavigateToSubCategories} />}
+      {tab === 'subcategories' && (
+        <SubCategoryMgmt
+          initialCategoryId={categoryFilterForSub}
+          onResetCategoryFilter={() => setCategoryFilterForSub('')}
+        />
+      )}
       {tab === 'departments' && <DepartmentMgmt />}
       {tab === 'routing' && <RoutingMgmt />}
     </div>
@@ -76,13 +96,13 @@ export default function Settings({ initialTab = 'categories', onTabChange }: Set
 }
 
 // ── Category Management ───────────────────────────────────────────────────────
-function CategoryMgmt() {
+function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (categoryId: string) => void }) {
   const [cats, setCats] = useState<AdminCategory[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [sel, setSel] = useState<AdminCategory | null>(null);
-  const [form, setForm] = useState({ name: '', description: '', sla: 24, isActive: true });
+  const [form, setForm] = useState({ name: '', description: '', isActive: true });
   const [actionError, setActionError] = useState('');
 
   // 1. Lấy danh sách danh mục (GET /api/v1/admin/categories)
@@ -101,7 +121,6 @@ function CategoryMgmt() {
             categoryId: c.categoryId,
             name: c.name,
             description: c.description,
-            sla: 24,
             isActive: c.isActive,
           }))
         );
@@ -115,7 +134,6 @@ function CategoryMgmt() {
           categoryId: c.categoryId,
           name: c.name,
           description: c.description,
-          sla: 24,
           isActive: c.isActive,
         }))
       );
@@ -129,7 +147,7 @@ function CategoryMgmt() {
   }, []);
 
   function openCreate() {
-    setForm({ name: '', description: '', sla: 24, isActive: true });
+    setForm({ name: '', description: '', isActive: true });
     setSel(null);
     setActionError('');
     setModal('create');
@@ -139,7 +157,6 @@ function CategoryMgmt() {
     setForm({
       name: c.name || '',
       description: c.description || '',
-      sla: c.sla || c.slaHours || 24,
       isActive: c.isActive !== false,
     });
     setSel(c);
@@ -162,7 +179,6 @@ function CategoryMgmt() {
         const created = await createAdminCategory({
           name: form.name,
           description: form.description,
-          sla: Number(form.sla) || 24,
         });
 
         setCats((prev) => [created, ...prev]);
@@ -171,7 +187,6 @@ function CategoryMgmt() {
         const updated = await updateAdminCategory(targetId, {
           name: form.name,
           description: form.description,
-          sla: Number(form.sla) || 24,
         });
 
         setCats((prev) =>
@@ -224,7 +239,7 @@ function CategoryMgmt() {
         <CTA onClick={openCreate} label="+ Thêm danh mục mới" />
       </div>
 
-      <Table headers={['ID', 'Tên danh mục', 'Mô tả', 'SLA (Giờ)', 'Hành động']}>
+      <Table headers={['ID', 'Tên danh mục', 'Mô tả', 'Danh mục con', 'Hành động']}>
         {cats.map((c) => {
           const catId = c.id || c.categoryId || '—';
           return (
@@ -235,13 +250,19 @@ function CategoryMgmt() {
               <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold">
                 {c.name}
               </td>
-              <td className="px-4 py-3 text-[12px] text-gray-500 max-w-[240px] truncate">
+              <td className="px-4 py-3 text-[12px] text-gray-500 max-w-[280px] truncate">
                 {c.description || '—'}
               </td>
               <td className="px-4 py-3">
-                <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-[11px] font-bold">
-                  {c.sla || c.slaHours || 24}h
-                </span>
+                <button
+                  type="button"
+                  onClick={() => onGoToSubCategories?.(catId)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                  title="Chuyển sang xem danh mục con của danh mục này"
+                >
+                  <span>📂</span>
+                  <span>Xem danh mục con →</span>
+                </button>
               </td>
               <td className="px-4 py-3">
                 <div className="flex gap-1.5">
@@ -278,17 +299,448 @@ function CategoryMgmt() {
 
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Thời gian xử lý chuẩn SLA (giờ) <span className="text-red-500">*</span></label>
+              Mô tả chi tiết
+            </label>
+            <textarea
+              rows={3}
+              value={form.description}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
+              placeholder="Mô tả phạm vi, phân loại của danh mục sự cố này..."
+              className={inpModal}
+            />
+          </div>
+        </StandardModal>
+      )}
+    </div>
+  );
+}
+
+// ── SubCategory Management (6 APIs Integrated) ──────────────────────────────
+function SubCategoryMgmt({
+  initialCategoryId = '',
+  onResetCategoryFilter,
+}: {
+  initialCategoryId?: string;
+  onResetCategoryFilter?: () => void;
+}) {
+  const [subs, setSubs] = useState<AdminSubCategory[]>([]);
+  const [cats, setCats] = useState<AdminCategory[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [modal, setModal] = useState<'create' | 'edit' | null>(null);
+  const [sel, setSel] = useState<AdminSubCategory | null>(null);
+
+  // Filters
+  const [selectedCatId, setSelectedCatId] = useState<string>(initialCategoryId);
+  const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [actionError, setActionError] = useState('');
+
+  // Form
+  const [form, setForm] = useState<{
+    categoryId: string;
+    name: string;
+    description: string;
+    sla: number;
+    priority: string;
+    isActive: boolean;
+  }>({
+    categoryId: '',
+    name: '',
+    description: '',
+    sla: 24,
+    priority: 'LOW',
+    isActive: true,
+  });
+
+  useEffect(() => {
+    if (initialCategoryId) {
+      setSelectedCatId(initialCategoryId);
+    }
+  }, [initialCategoryId]);
+
+  async function fetchData() {
+    setLoading(true);
+    setActionError('');
+    try {
+      const [subsData, catsData] = await Promise.all([
+        getAllSubCategories().catch((e) => {
+          console.warn('Lỗi khi tải sub-categories:', e);
+          return [] as AdminSubCategory[];
+        }),
+        getAdminCategories().catch((e) => {
+          console.warn('Lỗi khi tải categories:', e);
+          return [] as AdminCategory[];
+        }),
+      ]);
+
+      setSubs(subsData || []);
+      setCats(catsData || []);
+    } catch (err: any) {
+      console.warn('Lỗi khi tải dữ liệu SubCategory:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const categoryMap = cats.reduce<Record<string, string>>((acc, c) => {
+    const id = c.id || c.categoryId || '';
+    if (id) acc[id] = c.name;
+    return acc;
+  }, {});
+
+  function openCreate() {
+    setForm({
+      categoryId: selectedCatId || (cats[0]?.id || cats[0]?.categoryId || ''),
+      name: '',
+      description: '',
+      sla: 24,
+      priority: 'LOW',
+      isActive: true,
+    });
+    setSel(null);
+    setActionError('');
+    setModal('create');
+  }
+
+  function openEdit(s: AdminSubCategory) {
+    setForm({
+      categoryId: s.categoryId || '',
+      name: s.name || '',
+      description: s.description || '',
+      sla: s.sla ?? 24,
+      priority: s.priority || 'LOW',
+      isActive: (s.isActive ?? s.active) !== false,
+    });
+    setSel(s);
+    setActionError('');
+    setModal('edit');
+  }
+
+  async function save() {
+    if (!form.categoryId) {
+      setActionError('Vui lòng chọn danh mục chính');
+      return;
+    }
+    if (!form.name.trim()) {
+      setActionError('Vui lòng nhập tên danh mục con');
+      return;
+    }
+
+    setSaving(true);
+    setActionError('');
+
+    try {
+      if (modal === 'create') {
+        const created = await createSubCategory({
+          categoryId: form.categoryId,
+          name: form.name.trim(),
+          description: form.description.trim(),
+          sla: Number(form.sla) || 0,
+          priority: form.priority || 'LOW',
+          isActive: form.isActive,
+        });
+        setSubs((prev) => [created, ...prev]);
+      } else if (sel) {
+        const targetId = sel.subCategoryId;
+        const updated = await updateSubCategory(targetId, {
+          categoryId: form.categoryId,
+          name: form.name.trim(),
+          description: form.description.trim(),
+          sla: Number(form.sla) || 0,
+          priority: form.priority || 'LOW',
+          isActive: form.isActive,
+        });
+        setSubs((prev) =>
+          prev.map((x) =>
+            x.subCategoryId === targetId
+              ? { ...x, ...updated, ...form, active: form.isActive }
+              : x
+          )
+        );
+      }
+      setModal(null);
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Không thể lưu danh mục con. Vui lòng thử lại.';
+      setActionError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function del(s: AdminSubCategory) {
+    if (!s.subCategoryId) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa danh mục con "${s.name}" không?`)) {
+      return;
+    }
+
+    try {
+      await deleteSubCategory(s.subCategoryId);
+      setSubs((prev) => prev.filter((x) => x.subCategoryId !== s.subCategoryId));
+    } catch (err: any) {
+      alert(err instanceof ApiError ? err.message : 'Xóa danh mục con thất bại.');
+    }
+  }
+
+  // Filter list
+  const filteredSubs = subs.filter((s) => {
+    if (selectedCatId && s.categoryId !== selectedCatId) return false;
+    if (
+      priorityFilter !== 'ALL' &&
+      (s.priority || 'LOW').toUpperCase() !== priorityFilter.toUpperCase()
+    ) {
+      return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = s.name?.toLowerCase().includes(q);
+      const matchDesc = s.description?.toLowerCase().includes(q);
+      const matchCat = categoryMap[s.categoryId]?.toLowerCase().includes(q);
+      if (!matchName && !matchDesc && !matchCat) return false;
+    }
+    return true;
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* Filters and Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 border border-gray-200 rounded-2xl shadow-xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Category Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-gray-500">Danh mục:</span>
+            <select
+              value={selectedCatId}
+              onChange={(e) => setSelectedCatId(e.target.value)}
+              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+            >
+              <option value="">-- Tất cả danh mục chính --</option>
+              {cats.map((c) => {
+                const cid = c.id || c.categoryId || '';
+                return (
+                  <option key={cid} value={cid}>
+                    {c.name}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Priority Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-gray-500">Ưu tiên:</span>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+            >
+              <option value="ALL">Tất cả mức độ</option>
+              <option value="LOW">Thấp (LOW)</option>
+              <option value="MEDIUM">Trung bình (MEDIUM)</option>
+              <option value="HIGH">Cao (HIGH)</option>
+              <option value="URGENT">Khẩn cấp (URGENT)</option>
+            </select>
+          </div>
+
+          {/* Search box */}
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Tìm tên hoặc mô tả danh mục con..."
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 w-56"
+          />
+
+          {(selectedCatId || priorityFilter !== 'ALL' || searchQuery) && (
+            <button
+              onClick={() => {
+                setSelectedCatId('');
+                setPriorityFilter('ALL');
+                setSearchQuery('');
+                if (onResetCategoryFilter) onResetCategoryFilter();
+              }}
+              className="text-[11px] text-gray-500 hover:text-gray-700 underline cursor-pointer ml-1"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <p className="text-[12px] text-gray-500 font-medium">
+            {filteredSubs.length} / {subs.length} danh mục con
+          </p>
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="text-[11px] text-orange-600 hover:text-orange-700 font-semibold cursor-pointer disabled:opacity-50"
+          >
+            {loading ? 'Đang tải...' : '↻ Làm mới'}
+          </button>
+          <CTA onClick={openCreate} label="+ Thêm danh mục con" />
+        </div>
+      </div>
+
+      {/* SubCategory Table */}
+      <Table headers={['ID', 'Tên danh mục con', 'Danh mục chính', 'SLA (Giờ)', 'Mức ưu tiên', 'Trạng thái', 'Hành động']}>
+        {filteredSubs.length === 0 ? (
+          <tr>
+            <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-[13px]">
+              {loading ? 'Đang tải dữ liệu danh mục con...' : 'Không tìm thấy danh mục con nào phù hợp.'}
+            </td>
+          </tr>
+        ) : (
+          filteredSubs.map((s) => {
+            const catName = categoryMap[s.categoryId] || s.categoryId || '—';
+            const isActive = (s.isActive ?? s.active) !== false;
+            const prio = (s.priority || 'LOW').toUpperCase();
+
+            return (
+              <tr key={s.subCategoryId} className="hover:bg-orange-50/50 transition-colors">
+                <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">
+                  {s.subCategoryId}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="text-[13px] text-gray-800 font-semibold">{s.name}</div>
+                  {s.description && (
+                    <div className="text-[11px] text-gray-400 max-w-[280px] truncate" title={s.description}>
+                      {s.description}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-gray-100 text-gray-700 text-[11px] font-medium border border-gray-200">
+                    {catName}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-[11px] font-bold">
+                    {s.sla ?? 0}h
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  {prio === 'URGENT' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">
+                      Khẩn cấp (URGENT)
+                    </span>
+                  ) : prio === 'HIGH' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">
+                      Cao (HIGH)
+                    </span>
+                  ) : prio === 'MEDIUM' ? (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                      Trung bình (MEDIUM)
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                      Thấp (LOW)
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {isActive ? (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium">
+                      Hoạt động
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 text-[10px] font-medium">
+                      Tạm dừng
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1.5">
+                    <SmBtn onClick={() => openEdit(s)}>Sửa</SmBtn>
+                    <SmBtn onClick={() => del(s)} danger>
+                      Xóa
+                    </SmBtn>
+                  </div>
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </Table>
+
+      {/* Modal Create/Edit SubCategory */}
+      {modal && (
+        <StandardModal
+          title={modal === 'create' ? 'Tạo danh mục con mới' : 'Chỉnh sửa danh mục con'}
+          onClose={() => setModal(null)}
+          onSave={save}
+          saveLabel="Lưu danh mục con"
+          saving={saving}
+          error={actionError}
+        >
+          <div className="space-y-1.5 col-span-2">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
+              Thuộc danh mục chính <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={form.categoryId}
+              onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
+              className={inpModal}
+            >
+              <option value="">-- Chọn danh mục chính --</option>
+              {cats.map((c) => {
+                const cid = c.id || c.categoryId || '';
+                return (
+                  <option key={cid} value={cid}>
+                    {c.name}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div className="space-y-1.5 col-span-2">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
+              Tên danh mục con <span className="text-red-500">*</span>
+            </label>
+            <input
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="VD: Đèn đường không sáng, Hư hỏng nắp hố ga..."
+              className={inpModal}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
+              Thời gian SLA (giờ) <span className="text-red-500">*</span>
+            </label>
             <input
               type="number"
-              min={1}
+              min={0}
               value={form.sla}
               onChange={(e) =>
-                setForm((f) => ({ ...f, sla: Number(e.target.value) || 1 }))
+                setForm((f) => ({ ...f, sla: Number(e.target.value) || 0 }))
               }
               placeholder="24"
               className={inpModal}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
+              Mức độ ưu tiên
+            </label>
+            <select
+              value={form.priority}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              className={inpModal}
+            >
+              <option value="LOW">Thấp (LOW)</option>
+              <option value="MEDIUM">Trung bình (MEDIUM)</option>
+              <option value="HIGH">Cao (HIGH)</option>
+              <option value="URGENT">Khẩn cấp (URGENT)</option>
+            </select>
           </div>
 
           <div className="space-y-1.5 col-span-2">
@@ -301,9 +753,22 @@ function CategoryMgmt() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, description: e.target.value }))
               }
-              placeholder="Mô tả phạm vi, phân loại của danh mục sự cố này..."
+              placeholder="Mô tả cụ thể dạng sự cố thuộc danh mục con này..."
               className={inpModal}
             />
+          </div>
+
+          <div className="col-span-2 flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="subCatActive"
+              checked={form.isActive}
+              onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+              className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500 cursor-pointer"
+            />
+            <label htmlFor="subCatActive" className="text-[12px] text-gray-700 font-medium cursor-pointer">
+              Đang hoạt động (Kích hoạt danh mục con này)
+            </label>
           </div>
         </StandardModal>
       )}

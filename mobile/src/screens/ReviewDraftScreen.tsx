@@ -100,6 +100,16 @@ export default function ReviewDraftScreen({
       }
 
       // 4. Build request body theo đúng Swagger
+      const effectiveSubCatId =
+        draft.userSubCategoryId ||
+        draft.aiAnalysis.subCategoryId ||
+        '';
+
+      const effectivePriority =
+        draft.aiAnalysis.priority ||
+        (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
+        'MEDIUM';
+
       const requestBody = {
         description:
           draft.userDescription ||
@@ -107,7 +117,9 @@ export default function ReviewDraftScreen({
           '',
         imageUrl: draft.imageUrls[0],
         categoryId: effectiveCatId,
+        subCategoryId: effectiveSubCatId,
         severity: draft.aiAnalysis.severity,
+        priority: effectivePriority,
         dangerLevel: draft.aiAnalysis.dangerLevel,
         locationMethod: draft.locationMethod || 'AUTO_GPS',
         address: draft.address || '',
@@ -296,6 +308,15 @@ export default function ReviewDraftScreen({
                 </View>
               )}
 
+              {ai?.subCategoryName ? (
+                <View style={{ marginTop: 6, marginBottom: 4 }}>
+                  <Text style={styles.metaLabel}>Chi tiết sự cố:</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#ea580c', marginTop: 2 }}>
+                    {ai.subCategoryName}
+                  </Text>
+                </View>
+              ) : null}
+
               <View style={styles.aiMetaRow}>
                 <View style={styles.aiMetaItem}>
                   <Text style={styles.metaLabel}>Nghiêm trọng:</Text>
@@ -316,7 +337,24 @@ export default function ReviewDraftScreen({
                   })()}
                 </View>
                 <View style={styles.aiMetaItem}>
-                  <Text style={styles.metaLabel}>Độ tin cậy AI:</Text>
+                  <Text style={styles.metaLabel}>Ưu tiên:</Text>
+                  {(() => {
+                    const prio = (ai?.priority || '').toUpperCase();
+                    const prioMap: Record<string, { label: string; color: string }> = {
+                      LOW: { label: 'Thấp', color: '#16a34a' },
+                      MEDIUM: { label: 'Trung bình', color: '#2563eb' },
+                      HIGH: { label: 'Cao', color: '#dc2626' },
+                    };
+                    const item = prioMap[prio] || { label: ai?.priority || 'Trung bình', color: '#2563eb' };
+                    return (
+                      <Text style={[styles.metaValue, { color: item.color }]}>
+                        {item.label}
+                      </Text>
+                    );
+                  })()}
+                </View>
+                <View style={styles.aiMetaItem}>
+                  <Text style={styles.metaLabel}>Tin cậy:</Text>
                   <Text style={[styles.metaValue, { color: '#ea580c' }]}>
                     {Math.round(ai?.confidenceScore ?? 87)}%
                   </Text>

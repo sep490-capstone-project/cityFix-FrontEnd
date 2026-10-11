@@ -18,13 +18,13 @@ export interface AdminCategory {
 export interface CreateCategoryPayload {
   name: string;
   description: string;
-  sla: number;
+  sla?: number;
 }
 
 export interface UpdateCategoryPayload {
   name: string;
   description: string;
-  sla: number;
+  sla?: number;
 }
 
 async function adminRequest<T>(

@@ -399,8 +399,11 @@ export interface AIAnalysisResponse {
   analysisId?: string;
   categoryId: string;
   categoryName?: string | null;
+  subCategoryId?: string;
+  subCategoryName?: string | null;
   severity: string;
-  dangerLevel: string;
+  priority?: string;
+  dangerLevel?: string;
   confidenceScore: number;
   description: string;
   isValidIssue?: boolean;
@@ -487,8 +490,10 @@ export interface CreateTicketRequest {
   description: string;
   imageUrl: string;
   categoryId: string;
+  subCategoryId: string;
   severity: string;
-  dangerLevel: string;
+  priority: string;
+  dangerLevel?: string;
   locationMethod: 'AUTO_GPS' | 'MANUAL_ENTRY' | string;
   address: string;
   latitude: number;
@@ -532,8 +537,9 @@ export async function createTicket(
     description: data.description,
     imageUrl: data.imageUrl,
     categoryId: data.categoryId,
+    subCategoryId: data.subCategoryId,
     severity: data.severity,
-    dangerLevel: data.dangerLevel,
+    priority: data.priority,
     locationMethod: data.locationMethod,
     address: data.address,
     latitude: data.latitude,

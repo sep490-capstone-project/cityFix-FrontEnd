@@ -701,7 +701,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   upvoteTicket,
-  createTicket,
   DuplicateTicketItem,
 } from '../api';
 
@@ -726,8 +725,6 @@ export default function DuplicateScreen({
   const [upvoteState, setUpvoteState] = useState<
     'idle' | 'loading' | 'done'
   >('idle');
-
-  const [creatingAnyway, setCreatingAnyway] = useState(false);
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
@@ -831,96 +828,6 @@ export default function DuplicateScreen({
   };
 
   /**
-   * Vẫn tạo ticket mới dù đã phát hiện duplicate
-   */
-  const handleCreateAnyway = async () => {
-    if (creatingAnyway) {
-      return;
-    }
-
-    try {
-      setCreatingAnyway(true);
-
-      const token = await AsyncStorage.getItem('accessToken');
-
-      if (!token) {
-        throw new Error(
-          'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.'
-        );
-      }
-
-      if (
-        !draft.location ||
-        !draft.imageUrls.length ||
-        !draft.aiAnalysis
-      ) {
-        throw new Error(
-          'Thiếu thông tin báo cáo. Vui lòng quay lại và kiểm tra lại.'
-        );
-      }
-
-      const requestBody = {
-        description:
-          draft.userDescription ||
-          draft.aiAnalysis.description ||
-          '',
-
-        imageUrl: draft.imageUrls[0],
-
-        categoryId:
-          draft.userCategoryId ||
-          draft.aiAnalysis.categoryId,
-
-        severity: draft.aiAnalysis.severity,
-
-        dangerLevel: draft.aiAnalysis.dangerLevel,
-
-        locationMethod:
-          draft.locationMethod || 'AUTO_GPS',
-
-        address: draft.address || '',
-
-        latitude: draft.location.lat,
-
-        longitude: draft.location.lng,
-
-        confidenceScore:
-          draft.aiAnalysis.confidenceScore || 0,
-      };
-
-      console.log(
-        'CREATE NEW TICKET REQUEST:',
-        requestBody
-      );
-
-      const result = await createTicket(
-        requestBody,
-        token
-      );
-
-      console.log(
-        'CREATE NEW TICKET RESPONSE:',
-        result
-      );
-
-      navigate('success');
-    } catch (err: any) {
-      console.error(
-        'Create ticket anyway error:',
-        err
-      );
-
-      alert(
-        err instanceof Error
-          ? err.message
-          : 'Không thể tạo vé mới.'
-      );
-    } finally {
-      setCreatingAnyway(false);
-    }
-  };
-
-  /**
    * Hủy báo cáo
    */
   const handleConfirmCancel = () => {
@@ -963,7 +870,7 @@ export default function DuplicateScreen({
               <Text style={styles.warningSubText}>
                 Hệ thống tìm thấy các vé sự cố tương tự
                 gần vị trí này. Bạn có thể Upvote ủng hộ
-                vé có sẵn hoặc vẫn tạo vé mới.
+                vé đã có hoặc chọn Hủy báo cáo.
               </Text>
             </View>
           </View>
@@ -1280,38 +1187,20 @@ export default function DuplicateScreen({
               )}
             </TouchableOpacity>
 
-            {/* CREATE NEW */}
-            <TouchableOpacity
-              style={styles.createNewBtn}
-              onPress={handleCreateAnyway}
-              disabled={creatingAnyway}
-              activeOpacity={0.85}
-            >
-              {creatingAnyway ? (
-                <ActivityIndicator
-                  size="small"
-                  color="#ea580c"
-                />
-              ) : (
-                <Text
-                  style={
-                    styles.createNewBtnText
-                  }
-                >
-                  Vẫn tạo vé mới riêng →
-                </Text>
-              )}
-            </TouchableOpacity>
-
             {/* CANCEL */}
             <TouchableOpacity
-              style={styles.cancelLinkBtn}
+              style={styles.cancelActionBtn}
               onPress={() =>
                 setShowCancelDialog(true)
               }
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <Text style={styles.cancelLinkText}>
+              <Ionicons
+                name="close-circle-outline"
+                size={18}
+                color="#dc2626"
+              />
+              <Text style={styles.cancelActionBtnText}>
                 Hủy báo cáo
               </Text>
             </TouchableOpacity>
@@ -1763,28 +1652,20 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
 
-  createNewBtn: {
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 14,
+  cancelActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#fecaca',
+    borderRadius: 16,
     paddingVertical: 14,
-    alignItems: 'center',
+    gap: 6,
   },
 
-  createNewBtnText: {
+  cancelActionBtnText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#475569',
-  },
-
-  cancelLinkBtn: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-
-  cancelLinkText: {
-    fontSize: 12,
     fontWeight: '700',
     color: '#dc2626',
   },
