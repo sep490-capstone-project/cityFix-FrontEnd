@@ -15,51 +15,50 @@ type ModalMode = 'view' | 'create' | 'edit' | null;
 
 const ROLE_MAP: Record<string, { label: string; cls: string }> = {
   ADMIN: {
-    label: 'Admin',
+    label: 'Quản trị viên',
     cls: 'text-orange-600 bg-orange-50 border-orange-200',
   },
-  STAFF: {
-    label: 'Staff',
-    cls: 'text-blue-600 bg-blue-50 border-blue-200',
-  },
-  DISPATCHER: {
-    label: 'Dispatcher',
+  MANAGER: {
+    label: 'Quản lý',
     cls: 'text-purple-600 bg-purple-50 border-purple-200',
   },
-  CITIZEN: {
-    label: 'Citizen / Cư dân',
-    cls: 'text-gray-600 bg-gray-50 border-gray-200',
+  STAFF: {
+    label: 'Nhân viên',
+    cls: 'text-blue-600 bg-blue-50 border-blue-200',
   },
   RESIDENT: {
-    label: 'Resident / Cư dân',
+    label: 'Cư dân',
+    cls: 'text-gray-600 bg-gray-50 border-gray-200',
+  },
+  CITIZEN: {
+    label: 'Cư dân',
     cls: 'text-gray-600 bg-gray-50 border-gray-200',
   },
   USER: {
-    label: 'User',
+    label: 'Cư dân',
     cls: 'text-gray-600 bg-gray-50 border-gray-200',
   },
 };
 
-function extractUserRole(u: any): string {
-  if (!u) return 'CITIZEN';
+function extractUserRole(u: any): 'ADMIN' | 'MANAGER' | 'STAFF' | 'RESIDENT' {
+  if (!u) return 'RESIDENT';
+  let raw = '';
   if (typeof u.role === 'string' && u.role.trim()) {
-    return u.role.trim();
-  }
-  if (typeof u.roleName === 'string' && u.roleName.trim()) {
-    return u.roleName.trim();
-  }
-  if (u.role && typeof u.role === 'object') {
-    return u.role.name || u.role.roleName || u.role.code || 'CITIZEN';
-  }
-  if (Array.isArray(u.roles) && u.roles.length > 0) {
+    raw = u.role.trim();
+  } else if (typeof u.roleName === 'string' && u.roleName.trim()) {
+    raw = u.roleName.trim();
+  } else if (u.role && typeof u.role === 'object') {
+    raw = u.role.name || u.role.roleName || u.role.code || '';
+  } else if (Array.isArray(u.roles) && u.roles.length > 0) {
     const firstRole = u.roles[0];
-    if (typeof firstRole === 'string') return firstRole;
-    if (typeof firstRole === 'object' && firstRole) return firstRole.name || firstRole.roleName || firstRole.code || 'CITIZEN';
+    raw = typeof firstRole === 'string' ? firstRole : (firstRole?.name || firstRole?.roleName || firstRole?.code || '');
   }
-  if (u.isDispatcher) {
-    return 'DISPATCHER';
-  }
-  return 'CITIZEN';
+
+  const upper = raw.toUpperCase();
+  if (upper.includes('ADMIN')) return 'ADMIN';
+  if (upper.includes('MANAGER')) return 'MANAGER';
+  if (upper.includes('STAFF')) return 'STAFF';
+  return 'RESIDENT';
 }
 
 const EMPTY_FORM = {
@@ -74,7 +73,6 @@ const EMPTY_FORM = {
   roleId: '',
   status: 'ACTIVE',
   departmentId: '',
-  isDispatcher: false,
 };
 
 export default function UserManagement() {
@@ -205,7 +203,6 @@ export default function UserManagement() {
       roleId: u.roleId || '',
       status: u.status || 'ACTIVE',
       departmentId: u.departmentId || '',
-      isDispatcher: Boolean(u.isDispatcher || userRole === 'DISPATCHER'),
     });
     setSelected(u);
     setFormError('');
@@ -246,9 +243,9 @@ export default function UserManagement() {
           ward: form.ward,
           address: form.address,
           roleId: form.roleId || undefined,
+          role: form.role,
           departmentId: form.departmentId || undefined,
           status: form.status,
-          isDispatcher: form.isDispatcher,
         });
 
         setUsers((prev) => [
@@ -269,9 +266,9 @@ export default function UserManagement() {
           ward: form.ward,
           address: form.address,
           roleId: form.roleId || undefined,
+          role: form.role,
           departmentId: form.departmentId || undefined,
           status: form.status,
-          isDispatcher: form.isDispatcher,
         });
 
         setUsers((prev) =>
@@ -392,10 +389,11 @@ export default function UserManagement() {
           onChange={(e) => setRoleF(e.target.value)}
           className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 outline-none cursor-pointer"
         >
-          <option value="all">Mọi vai trò</option>
-          <option value="ADMIN">Admin</option>
-          <option value="STAFF">Staff</option>
-          <option value="RESIDENT">Resident / Citizen</option>
+          <option value="all">Tất cả vai trò</option>
+          <option value="ADMIN">Quản trị viên</option>
+          <option value="MANAGER">Quản lý</option>
+          <option value="STAFF">Nhân viên</option>
+          <option value="RESIDENT">Cư dân</option>
         </select>
 
         <button
@@ -492,13 +490,20 @@ export default function UserManagement() {
                     <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-600">
                       {u.phoneNumber || u.phone || '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    {/* <td className="px-4 py-3">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${roleBadge.cls}`}
                       >
                         {roleBadge.label}
                       </span>
-                    </td>
+                    </td> */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+  <span
+    className={`inline-flex whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-lg border ${roleBadge.cls}`}
+  >
+    {roleBadge.label}
+  </span>
+</td>
                     <td className="px-4 py-3 text-[11px] text-gray-500 max-w-[140px] truncate">
                       {dept?.name ?? '—'}
                     </td>
@@ -735,20 +740,13 @@ export default function UserManagement() {
                   </label>
                   <select
                     value={form.role}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setField('role', val);
-                      if (val === 'DISPATCHER') {
-                        setField('isDispatcher', true);
-                      }
-                    }}
+                    onChange={(e) => setField('role', e.target.value)}
                     className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
                   >
-                    <option value="ADMIN">Admin — Quản trị viên</option>
-                    <option value="STAFF">Staff — Nhân viên tiếp nhận</option>
-                    <option value="DISPATCHER">Dispatcher — Điều phối viên</option>
-                    <option value="CITIZEN">Citizen — Người dân</option>
-                    <option value="RESIDENT">Resident — Cư dân</option>
+                    <option value="ADMIN">Quản trị viên</option>
+                    <option value="MANAGER">Quản lý</option>
+                    <option value="STAFF">Nhân viên</option>
+                    <option value="RESIDENT">Cư dân</option>
                   </select>
                 </div>
 
@@ -782,22 +780,6 @@ export default function UserManagement() {
                     <option value="ACTIVE">Hoạt động (ACTIVE)</option>
                     <option value="BLOCKED">Bị khóa (BLOCKED)</option>
                   </select>
-                </div>
-
-                <div className="col-span-2 flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="isDispatcher"
-                    checked={form.isDispatcher}
-                    onChange={(e) => setField('isDispatcher', e.target.checked)}
-                    className="rounded text-orange-500 focus:ring-orange-400"
-                  />
-                  <label
-                    htmlFor="isDispatcher"
-                    className="text-[12px] text-gray-700 cursor-pointer"
-                  >
-                    Quyền điều phối viên (Dispatcher)
-                  </label>
                 </div>
 
                 <div className="col-span-2 flex gap-3 pt-3 border-t border-gray-100">

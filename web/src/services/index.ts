@@ -5,3 +5,4 @@ export * from './departments';
 export * from './users';
 export * from './routingRules';
 export * from './tickets';
+export * from './manager';

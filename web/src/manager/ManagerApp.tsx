@@ -19,8 +19,20 @@ export default function ManagerApp({ userId, onLogout }: Props) {
   const [page, setPage] = useState<ManagerPage>('dashboard');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Resolve current manager user — fallback to U010 (Trần Minh Quân) for demo
-  const initialUser = getUser(userId) ?? USERS.find(u => u.role === 'STAFF') ?? USERS[2];
+  // Khởi tạo user cho MANAGER, ưu tiên thông tin thực tế từ backend
+  const initialUser: User = getUser(userId) ?? {
+    userId: userId || 'MANAGER',
+    fullName: 'Cán bộ Quản lý',
+    email: '',
+    phoneNumber: '',
+    province: '',
+    ward: '',
+    address: '',
+    role: 'MANAGER',
+    status: 'ACTIVE',
+    createdAt: '',
+    updatedAt: '',
+  };
   const [currentUser, setCurrentUser] = useState<User>(initialUser);
   const [departmentName, setDepartmentName] = useState<string>('');
 
@@ -41,6 +53,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
           currentDeptId = p.departmentId || currentDeptId;
           setCurrentUser((prev) => ({
             ...prev,
+            userId: p.userId || prev.userId,
             fullName: p.fullName || prev.fullName,
             phoneNumber: p.phoneNumber || prev.phoneNumber,
             address: p.address || prev.address,
@@ -48,6 +61,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
             ward: p.ward || prev.ward,
             departmentId: p.departmentId || prev.departmentId,
             email: p.email || prev.email,
+            role: 'MANAGER',
           }));
         }
 

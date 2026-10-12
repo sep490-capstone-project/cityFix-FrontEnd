@@ -49,7 +49,7 @@ export default function RouteSync({ authPage, setAuthPage }: { authPage: string,
     const routePage = parts[0] || 'dashboard';
     const routeId = parts[1];
 
-    if (['dashboard', 'tickets', 'ticket-detail', 'manual-review', 'analytics', 'users', 'settings'].includes(routePage)) {
+    if (['dashboard', 'tickets', 'ticket-detail', 'analytics', 'users', 'settings'].includes(routePage)) {
        if (routePage !== page || (routePage === 'ticket-detail' && routeId && routeId !== selectedId)) {
          dispatch(setCurrentPage({ page: routePage as any, id: routeId }));
        }

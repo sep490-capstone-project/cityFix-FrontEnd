@@ -6,9 +6,9 @@ import Register from './pages/Register';
 import Dashboard from './admin/AdminDashboard';
 import TicketList from './admin/AdminTickets';
 import TicketDetail from './admin/AdminTicketDetail';
-import ManualReview from './admin/AdminManualReview';
 import Analytics from './admin/AdminAnalytics';
 import UserManagement from './admin/AdminUserManagement';
+import AdminSteps from './admin/AdminSteps';
 import Settings, { SettingsTab } from './admin/AdminSettings';
 import StaffApp from './staff/StaffApp';
 import ManagerApp from './manager/ManagerApp';
@@ -19,16 +19,16 @@ import { logout, getAccessToken, decodeJwt, getProfile } from './services';
 import { useAppDispatch, useAppSelector } from './store';
 import { setCurrentPage, setSettingsTab, setUserInfo, resetUser } from './store/appSlice';
 
-type Page = 'dashboard' | 'tickets' | 'ticket-detail' | 'manual-review' | 'analytics' | 'users' | 'settings';
+type Page = 'dashboard' | 'tickets' | 'ticket-detail' | 'analytics' | 'users' | 'settings' | 'steps';
 type AuthPage = 'login' | 'register' | 'app';
 
 const NAV: { key: string; label: string; icon: () => React.ReactElement; hasSubmenu?: boolean }[] = [
   { key: 'dashboard',     label: 'Dashboard',          icon: GridIcon     },
   { key: 'tickets',       label: 'Quản lý Hồ sơ',         icon: TicketIcon   },
-  { key: 'manual-review', label: 'Xét duyệt thủ công', icon: ReviewIcon   },
   { key: 'analytics',     label: 'Phân tích',          icon: ChartIcon    },
   { key: 'users',         label: 'Người dùng',         icon: UsersIcon    },
   { key: 'settings',      label: 'Cài đặt',            icon: GearIcon,    hasSubmenu: true },
+  { key: 'steps', label: 'Quy trình xử lý', icon: ReviewIcon },
 ];
 
 import RouteSync from './components/RouteSync';
@@ -67,14 +67,40 @@ function MainApp() {
         }
 
         const email = decoded.sub || decoded.email || '';
-        const rawRole = String(decoded.role || decoded.roles?.[0] || '').toUpperCase();
+        const roleCandidate =
+          decoded.role ||
+          (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
+          decoded.roleName ||
+          (Array.isArray(decoded.authorities) ? decoded.authorities[0] : decoded.authorities) ||
+          decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+          decoded.scope ||
+          '';
+        const rawRole = String(roleCandidate).toUpperCase();
         const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
         const uid = decoded.userId || decoded.sub || 'U006';
 
         dispatch(setUserInfo({ email, role, userId: uid }));
         setAuthPage('app');
 
-        getProfile(token as string).catch(() => {});
+        getProfile(token as string)
+          .then((p) => {
+            if (p?.roleName) {
+              const profRole = p.roleName.toUpperCase();
+              const resolvedRole = profRole.includes('MANAGER')
+                ? 'MANAGER'
+                : profRole.includes('STAFF')
+                ? 'STAFF'
+                : 'ADMIN';
+              dispatch(
+                setUserInfo({
+                  email: p.email || email,
+                  role: resolvedRole,
+                  userId: p.userId || uid,
+                })
+              );
+            }
+          })
+          .catch(() => {});
       }
     } catch {
       logout();
@@ -163,7 +189,6 @@ function MainApp() {
   }
 
   const ticket = TICKETS.find(t => t.ticketId === selectedId) ?? TICKETS[0];
-  const manualCount = TICKETS.filter(t => t.needsManualReview).length;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
@@ -207,9 +232,6 @@ function MainApp() {
                 >
                   <span className={`flex-shrink-0 ${isActive ? 'text-orange-500' : 'text-gray-400'}`}><Icon /></span>
                   {!collapsed && <span className="text-[13px] font-semibold flex-1">{item.label}</span>}
-                  {!collapsed && item.key === 'manual-review' && manualCount > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-amber-500 text-[10px] font-bold text-white flex items-center justify-center flex-shrink-0">{manualCount}</span>
-                  )}
                   {!collapsed && item.hasSubmenu && (
                     <span className={`text-gray-400 transition-transform ${settingsOpen ? 'rotate-90' : ''}`}><ChevRIcon /></span>
                   )}
@@ -292,12 +314,13 @@ function MainApp() {
         <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6 gap-4 flex-shrink-0 shadow-sm">
           <div className="flex-1">
             <h1 className="font-display text-[22px] font-extrabold text-gray-900 uppercase tracking-tight">
-              {page === 'dashboard' ? 'Dashboard' :
-               page === 'tickets' || page === 'ticket-detail' ? 'Quản lý Hồ sơ' :
-               page === 'manual-review' ? 'Xét duyệt thủ công' :
-               page === 'analytics' ? 'Phân tích & Báo cáo' :
-               page === 'users' ? 'Người dùng' : 'Cài đặt hệ thống'}
-            </h1>
+  {page === 'dashboard' ? 'Dashboard' :
+   page === 'tickets' || page === 'ticket-detail' ? 'Quản lý Hồ sơ' :
+   page === 'analytics' ? 'Phân tích & Báo cáo' :
+   page === 'users' ? 'Người dùng' :
+   page === 'steps' ? 'Quản lý quy trình xử lý' :
+   'Cài đặt hệ thống'}
+</h1>
           </div>
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-64">
             <SearchIcon />
@@ -317,9 +340,9 @@ function MainApp() {
           {page === 'dashboard' && <Dashboard onOpenTicket={id => navigate('ticket-detail', id)} onViewAll={() => navigate('tickets')} />}
           {page === 'tickets' && <TicketList onOpenTicket={id => navigate('ticket-detail', id)} />}
           {page === 'ticket-detail' && <TicketDetail ticket={ticket} onBack={() => navigate('tickets')} />}
-          {page === 'manual-review' && <ManualReview onOpenTicket={id => navigate('ticket-detail', id)} />}
           {page === 'analytics' && <Analytics />}
           {page === 'users' && <UserManagement />}
+          {page === 'steps' && <AdminSteps />}
           {page === 'settings' && (
             <Settings
               initialTab={settingsTab}

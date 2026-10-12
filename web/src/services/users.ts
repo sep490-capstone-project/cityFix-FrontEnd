@@ -3,6 +3,13 @@ import { getAccessToken, ApiError, ApiResponse } from './auth';
 
 const BASE_URL = APP_CONFIG.API_BASE_URL.replace(/\/+$/, '');
 
+const ROLE_ID_MAP: Record<string, string> = {
+  RESIDENT: 'dca2a13d-5d68-4ce3-bc49-bcfc7fe4c729',
+  STAFF: 'd6d7806d-96d1-4a5c-bac7-c994ee77c69d',
+  ADMIN: '97f45d59-0c9d-4bc1-9722-c59acc3976bd',
+  MANAGER: '16051abf-4590-4e8b-b5a1-f65f98221c5c',
+};
+
 export interface AdminUser {
   id?: string;
   userId?: string;
@@ -14,7 +21,7 @@ export interface AdminUser {
   ward?: string;
   address?: string;
   roleId?: string;
-  role?: 'ADMIN' | 'STAFF' | 'RESIDENT' | string;
+  role?: 'ADMIN' | 'MANAGER' | 'STAFF' | 'RESIDENT' | string;
   departmentId?: string;
   status?: 'ACTIVE' | 'BLOCKED' | 'INACTIVE' | string;
   isDispatcher?: boolean;
@@ -31,6 +38,7 @@ export interface CreateAdminUserPayload {
   ward: string;
   address: string;
   roleId?: string;
+  role?: string;
   departmentId?: string;
   status?: string;
   isDispatcher?: boolean;
@@ -44,6 +52,7 @@ export interface UpdateAdminUserPayload {
   ward: string;
   address: string;
   roleId?: string;
+  role?: string;
   departmentId?: string;
   status?: string;
   isDispatcher?: boolean;
@@ -114,7 +123,8 @@ export async function createAdminUser(
       province: payload.province.trim(),
       ward: payload.ward.trim(),
       address: payload.address.trim(),
-      roleId: payload.roleId || undefined,
+      roleId: payload.roleId || ROLE_ID_MAP[payload.role || 'STAFF'],
+      ...(payload.role ? { role: payload.role } : {}),
       departmentId: payload.departmentId || undefined,
       status: payload.status || 'ACTIVE',
       isDispatcher: Boolean(payload.isDispatcher),
@@ -142,6 +152,7 @@ export async function updateAdminUser(
       ward: payload.ward.trim(),
       address: payload.address.trim(),
       roleId: payload.roleId || undefined,
+      ...(payload.role ? { role: payload.role } : {}),
       departmentId: payload.departmentId || undefined,
       status: payload.status || 'ACTIVE',
       isDispatcher: Boolean(payload.isDispatcher),
