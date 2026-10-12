@@ -110,23 +110,42 @@ export default function ReviewDraftScreen({
         (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
         'MEDIUM';
 
+      // const requestBody = {
+      //   description:
+      //     draft.userDescription ||
+      //     draft.aiAnalysis.description ||
+      //     '',
+      //   imageUrl: draft.imageUrls[0],
+      //   categoryId: effectiveCatId,
+      //   subCategoryId: effectiveSubCatId,
+      //   severity: draft.aiAnalysis.severity,
+      //   priority: effectivePriority,
+      //   dangerLevel: draft.aiAnalysis.dangerLevel,
+      //   locationMethod: draft.locationMethod || 'AUTO_GPS',
+      //   address: draft.address || '',
+      //   latitude: draft.location.lat,
+      //   longitude: draft.location.lng,
+      //   confidenceScore: draft.aiAnalysis.confidenceScore || 0,
+      // };
       const requestBody = {
-        description:
-          draft.userDescription ||
-          draft.aiAnalysis.description ||
-          '',
-        imageUrl: draft.imageUrls[0],
-        categoryId: effectiveCatId,
-        subCategoryId: effectiveSubCatId,
-        severity: draft.aiAnalysis.severity,
-        priority: effectivePriority,
-        dangerLevel: draft.aiAnalysis.dangerLevel,
-        locationMethod: draft.locationMethod || 'AUTO_GPS',
-        address: draft.address || '',
-        latitude: draft.location.lat,
-        longitude: draft.location.lng,
-        confidenceScore: draft.aiAnalysis.confidenceScore || 0,
-      };
+  description:
+    draft.userDescription ||
+    draft.aiAnalysis.description ||
+    '',
+  imageUrl: draft.imageUrls[0],
+  categoryId: effectiveCatId,
+  subCategoryIds: effectiveSubCatId
+    ? [effectiveSubCatId]
+    : [],
+  severity: draft.aiAnalysis.severity,
+  priority: effectivePriority,
+  dangerLevel: draft.aiAnalysis.dangerLevel,
+  locationMethod: draft.locationMethod || 'AUTO_GPS',
+  address: draft.address || '',
+  latitude: draft.location.lat,
+  longitude: draft.location.lng,
+  confidenceScore: draft.aiAnalysis.confidenceScore || 0,
+};
 
       console.log('🎫 CREATE TICKET BODY:', JSON.stringify(requestBody, null, 2));
 

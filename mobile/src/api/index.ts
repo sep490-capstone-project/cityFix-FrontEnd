@@ -490,7 +490,8 @@ export interface CreateTicketRequest {
   description: string;
   imageUrl: string;
   categoryId: string;
-  subCategoryId: string;
+  // subCategoryId: string;
+  subCategoryIds: string[];
   severity: string;
   priority: string;
   dangerLevel?: string;
@@ -537,7 +538,7 @@ export async function createTicket(
     description: data.description,
     imageUrl: data.imageUrl,
     categoryId: data.categoryId,
-    subCategoryId: data.subCategoryId,
+    subCategoryId: data.subCategoryIds,
     severity: data.severity,
     priority: data.priority,
     locationMethod: data.locationMethod,

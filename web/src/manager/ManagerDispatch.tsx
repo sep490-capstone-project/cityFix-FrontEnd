@@ -1,303 +1,586 @@
-﻿import { useState } from 'react';
-import { TICKETS, SEV_MAP, DANGER_MAP, getCat, getDept, Severity, DangerLevel, sevInfo, dangerInfo, ROUTING_RULES } from '../data';
+import { useState, useEffect } from 'react';
+import {
+  TICKETS,
+  SEV_MAP,
+  DANGER_MAP,
+  CATEGORIES as FALLBACK_CATEGORIES,
+  DEPARTMENTS as FALLBACK_DEPARTMENTS,
+  ROUTING_RULES,
+  sevInfo,
+  dangerInfo,
+  Severity,
+  DangerLevel,
+} from '../data';
+import {
+  getManagerInitiatedTickets,
+  reviewManagerTicket,
+  rejectManagerTicket,
+  getSuggestedDepartments,
+  updateStepDeadline,
+  updateStepOrderIndex,
+  updateTicketStepDeadlines,
+  reorderTicketSteps,
+  ManagerTicketItem,
+  SuggestedDepartment,
+  TicketStep,
+  getAdminCategories,
+  AdminCategory,
+  getDepartments,
+  DepartmentItem,
+  getAllSubCategories,
+  AdminSubCategory,
+  ApiError,
+} from '../services';
 
-interface Props { onOpenTicket: (id: string) => void; }
+interface Props {
+  onOpenTicket: (id: string) => void;
+}
 
-type ReviewAction = 'approve' | 'modify' | 'reject';
+type TabType = 'review' | 'reject' | 'steps';
 
 export default function ManagerDispatch({ onOpenTicket }: Props) {
-  const pending = TICKETS.filter(t => t.needsManualReview);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [action, setAction] = useState<ReviewAction | null>(null);
-  const [modSev, setModSev] = useState<Severity>('HIGH');
-  const [modDanger, setModDanger] = useState<DangerLevel>('DANGEROUS');
-  const [modCat, setModCat] = useState('CAT001');
-  const [confirmed, setConfirmed] = useState(false);
-  const [done, setDone] = useState<string[]>([]);
-  // Flow 2: after approval, show routing result
-  const [routingResult, setRoutingResult] = useState<{ ticketId: string; deptName: string; ruleId: string } | null>(null);
+  // 1. Danh sách vé chờ duyệt
+  const [tickets, setTickets] = useState<ManagerTicketItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<AdminCategory[]>([]);
+  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
+  const [subCategories, setSubCategories] = useState<AdminSubCategory[]>([]);
 
-  const ticket = TICKETS.find(t => t.ticketId === selected);
+  // 2. Vé đang chọn thao tác
+  const [selectedTicket, setSelectedTicket] = useState<ManagerTicketItem | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('review');
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  function submitDecision() {
-    if (!selected || !ticket) return;
-    // Flow 2: if approved/modified, compute routing result
-    if (action === 'approve' || action === 'modify') {
-      const rule = ROUTING_RULES.find(r => r.categoryId === ticket.categoryId);
-      const dept = getDept(rule?.departmentId ?? ticket.departmentId);
-      setRoutingResult({
-        ticketId: selected,
-        deptName: dept?.name ?? ticket.departmentId,
-        ruleId: rule?.ruleId ?? 'N/A',
-      });
+  // 3. Form Duyệt & Định tuyến
+  const [reviewCatId, setReviewCatId] = useState('');
+  const [targetDeptId, setTargetDeptId] = useState('');
+  const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
+  const [routes, setRoutes] = useState<Array<{ subCategoryId: string; departmentId: string }>>([]);
+  const [isLifeThreatening, setIsLifeThreatening] = useState(false);
+  const [reviewNote, setReviewNote] = useState('');
+  const [suggestedDepts, setSuggestedDepts] = useState<SuggestedDepartment[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // 4. Form Từ chối
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectCatId, setRejectCatId] = useState('');
+  const [rejectDeptId, setRejectDeptId] = useState('');
+
+  // 5. Steps management
+  const [steps, setSteps] = useState<TicketStep[]>([]);
+  const [editingStepDeadline, setEditingStepDeadline] = useState<{ stepId: string; deadline: string } | null>(null);
+
+  // 6. Kết quả routing sau khi duyệt thành công
+  const [routingResult, setRoutingResult] = useState<{
+    ticketId: string;
+    deptName: string;
+    note?: string;
+  } | null>(null);
+
+  // Search & Filter
+  const [search, setSearch] = useState('');
+  const [sevFilter, setSevFilter] = useState<string>('all');
+  const [dangerFilter, setDangerFilter] = useState<string>('all');
+
+  // Load danh mục, phòng ban, và danh sách vé chờ duyệt (GET /api/v1/manager/tickets/initiated)
+  async function fetchInitialData() {
+    setLoading(true);
+    try {
+      const [ticketsRes, catsRes, deptsRes, subCatsRes] = await Promise.allSettled([
+        getManagerInitiatedTickets({ page: 0, size: 50 }),
+        getAdminCategories(),
+        getDepartments({ page: 0, size: 100 }),
+        getAllSubCategories(),
+      ]);
+
+      if (ticketsRes.status === 'fulfilled' && ticketsRes.value?.content) {
+        setTickets(ticketsRes.value.content);
+      } else {
+        // Fallback sang dữ liệu mẫu nếu backend rỗng hoặc đang phát triển
+        setTickets(
+          TICKETS.filter((t) => t.needsManualReview || t.status === 'INITIATED' || t.status === 'PENDING_REVIEW').map((t) => ({
+            id: t.ticketId,
+            ticketId: t.ticketId,
+            description: t.description,
+            categoryId: t.categoryId,
+            categoryName: FALLBACK_CATEGORIES.find((c) => c.categoryId === t.categoryId)?.name || 'Hạ tầng đô thị',
+            severity: t.severity,
+            dangerLevel: t.dangerLevel,
+            address: `${t.address}, ${t.ward}, ${t.province}`,
+            status: t.status,
+            latitude: t.location?.lat,
+            longitude: t.location?.lng,
+            isLifeThreatening: t.isLifeThreatening,
+            createdAt: t.createdAt,
+            steps: [
+              {
+                id: `step-${t.ticketId}-1`,
+                stepId: `step-${t.ticketId}-1`,
+                stepName: 'Tiếp nhận & khảo sát hiện trường',
+                assigneeName: 'Trần Minh Quân',
+                status: 'OPEN',
+                orderIndex: 0,
+                deadline: '2026-10-15T18:00:00',
+              },
+              {
+                id: `step-${t.ticketId}-2`,
+                stepId: `step-${t.ticketId}-2`,
+                stepName: 'Điều động phương tiện & vật tư',
+                assigneeName: 'Nguyễn Văn Đội',
+                status: 'OPEN',
+                orderIndex: 1,
+                deadline: '2026-10-16T12:00:00',
+              },
+            ],
+          }))
+        );
+      }
+
+      if (catsRes.status === 'fulfilled' && catsRes.value) {
+        setCategories(catsRes.value);
+      }
+      if (deptsRes.status === 'fulfilled' && deptsRes.value) {
+        const list = Array.isArray(deptsRes.value) ? deptsRes.value : (deptsRes.value as any).content || [];
+        setDepartments(list);
+      }
+      if (subCatsRes.status === 'fulfilled' && subCatsRes.value) {
+        setSubCategories(subCatsRes.value);
+      }
+    } catch (err) {
+      console.warn('Lỗi khi tải dữ liệu trang điều phối:', err);
+    } finally {
+      setLoading(false);
     }
-    setDone(d => [...d, selected]);
-    setSelected(null);
-    setAction(null);
-    setConfirmed(false);
   }
 
-  if (selected && ticket) {
-    const cat = getCat(ticket.categoryId);
-    return (
-      <div className="p-6 space-y-5 screen-enter">
-        <div className="flex items-center gap-3">
-          <button onClick={() => { setSelected(null); setAction(null); setConfirmed(false); }}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors text-[13px] font-semibold active:scale-[0.97]">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            Quay lại
-          </button>
-          <span className="font-mono-cf text-[12px] text-gray-400 tracking-widest">{ticket.ticketId}</span>
-          <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg border text-amber-400 bg-amber-500/12 border-amber-500/25">
-            Cần xét duyệt thủ công
-          </span>
-        </div>
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {/* Ticket info */}
-          <div className="space-y-4">
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-              <div className="px-5 pt-3 pb-2.5 border-b border-gray-200">
-                <p className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-[0.12em]">Thông tin Hồ sơ gốc</p>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {[
-                  { label: 'Mã Hồ sơ', val: ticket.ticketId, mono: true },
-                  { label: 'Danh mục', val: cat?.name ?? '' },
-                  { label: 'Mô tả', val: ticket.description },
-                  { label: 'Địa chỉ', val: `${ticket.address}, ${ticket.ward}` },
-                  { label: 'Tỉnh/TP', val: ticket.province },
-                ].map(r => (
-                  <div key={r.label} className="flex items-start gap-3 px-5 py-2.5">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em] w-28 flex-shrink-0 mt-0.5">{r.label}</p>
-                    <p className={`text-[12px] text-gray-700 flex-1 ${r.mono ? 'font-mono-cf' : ''}`}>{r.val}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+  // Khi chọn một vé, tải gợi ý phòng ban theo GET /api/v1/manager/tickets/{id}/suggested-departments
+  async function selectTicketForAction(ticket: ManagerTicketItem) {
+    setSelectedTicket(ticket);
+    setActiveTab('review');
+    setFeedback(null);
+    setReviewCatId(ticket.categoryId || categories[0]?.id || categories[0]?.categoryId || 'CAT001');
+    setTargetDeptId(departments[0]?.departmentId || 'D002');
+    setSelectedDeptIds([departments[0]?.departmentId || 'D002']);
+    setIsLifeThreatening(Boolean(ticket.isLifeThreatening));
+    setReviewNote('');
+    setRejectReason('');
+    setRejectCatId(ticket.categoryId || '');
+    setRejectDeptId('');
+    setSteps(ticket.steps || []);
 
-            {/* AI result */}
-            <div className="bg-white border border-orange-500/20 rounded-2xl overflow-hidden card-depth">
-              <div className="px-5 pt-3 pb-2.5 border-b border-gray-200 flex items-center gap-2">
-                <p className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-[0.12em]">Kết quả AI</p>
-                <span className="font-mono-cf text-[10px] text-orange-500/60 ml-auto">Confidence: {ticket.aiConfidence}%</span>
-              </div>
-              <div className="px-5 py-4 space-y-3">
-                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${ticket.aiConfidence}%`, background: 'linear-gradient(90deg,#9a3412,#f97316 55%,#fb923c)' }} />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-1">Mức độ AI</p>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${sevInfo(ticket.aiSeverity ?? ticket.severity).cls}`}>
-                      {sevInfo(ticket.aiSeverity ?? ticket.severity).label}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-1">Nguy hiểm AI</p>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${dangerInfo(ticket.aiDangerLevel ?? ticket.dangerLevel).cls}`}>
-                      {dangerInfo(ticket.aiDangerLevel ?? ticket.dangerLevel).label}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-1">Đe dọa tính mạng</p>
-                  <span className={`text-[11px] font-bold ${ticket.isLifeThreatening ? 'text-red-400' : 'text-green-400'}`}>
-                    {ticket.isLifeThreatening ? 'Có ⚠' : 'Không'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+    // Khởi tạo routes từ subCategories nếu có
+    if (ticket.subCategories && ticket.subCategories.length > 0) {
+      setRoutes(
+        ticket.subCategories.map((sc) => ({
+          subCategoryId: sc.id || sc.subCategoryId || '',
+          departmentId: departments[0]?.departmentId || 'D002',
+        }))
+      );
+    } else {
+      setRoutes([]);
+    }
 
-          {/* Admin decision */}
-          <div className="space-y-4">
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-              <div className="px-5 pt-3 pb-2.5 border-b border-gray-200">
-                <p className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-[0.12em]">Quyết định Admin</p>
-              </div>
-              <div className="px-5 py-4 space-y-3">
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { key: 'approve', label: 'Phê duyệt', cls: 'border-green-500/30 hover:bg-green-500/10', active: 'bg-green-500/15 border-green-500/40 text-green-400' },
-                    { key: 'modify',  label: 'Chỉnh sửa', cls: 'border-amber-500/30 hover:bg-amber-500/10', active: 'bg-amber-500/15 border-amber-500/40 text-amber-400' },
-                    { key: 'reject',  label: 'Từ chối',   cls: 'border-red-500/30   hover:bg-red-500/10',   active: 'bg-red-500/15   border-red-500/40   text-red-400' },
-                  ] as const).map(opt => (
-                    <button key={opt.key} onClick={() => { setAction(opt.key); setConfirmed(false); }}
-                      className={`py-2.5 rounded-xl border text-[12px] font-bold uppercase tracking-wide transition-all active:scale-[0.97]
-                        ${action === opt.key ? opt.active : `border-gray-200 text-gray-500 ${opt.cls}`}`}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-
-                {action === 'modify' && (
-                  <div className="space-y-3 pt-2">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">Chỉnh sửa thông tin</p>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Mức độ nghiêm trọng</label>
-                      <select value={modSev} onChange={e => setModSev(e.target.value as Severity)}
-                        className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500/50">
-                        {Object.entries(SEV_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em]">Mức nguy hiểm</label>
-                      <select value={modDanger} onChange={e => setModDanger(e.target.value as DangerLevel)}
-                        className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500/50">
-                        {Object.entries(DANGER_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {action && !confirmed && (
-                  <div className="relative rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3">
-                    <p className="text-[12px] text-amber-300 mb-3">
-                      Xác nhận{' '}
-                      <strong>{action === 'approve' ? 'phê duyệt' : action === 'modify' ? 'chỉnh sửa và duyệt' : 'từ chối'}</strong>{' '}
-                      Hồ sơ <span className="font-mono-cf">{ticket.ticketId}</span>?
-                    </p>
-                    <div className="flex gap-2">
-                      <button onClick={() => setAction(null)}
-                        className="flex-1 py-2 rounded-xl border border-gray-300 text-gray-600 text-[12px] font-semibold hover:text-gray-800 transition-colors">
-                        Hủy
-                      </button>
-                      <button onClick={submitDecision}
-                        className="flex-1 relative rounded-xl overflow-hidden py-2 active:scale-[0.97] transition-transform">
-                        <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
-                        <span className="relative text-white font-bold uppercase tracking-wide text-[12px]">Xác nhận</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <button onClick={() => onOpenTicket(ticket.ticketId)}
-              className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-600 hover:text-gray-800 text-[12px] font-semibold uppercase tracking-wide transition-colors active:scale-[0.97]">
-              Xem toàn bộ chi tiết Hồ sơ →
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    // Tải gợi ý phòng ban
+    await loadSuggestedDepartments(ticket.id || ticket.ticketId || '', ticket.categoryId);
   }
+
+  async function loadSuggestedDepartments(ticketId: string, catId?: string) {
+    if (!ticketId) return;
+    setLoadingSuggestions(true);
+    try {
+      const suggestions = await getSuggestedDepartments(ticketId, catId);
+      if (suggestions && suggestions.length > 0) {
+        setSuggestedDepts(suggestions);
+        // Tự động gán phòng ban gợi ý đầu tiên nếu có
+        if (suggestions[0]?.departmentId) {
+          setTargetDeptId(suggestions[0].departmentId);
+          setSelectedDeptIds([suggestions[0].departmentId]);
+        }
+      } else {
+        // Fallback rule gợi ý nếu backend chưa trả
+        const rule = ROUTING_RULES.find((r) => r.categoryId === catId);
+        if (rule) {
+          const dept = FALLBACK_DEPARTMENTS.find((d) => d.departmentId === rule.departmentId);
+          if (dept) {
+            setSuggestedDepts([
+              {
+                departmentId: dept.departmentId,
+                name: dept.name,
+                level: dept.level,
+                contactEmail: dept.contactEmail,
+                phoneNumber: dept.phoneNumber,
+                isActive: true,
+              },
+            ]);
+            setTargetDeptId(dept.departmentId);
+            setSelectedDeptIds([dept.departmentId]);
+          }
+        } else {
+          setSuggestedDepts([]);
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi khi tải phòng ban gợi ý:', e);
+      setSuggestedDepts([]);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }
+
+  // Thay đổi danh mục sự cố -> tải lại gợi ý phòng ban
+  async function handleCategoryChange(newCatId: string) {
+    setReviewCatId(newCatId);
+    if (selectedTicket) {
+      await loadSuggestedDepartments(selectedTicket.id || selectedTicket.ticketId || '', newCatId);
+    }
+  }
+
+  // 4. Gọi API duyệt vé và định tuyến: PUT /api/v1/manager/tickets/{id}/review
+  async function handleReviewSubmit() {
+    if (!selectedTicket) return;
+    const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
+
+    setSubmitting(true);
+    setFeedback(null);
+
+    try {
+      await reviewManagerTicket(ticketId, {
+        categoryId: reviewCatId,
+        targetDepartmentId: targetDeptId,
+        routes: routes.length > 0 ? routes : undefined,
+        departmentIds: selectedDeptIds.length > 0 ? selectedDeptIds : [targetDeptId],
+        isLifeThreatening,
+        reviewNote: reviewNote.trim() || undefined,
+      });
+
+      const deptName =
+        departments.find((d) => d.departmentId === targetDeptId)?.name ||
+        suggestedDepts.find((d) => d.departmentId === targetDeptId)?.name ||
+        FALLBACK_DEPARTMENTS.find((d) => d.departmentId === targetDeptId)?.name ||
+        targetDeptId;
+
+      setRoutingResult({
+        ticketId,
+        deptName,
+        note: reviewNote,
+      });
+
+      setFeedback({
+        type: 'success',
+        message: `Đã duyệt và định tuyến hồ sơ ${ticketId} thành công đến: ${deptName}`,
+      });
+
+      // Cập nhật lại danh sách vé
+      setTickets((prev) => prev.filter((t) => (t.id || t.ticketId) !== ticketId));
+      setSelectedTicket(null);
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Duyệt và định tuyến vé thất bại. Vui lòng thử lại.';
+      setFeedback({ type: 'error', message: msg });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // 3. Gọi API từ chối vé: PUT /api/v1/manager/tickets/{id}/reject
+  async function handleRejectSubmit() {
+    if (!selectedTicket) return;
+    if (!rejectReason.trim()) {
+      setFeedback({ type: 'error', message: 'Vui lòng nhập lý do từ chối hồ sơ' });
+      return;
+    }
+
+    const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
+    setSubmitting(true);
+    setFeedback(null);
+
+    try {
+      await rejectManagerTicket(ticketId, {
+        suggestedCategoryId: rejectCatId || undefined,
+        suggestedDepartmentId: rejectDeptId || undefined,
+        reason: rejectReason.trim(),
+      });
+
+      setFeedback({
+        type: 'success',
+        message: `Đã từ chối tiếp nhận hồ sơ ${ticketId}.`,
+      });
+
+      setTickets((prev) => prev.filter((t) => (t.id || t.ticketId) !== ticketId));
+      setSelectedTicket(null);
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Từ chối vé thất bại. Vui lòng thử lại.';
+      setFeedback({ type: 'error', message: msg });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // 1 & 5. Cập nhật deadline cho bước
+  async function handleUpdateStepDeadline(stepId: string, deadlineStr: string) {
+    if (!selectedTicket || !stepId) return;
+    try {
+      await updateStepDeadline(stepId, { deadline: deadlineStr });
+      setSteps((prev) =>
+        prev.map((s) => ((s.stepId || s.id) === stepId ? { ...s, deadline: deadlineStr } : s))
+      );
+      setEditingStepDeadline(null);
+      setFeedback({ type: 'success', message: 'Đã cập nhật deadline cho bước xử lý.' });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Cập nhật deadline thất bại.' });
+    }
+  }
+
+  // 2 & 6. Đổi thứ tự bước (Reorder)
+  async function handleMoveStep(index: number, direction: 'up' | 'down') {
+    if (!selectedTicket || steps.length < 2) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= steps.length) return;
+
+    const newSteps = [...steps];
+    const temp = newSteps[index];
+    newSteps[index] = newSteps[targetIndex];
+    newSteps[targetIndex] = temp;
+
+    // Cập nhật lại orderIndex
+    const reordered = newSteps.map((s, idx) => ({ ...s, orderIndex: idx }));
+    setSteps(reordered);
+
+    const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
+    const stepOrders = reordered.map((s, idx) => ({
+      ticketStepId: s.stepId || s.id || '',
+      orderIndex: idx,
+    }));
+
+    try {
+      await reorderTicketSteps(ticketId, { stepOrders });
+      setFeedback({ type: 'success', message: 'Đã lưu thứ tự các bước xử lý.' });
+    } catch (err: any) {
+      console.warn('Lỗi lưu thứ tự bước:', err);
+    }
+  }
+
+  // Lọc vé
+  const filteredTickets = tickets.filter((t) => {
+    if (sevFilter !== 'all' && t.severity !== sevFilter) return false;
+    if (dangerFilter !== 'all' && t.dangerLevel !== dangerFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const id = (t.id || t.ticketId || '').toLowerCase();
+      const desc = (t.description || '').toLowerCase();
+      const addr = (t.address || '').toLowerCase();
+      const cat = (t.categoryName || '').toLowerCase();
+      if (!id.includes(q) && !desc.includes(q) && !addr.includes(q) && !cat.includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="p-6 space-y-5 screen-enter">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="font-display text-[18px] font-bold text-gray-900 uppercase tracking-wide">Xét duyệt thủ công</h2>
-          <p className="text-[12px] text-gray-400 mt-0.5">Chỉ hiển thị Hồ sơ cần xác nhận bởi Admin</p>
+          <h2 className="font-display text-[20px] font-bold text-gray-900 uppercase tracking-wide">
+            Điều phối & Xét duyệt Hồ sơ
+          </h2>
+          <p className="text-[12px] text-gray-500 mt-0.5">
+            Phê duyệt, phân loại danh mục, gán cơ quan tiếp nhận và định tuyến đa phòng ban
+          </p>
         </div>
-        <span className="font-display text-[28px] font-bold text-amber-400">{pending.filter(t => !done.includes(t.ticketId)).length}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[12px] font-semibold text-gray-500">Chờ điều phối:</span>
+          <span className="font-display text-[26px] font-bold text-amber-500 bg-amber-50 px-3.5 py-1 rounded-xl border border-amber-200">
+            {tickets.length}
+          </span>
+          <button
+            onClick={fetchInitialData}
+            disabled={loading}
+            className="p-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-colors cursor-pointer"
+            title="Tải lại danh sách"
+          >
+            <svg
+              className={`w-4 h-4 ${loading ? 'animate-spin text-orange-500' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Flow 2: Routing result after approval */}
+      {/* Thông báo kết quả routing */}
       {routingResult && (
-        <div className="relative rounded-2xl overflow-hidden border border-green-500/30">
-          <div className="absolute inset-0 bg-green-50" />
+        <div className="relative rounded-2xl overflow-hidden border border-green-300 bg-green-50/90 shadow-sm">
           <div className="relative flex items-start gap-3 px-5 py-4">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#16a34a"
+              strokeWidth="2.5"
+              className="flex-shrink-0 mt-0.5"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
             <div className="flex-1">
-              <p className="text-[13px] font-bold text-green-400">
-                Hồ sơ <span className="font-mono-cf">{routingResult.ticketId}</span> đã được duyệt và định tuyến tự động
+              <p className="text-[13px] font-bold text-green-800">
+                Hồ sơ <span className="font-mono-cf text-green-900">{routingResult.ticketId}</span> đã được duyệt và định tuyến thành công!
               </p>
-              <div className="flex items-center gap-4 mt-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Cơ quan tiếp nhận</span>
-                  <span className="text-[12px] text-green-300 font-semibold">{routingResult.deptName}</span>
+              <div className="flex items-center gap-4 mt-1.5 flex-wrap text-[12px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-500">Cơ quan tiếp nhận:</span>
+                  <span className="font-bold text-green-700">{routingResult.deptName}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Quy tắc</span>
-                  <span className="font-mono-cf text-[11px] text-orange-400">{routingResult.ruleId}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Trạng thái mới</span>
-                  <span className="text-[11px] font-bold text-blue-400 bg-blue-500/12 border border-blue-500/25 px-2 py-0.5 rounded-lg">OPEN → Chờ cơ quan tiếp nhận</span>
-                </div>
+                {routingResult.note && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-500">Ghi chú:</span>
+                    <span className="italic text-gray-700">"{routingResult.note}"</span>
+                  </div>
+                )}
               </div>
             </div>
-            <button onClick={() => setRoutingResult(null)} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button
+              onClick={() => setRoutingResult(null)}
+              className="text-gray-400 hover:text-gray-600 cursor-pointer"
+            >
+              ✕
             </button>
           </div>
         </div>
       )}
 
-      {/* Warning */}
-      <div className="relative rounded-2xl overflow-hidden border border-amber-500/30">
-        <div className="absolute inset-0 bg-gradient-to-r from-amber-50 to-white" />
-        <div className="relative flex items-center gap-3 px-5 py-3.5">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <p className="text-[13px] text-amber-300 font-semibold">
-            Các Hồ sơ dưới đây có confidence AI thấp hoặc được đánh dấu đe dọa tính mạng — cần Quản lý điều phối trước khi định tuyến.
+      {/* Alert Banner */}
+      <div className="relative rounded-2xl overflow-hidden border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4">
+        <div className="flex items-center gap-3">
+          <span className="text-amber-600 text-lg">⚠</span>
+          <p className="text-[12px] text-amber-900 font-medium leading-relaxed">
+            Danh sách bao gồm các hồ sơ <strong>khởi tạo (INITIATED)</strong> hoặc cần xét duyệt thủ công. Quản lý có thể xem phòng ban gợi ý từ hệ thống AI/Rule, tùy chỉnh tuyến xử lý và giao việc trực tiếp cho các cơ quan liên quan.
           </p>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
+      {/* Bộ lọc & Tìm kiếm */}
+      <div className="flex items-center gap-3 flex-wrap bg-white border border-gray-200 rounded-2xl p-3 shadow-xs">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-64">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm theo mã, danh mục, địa chỉ..."
+            className="bg-transparent text-[12px] text-gray-800 placeholder-gray-400 outline-none flex-1"
+          />
+        </div>
+
+        <select
+          value={sevFilter}
+          onChange={(e) => setSevFilter(e.target.value)}
+          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 outline-none cursor-pointer"
+        >
+          <option value="all">Mọi mức độ nghiêm trọng</option>
+          {Object.entries(SEV_MAP).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={dangerFilter}
+          onChange={(e) => setDangerFilter(e.target.value)}
+          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 outline-none cursor-pointer"
+        >
+          <option value="all">Mọi mức độ nguy hiểm</option>
+          {Object.entries(DANGER_MAP).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Bảng hồ sơ chờ duyệt */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full text-left min-w-[800px]">
+          <table className="w-full text-left min-w-[850px]">
             <thead>
-              <tr className="border-b border-gray-200">
-                {['ID', 'Danh mục', 'Tỉnh/TP', 'Phường', 'AI Confidence', 'Mức độ', 'Nguy hiểm', 'Đe dọa TM', 'Ngày tạo', 'Hành động'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-[9px] font-bold text-gray-400 uppercase tracking-[0.18em] whitespace-nowrap">{h}</th>
+              <tr className="border-b border-gray-200 bg-gray-50/70">
+                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'MỨC ĐỘ', 'NGUY HIỂM', 'ĐE DỌA TM', 'NGÀY TẠO', 'THAO TÁC'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {pending.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-12 text-center">
-                  <p className="font-display text-2xl font-bold text-gray-300 uppercase">Không có Hồ sơ cần điều phối</p>
-                </td></tr>
+              {filteredTickets.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                    {loading ? 'Đang tải dữ liệu hồ sơ...' : 'Không có hồ sơ nào cần điều phối vào lúc này.'}
+                  </td>
+                </tr>
               )}
-              {pending.map(t => {
-                const isDone = done.includes(t.ticketId);
-                const cat = getCat(t.categoryId);
+              {filteredTickets.map((t) => {
+                const ticketId = t.id || t.ticketId || '';
                 return (
-                  <tr key={t.ticketId} className={`transition-colors ${isDone ? 'opacity-40' : 'hover:bg-orange-50/50'}`}>
-                    <td className="px-4 py-3">
+                  <tr key={ticketId} className="hover:bg-orange-50/40 transition-colors">
+                    <td className="px-4 py-3 font-mono-cf text-[11px] font-bold text-gray-700">
                       <div className="flex items-center gap-1.5">
-                        {t.isLifeThreatening && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
-                        <span className="font-mono-cf text-[10px] text-gray-500">{t.ticketId}</span>
+                        {t.isLifeThreatening && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+                        {ticketId}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-[12px] text-gray-700 max-w-[140px] truncate">{cat?.name}</td>
-                    <td className="px-4 py-3 text-[11px] text-gray-500">{t.province}</td>
-                    <td className="px-4 py-3 text-[11px] text-gray-500 max-w-[110px] truncate">{t.ward}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-gradient-to-r from-orange-700 to-orange-400" style={{ width: `${t.aiConfidence}%` }} />
-                        </div>
-                        <span className="font-mono-cf text-[11px] text-orange-400">{t.aiConfidence}%</span>
-                      </div>
+                    <td className="px-4 py-3 text-[12px] text-gray-800 font-medium max-w-[160px] truncate">
+                      {t.categoryName || 'Chưa phân loại'}
+                    </td>
+                    <td className="px-4 py-3 text-[11px] text-gray-600 max-w-[200px] truncate">
+                      {t.address || '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sevInfo(t.severity).cls}`}>{sevInfo(t.severity).label}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sevInfo(t.severity || 'LOW').cls}`}>
+                        {sevInfo(t.severity || 'LOW').label}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${dangerInfo(t.dangerLevel).cls}`}>{dangerInfo(t.dangerLevel).label}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${dangerInfo(t.dangerLevel || 'SAFE').cls}`}>
+                        {dangerInfo(t.dangerLevel || 'SAFE').label}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-[11px] font-bold ${t.isLifeThreatening ? 'text-red-400' : 'text-gray-400'}`}>
+                      <span className={`text-[11px] font-bold ${t.isLifeThreatening ? 'text-red-500' : 'text-gray-400'}`}>
                         {t.isLifeThreatening ? 'Có ⚠' : 'Không'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400 whitespace-nowrap">{t.createdAt}</td>
+                    <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400 whitespace-nowrap">
+                      {t.createdAt || '—'}
+                    </td>
                     <td className="px-4 py-3">
-                      {isDone
-                        ? <span className="text-[11px] text-green-400 font-semibold">✓ Đã xử lý</span>
-                        : <button onClick={() => setSelected(t.ticketId)}
-                            className="relative rounded-lg overflow-hidden px-3 py-1.5 active:scale-[0.97] transition-transform">
-                            <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
-                            <span className="relative text-white font-bold uppercase tracking-wide text-[10px]">Xét duyệt</span>
-                          </button>
-                      }
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => selectTicketForAction(t)}
+                          className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] uppercase tracking-wide transition-all shadow-xs active:scale-[0.97] cursor-pointer"
+                        >
+                          Điều phối
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenTicket(ticketId)}
+                          className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:text-gray-900 text-[11px] font-semibold transition-colors cursor-pointer"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -306,7 +589,453 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           </table>
         </div>
       </div>
+
+      {/* Modal / Panel Điều phối chi tiết vé đang chọn */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto relative max-h-[90vh] flex flex-col">
+            {/* Header Modal */}
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/80 flex-shrink-0">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono-cf text-[13px] font-bold text-orange-600">
+                    {selectedTicket.id || selectedTicket.ticketId}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border text-amber-600 bg-amber-50 border-amber-200">
+                    Chờ Quản lý xét duyệt
+                  </span>
+                </div>
+                <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-md">
+                  {selectedTicket.description}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTicket(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Thông báo feedback */}
+            {feedback && (
+              <div
+                className={`mx-6 mt-4 p-3 rounded-xl border text-[12px] flex items-center justify-between ${
+                  feedback.type === 'success'
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}
+              >
+                <span>{feedback.message}</span>
+                <button onClick={() => setFeedback(null)} className="cursor-pointer font-bold ml-2">
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Tabs Điều phối */}
+            <div className="px-6 pt-3 border-b border-gray-200 flex gap-4 bg-white flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab('review')}
+                className={`pb-2.5 text-[13px] font-bold border-b-2 transition-all cursor-pointer ${
+                  activeTab === 'review'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                1. Duyệt vé & Định tuyến (Review API)
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('reject')}
+                className={`pb-2.5 text-[13px] font-bold border-b-2 transition-all cursor-pointer ${
+                  activeTab === 'reject'
+                    ? 'border-red-500 text-red-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                2. Từ chối vé (Reject API)
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('steps')}
+                className={`pb-2.5 text-[13px] font-bold border-b-2 transition-all cursor-pointer ${
+                  activeTab === 'steps'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                3. Các bước & Deadline ({steps.length})
+              </button>
+            </div>
+
+            {/* Tab 1: DUYỆT VÉ VÀ ĐỊNH TUYẾN */}
+            {activeTab === 'review' && (
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                {/* Phòng ban gợi ý từ API */}
+                <div className="bg-orange-50/50 border border-orange-200 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-orange-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>⚡</span> Phòng ban gợi ý tự động (Routing Rules API)
+                    </p>
+                    {loadingSuggestions && <span className="text-[10px] text-orange-500">Đang tìm gợi ý...</span>}
+                  </div>
+                  {suggestedDepts.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {suggestedDepts.map((d) => (
+                        <button
+                          key={d.departmentId}
+                          type="button"
+                          onClick={() => {
+                            setTargetDeptId(d.departmentId);
+                            if (!selectedDeptIds.includes(d.departmentId)) {
+                              setSelectedDeptIds((prev) => [...prev, d.departmentId]);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            targetDeptId === d.departmentId
+                              ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-orange-400'
+                          }`}
+                        >
+                          <span>{d.name}</span>
+                          {d.level && <span className="opacity-75 text-[9px]">({d.level})</span>}
+                          {targetDeptId === d.departmentId && <span>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-500 italic">Chưa có gợi ý khớp quy tắc, vui lòng chọn phòng ban bên dưới.</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Danh mục */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                      Danh mục sự cố (categoryId) <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={reviewCatId}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id || c.categoryId} value={c.id || c.categoryId}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Phòng ban đích chính */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                      Phòng ban tiếp nhận chính (targetDepartmentId) <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={targetDeptId}
+                      onChange={(e) => setTargetDeptId(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500"
+                    >
+                      {departments.map((d) => (
+                        <option key={d.departmentId} value={d.departmentId}>
+                          {d.name} {d.level ? `(${d.level})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Chọn nhiều phòng ban cùng phối hợp (departmentIds) */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                    Phòng ban phối hợp (departmentIds)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-xl max-h-28 overflow-y-auto">
+                    {departments.map((d) => {
+                      const isSelected = selectedDeptIds.includes(d.departmentId);
+                      return (
+                        <button
+                          key={d.departmentId}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              if (selectedDeptIds.length > 1) {
+                                setSelectedDeptIds((prev) => prev.filter((id) => id !== d.departmentId));
+                              }
+                            } else {
+                              setSelectedDeptIds((prev) => [...prev, d.departmentId]);
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-semibold border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                          }`}
+                        >
+                          {d.name} {isSelected ? '✓' : '+'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Đe dọa tính mạng */}
+                <div className="flex items-center gap-2 p-3 bg-red-50/60 border border-red-200 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="isLifeThreateningCheck"
+                    checked={isLifeThreatening}
+                    onChange={(e) => setIsLifeThreatening(e.target.checked)}
+                    className="w-4 h-4 text-red-600 rounded focus:ring-red-400 cursor-pointer"
+                  />
+                  <label htmlFor="isLifeThreateningCheck" className="text-[12px] font-bold text-red-700 cursor-pointer">
+                    Đánh dấu tình huống khẩn cấp / Đe dọa tính mạng (isLifeThreatening = true)
+                  </label>
+                </div>
+
+                {/* Ghi chú duyệt */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                    Ghi chú duyệt hồ sơ (reviewNote)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                    placeholder="Ví dụ: Đã xác minh thực tế, yêu cầu cơ quan xử lý khẩn trương..."
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-[12px] text-gray-900 outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                {/* Nút submit Duyệt */}
+                <div className="pt-2 flex justify-end gap-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicket(null)}
+                    className="px-4 py-2 rounded-xl border border-gray-300 text-gray-600 text-[12px] font-semibold hover:bg-gray-50 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleReviewSubmit}
+                    className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-[12px] uppercase tracking-wider transition-colors shadow-sm disabled:opacity-60 cursor-pointer"
+                  >
+                    {submitting ? 'Đang duyệt & định tuyến...' : 'Xác nhận Duyệt & Định tuyến (PUT /review)'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: TỪ CHỐI VÉ */}
+            {activeTab === 'reject' && (
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-[12px] text-red-700 font-medium">
+                  Hồ sơ sẽ chuyển sang trạng thái <strong>REJECTED</strong>. Vui lòng nêu rõ lý do từ chối để phản hồi cho người dân.
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                    Lý do từ chối (reason) <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Nhập lý do chi tiết từ chối..."
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-[12px] text-gray-900 outline-none focus:border-red-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                      Danh mục gợi ý lại (suggestedCategoryId - tùy chọn)
+                    </label>
+                    <select
+                      value={rejectCatId}
+                      onChange={(e) => setRejectCatId(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none"
+                    >
+                      <option value="">— Không có —</option>
+                      {categories.map((c) => (
+                        <option key={c.id || c.categoryId} value={c.id || c.categoryId}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                      Phòng ban chuyển tiếp gợi ý (suggestedDepartmentId - tùy chọn)
+                    </label>
+                    <select
+                      value={rejectDeptId}
+                      onChange={(e) => setRejectDeptId(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none"
+                    >
+                      <option value="">— Không có —</option>
+                      {departments.map((d) => (
+                        <option key={d.departmentId} value={d.departmentId}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicket(null)}
+                    className="px-4 py-2 rounded-xl border border-gray-300 text-gray-600 text-[12px] font-semibold hover:bg-gray-50 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleRejectSubmit}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-[12px] uppercase tracking-wider transition-colors shadow-sm disabled:opacity-60 cursor-pointer"
+                  >
+                    {submitting ? 'Đang từ chối...' : 'Xác nhận Từ chối vé (PUT /reject)'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: QUẢN LÝ CÁC BƯỚC XỬ LÝ & DEADLINE */}
+            {activeTab === 'steps' && (
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] text-gray-500">
+                    Sắp xếp thứ tự thực hiện (Reorder API) và cập nhật thời hạn hoàn thành (Deadline API)
+                  </p>
+                </div>
+
+                {steps.length === 0 ? (
+                  <div className="p-8 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-[13px]">
+                    Hồ sơ này chưa có các bước xử lý (ticket_step) được khởi tạo.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {steps.map((st, idx) => {
+                      const stepId = st.stepId || st.id || `step-${idx}`;
+                      const isEditingDeadline = editingStepDeadline?.stepId === stepId;
+                      return (
+                        <div
+                          key={stepId}
+                          className="flex items-center gap-3 p-3.5 bg-gray-50 border border-gray-200 rounded-xl hover:border-gray-300 transition-colors"
+                        >
+                          {/* Thứ tự & Reorder buttons */}
+                          <div className="flex flex-col items-center gap-0.5">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveStep(idx, 'up')}
+                              className="text-gray-400 hover:text-gray-700 disabled:opacity-30 cursor-pointer text-xs"
+                              title="Di chuyển lên"
+                            >
+                              ▲
+                            </button>
+                            <span className="font-mono-cf text-[11px] font-bold text-gray-500 w-5 text-center">
+                              {idx + 1}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={idx === steps.length - 1}
+                              onClick={() => handleMoveStep(idx, 'down')}
+                              className="text-gray-400 hover:text-gray-700 disabled:opacity-30 cursor-pointer text-xs"
+                              title="Di chuyển xuống"
+                            >
+                              ▼
+                            </button>
+                          </div>
+
+                          {/* Thông tin bước */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-bold text-gray-800 truncate">{st.stepName || `Bước ${idx + 1}`}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">
+                              Người thực hiện: <span className="font-semibold text-gray-700">{st.assigneeName || 'Chưa giao'}</span> · Trạng thái: {st.status || 'OPEN'}
+                            </p>
+                          </div>
+
+                          {/* Deadline & Edit */}
+                          <div className="flex items-center gap-2">
+                            {isEditingDeadline ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="datetime-local"
+                                  value={editingStepDeadline.deadline}
+                                  onChange={(e) =>
+                                    setEditingStepDeadline({
+                                      ...editingStepDeadline,
+                                      deadline: e.target.value,
+                                    })
+                                  }
+                                  className="bg-white border border-gray-300 rounded-lg px-2 py-1 text-[11px] outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateStepDeadline(stepId, editingStepDeadline.deadline)}
+                                  className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-[10px] font-bold cursor-pointer"
+                                >
+                                  Lưu
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingStepDeadline(null)}
+                                  className="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-[10px] font-bold cursor-pointer"
+                                >
+                                  Hủy
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono-cf text-[11px] text-gray-600 bg-white border border-gray-200 px-2.5 py-1 rounded-lg">
+                                  {st.deadline ? st.deadline.replace('T', ' ') : 'Chưa có hạn'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditingStepDeadline({
+                                      stepId,
+                                      deadline: st.deadline ? st.deadline.slice(0, 16) : '2026-10-15T18:00',
+                                    })
+                                  }
+                                  className="px-2 py-1 text-[10px] font-semibold border border-gray-300 bg-white hover:bg-gray-50 rounded-lg cursor-pointer"
+                                >
+                                  Đổi hạn
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-end border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTicket(null)}
+                    className="px-5 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-800 text-[12px] font-semibold cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

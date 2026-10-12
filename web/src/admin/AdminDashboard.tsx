@@ -56,7 +56,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
       value: String(pendingReview.length),
       color: 'text-amber-500',
       trend: '',
-      path: '/manual-review',
+      path: '/tickets',
     },
     {
       label: 'Đe dọa tính mạng',
