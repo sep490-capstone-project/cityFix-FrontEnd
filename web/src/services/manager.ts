@@ -25,10 +25,10 @@ export interface ManagerTicketRoute {
 }
 
 export interface ReviewTicketPayload {
-  categoryId: string;
+  categoryId?: string;
   targetDepartmentId?: string;
   routes?: ManagerTicketRoute[];
-  departmentIds?: string[];
+  departmentIds: string[];
   isLifeThreatening?: boolean;
   reviewNote?: string;
 }
@@ -181,30 +181,56 @@ export async function rejectManagerTicket(
   ticketId: string,
   payload: RejectTicketPayload
 ): Promise<ManagerTicketItem> {
-  return managerRequest<ManagerTicketItem>(
-    `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/reject`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+  try {
+    return await managerRequest<ManagerTicketItem>(
+      `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/reject`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  } catch (err: any) {
+    if (err?.status === 404) {
+      return await managerRequest<ManagerTicketItem>(
+        `/api/v1/admin/tickets/${encodeURIComponent(ticketId)}/reject`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }
+      );
     }
-  );
+    throw err;
+  }
 }
 
 /**
  * 4. Duyệt vé và định tuyến
- * PUT /api/v1/manager/tickets/{id}/review
+ * PUT /api/v1/manager/tickets/{id}/review hoặc PUT /api/v1/admin/tickets/{id}/review
  */
 export async function reviewManagerTicket(
   ticketId: string,
   payload: ReviewTicketPayload
 ): Promise<ManagerTicketItem> {
-  return managerRequest<ManagerTicketItem>(
-    `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/review`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+  try {
+    return await managerRequest<ManagerTicketItem>(
+      `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/review`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  } catch (err: any) {
+    if (err?.status === 404) {
+      return await managerRequest<ManagerTicketItem>(
+        `/api/v1/admin/tickets/${encodeURIComponent(ticketId)}/review`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }
+      );
     }
-  );
+    throw err;
+  }
 }
 
 /**
@@ -258,14 +284,23 @@ export async function getManagerInitiatedTickets(params?: {
   }
 
   const qs = query.toString() ? `?${query.toString()}` : '';
-  return managerRequest<PageManagerTickets>(`/api/v1/manager/tickets/initiated${qs}`, {
-    method: 'GET',
-  });
+  try {
+    return await managerRequest<PageManagerTickets>(`/api/v1/manager/tickets/initiated${qs}`, {
+      method: 'GET',
+    });
+  } catch (err: any) {
+    if (err?.status === 404) {
+      return await managerRequest<PageManagerTickets>(`/api/v1/admin/tickets/initiated${qs}`, {
+        method: 'GET',
+      });
+    }
+    throw err;
+  }
 }
 
 /**
  * 8. Gợi ý phòng ban cho vé
- * GET /api/v1/manager/tickets/{id}/suggested-departments
+ * GET /api/v1/manager/tickets/{id}/suggested-departments hoặc GET /api/v1/admin/tickets/{id}/suggested-departments
  */
 export async function getSuggestedDepartments(
   ticketId: string,
@@ -275,10 +310,22 @@ export async function getSuggestedDepartments(
   if (categoryId) query.append('categoryId', categoryId);
   const qs = query.toString() ? `?${query.toString()}` : '';
 
-  return managerRequest<SuggestedDepartment[]>(
-    `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/suggested-departments${qs}`,
-    {
-      method: 'GET',
+  try {
+    return await managerRequest<SuggestedDepartment[]>(
+      `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/suggested-departments${qs}`,
+      {
+        method: 'GET',
+      }
+    );
+  } catch (err: any) {
+    if (err?.status === 404) {
+      return await managerRequest<SuggestedDepartment[]>(
+        `/api/v1/admin/tickets/${encodeURIComponent(ticketId)}/suggested-departments${qs}`,
+        {
+          method: 'GET',
+        }
+      );
     }
-  );
+    throw err;
+  }
 }

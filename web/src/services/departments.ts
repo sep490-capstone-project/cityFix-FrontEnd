@@ -129,14 +129,26 @@ export async function getDepartments(
   }
 
   const queryStr = params.toString() ? `?${params.toString()}` : '';
-  const res = await departmentRequest<PageableResponse<DepartmentItem> | DepartmentItem[]>(
-    `/api/v1/departments${queryStr}`,
-    {
-      method: 'GET',
+  try {
+    const res = await departmentRequest<PageableResponse<DepartmentItem> | DepartmentItem[]>(
+      `/api/v1/departments${queryStr}`,
+      {
+        method: 'GET',
+      }
+    );
+    return res.data as PageableResponse<DepartmentItem> | DepartmentItem[];
+  } catch (err: any) {
+    if (err?.status === 404) {
+      const res = await departmentRequest<PageableResponse<DepartmentItem> | DepartmentItem[]>(
+        `/api/v1/admin/departments${queryStr}`,
+        {
+          method: 'GET',
+        }
+      );
+      return res.data as PageableResponse<DepartmentItem> | DepartmentItem[];
     }
-  );
-
-  return res.data as PageableResponse<DepartmentItem> | DepartmentItem[];
+    throw err;
+  }
 }
 
 /**
