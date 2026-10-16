@@ -15,6 +15,7 @@ import ReviewDraftScreen from '../screens/ReviewDraftScreen';
 import DuplicateScreen from '../screens/DuplicateScreen';
 import SuccessScreen from '../screens/SuccessScreen';
 import { ReportDraft } from '../types';
+import { ReportedTicket } from '../api';
 
 const INITIAL_DRAFT: ReportDraft = {
   location: null,
@@ -30,6 +31,7 @@ export default function AppNavigator() {
   const [currentScreen, setCurrentScreen] = useState<string>('login');
   const [previousScreen, setPreviousScreen] = useState<string>('home');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<ReportedTicket | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [verificationEmail, setVerificationEmail] = useState('');
   const [draft, setDraft] = useState<ReportDraft>(INITIAL_DRAFT);
@@ -56,9 +58,10 @@ export default function AppNavigator() {
     setUser(updatedUser);
   };
 
-  const handleOpenTicket = (ticketId: string) => {
+  const handleOpenTicket = (ticketId: string, ticketObj?: ReportedTicket) => {
     setPreviousScreen(currentScreen); // Remember where user opened the ticket from
     setSelectedTicketId(ticketId);
+    setSelectedTicket(ticketObj || null);
     setCurrentScreen('ticket-detail');
   };
 
@@ -187,6 +190,7 @@ export default function AppNavigator() {
     return (
       <TicketDetailScreen
         ticketId={selectedTicketId}
+        ticketData={selectedTicket}
         goBack={() => setCurrentScreen(previousScreen)} // Returns to my-reports, profile, or home dynamically!
         navigate={handleNavigate}
       />
@@ -219,6 +223,7 @@ export default function AppNavigator() {
     <HomeScreen
       navigate={handleNavigate}
       authUser={user}
+      openTicket={handleOpenTicket}
     />
   );
 }

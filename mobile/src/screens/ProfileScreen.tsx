@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,14 @@ import {
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { AuthUser } from './LoginScreen';
+import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../api';
 
 interface Props {
   navigate: (screen: string) => void;
   authUser: AuthUser | null;
   onLogout: () => void;
   onUpdateUser: (updated: AuthUser) => void;
-  openTicket?: (id: string) => void;
+  openTicket?: (id: string, ticketObj?: ReportedTicket) => void;
 }
 
 const MY_TICKETS = [
@@ -63,6 +64,19 @@ export default function ProfileScreen({
   const [editAddress, setEditAddress] = useState(authUser?.address ?? '');
   const [editProvince, setEditProvince] = useState(authUser?.province ?? '');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
+  const [totalReportsCount, setTotalReportsCount] = useState<number>(0);
+
+  useEffect(() => {
+    getMyReportedTickets(null, 0, 10)
+      .then((res) => {
+        if (res && Array.isArray(res.content)) {
+          setRealTickets(res.content);
+          setTotalReportsCount(res.totalElements ?? res.content.length);
+        }
+      })
+      .catch((e) => console.log('Profile tickets fetch note:', e?.message));
+  }, []);
 
   const initials = (authUser?.fullName?.trim() || '?')
     .split(/\s+/)
@@ -71,9 +85,13 @@ export default function ProfileScreen({
     .join('')
     .toUpperCase();
 
-  const totalTickets = MY_TICKETS.length;
-  const processingCount = MY_TICKETS.filter((t) => t.statusKey === 'processing').length;
-  const doneCount = MY_TICKETS.filter((t) => t.statusKey === 'done').length;
+  const totalTickets = realTickets.length > 0 ? totalReportsCount : MY_TICKETS.length;
+  const processingCount = realTickets.length > 0
+    ? realTickets.filter((t) => mapBackendStatus(t.status).statusKey === 'processing').length
+    : MY_TICKETS.filter((t) => t.statusKey === 'processing').length;
+  const doneCount = realTickets.length > 0
+    ? realTickets.filter((t) => mapBackendStatus(t.status).statusKey === 'done').length
+    : MY_TICKETS.filter((t) => t.statusKey === 'done').length;
 
   const stats = [
     { value: String(totalTickets), label: 'Báo cáo đã gửi' },
@@ -281,48 +299,83 @@ export default function ProfileScreen({
             </View>
 
             <View style={{ gap: 8 }}>
-              {MY_TICKETS.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={styles.ticketCard}
-                  onPress={() => openTicket?.(t.id)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.ticketLeft}>
-                    <Text style={styles.ticketId}>{t.id}</Text>
-                    <Text style={styles.ticketCategory} numberOfLines={1}>
-                      {t.category}
-                    </Text>
-                    <Text style={styles.ticketTime}>{t.time}</Text>
-                  </View>
-                  <View style={styles.ticketRight}>
-                    <View
-                      style={[
-                        styles.statusChip,
-                        t.statusKey === 'processing'
-                          ? styles.statusProcessing
-                          : t.statusKey === 'done'
-                          ? styles.statusDone
-                          : styles.statusReceived,
-                      ]}
+              {realTickets.length > 0 ? (
+                realTickets.slice(0, 3).map((t) => {
+                  const st = mapBackendStatus(t.status);
+                  const catName = t.categoryName || t.subCategories?.[0]?.name || t.description || 'Sự cố';
+                  const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleDateString('vi-VN') : '';
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={styles.ticketCard}
+                      onPress={() => openTicket?.(t.id, t)}
+                      activeOpacity={0.75}
                     >
-                      <Text
+                      <View style={styles.ticketLeft}>
+                        <Text style={styles.ticketCategory} numberOfLines={1}>
+                          {catName}
+                        </Text>
+                        <Text style={styles.ticketTime}>{timeStr}</Text>
+                      </View>
+                      <View style={styles.ticketRight}>
+                        <View
+                          style={[
+                            styles.statusChip,
+                            { backgroundColor: st.bgColor, borderColor: st.borderColor },
+                          ]}
+                        >
+                          <Text style={[styles.statusChipText, { color: st.color }]}>
+                            {st.statusText}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                MY_TICKETS.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={styles.ticketCard}
+                    onPress={() => openTicket?.(t.id)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.ticketLeft}>
+                      <Text style={styles.ticketCategory} numberOfLines={1}>
+                        {t.category}
+                      </Text>
+                      <Text style={styles.ticketTime}>{t.time}</Text>
+                    </View>
+                    <View style={styles.ticketRight}>
+                      <View
                         style={[
-                          styles.statusChipText,
+                          styles.statusChip,
                           t.statusKey === 'processing'
-                            ? { color: '#ea580c' }
+                            ? styles.statusProcessing
                             : t.statusKey === 'done'
-                            ? { color: '#16a34a' }
-                            : { color: '#64748b' },
+                            ? styles.statusDone
+                            : styles.statusReceived,
                         ]}
                       >
-                        {t.status}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.statusChipText,
+                            t.statusKey === 'processing'
+                              ? { color: '#ea580c' }
+                              : t.statusKey === 'done'
+                              ? { color: '#16a34a' }
+                              : { color: '#64748b' },
+                          ]}
+                        >
+                          {t.status}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
           </View>
 

@@ -2,6 +2,7 @@
 
 import { fetch as expoFetch } from 'expo/fetch';
 import { File } from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
@@ -689,5 +690,173 @@ export async function upvoteTicket(
         `Upvote thất bại (${response.status})`,
       response.status
     );
+  }
+}
+
+/* =========================================================
+   MY REPORTED TICKETS
+   GET /api/v1/tickets/my-reports
+   ========================================================= */
+
+export interface SubCategoryItem {
+  subCategoryId: string;
+  categoryId: string;
+  name: string;
+  description?: string;
+  sla?: number;
+  priority?: string;
+  active?: boolean;
+}
+
+export interface ReportedTicket {
+  id: string;
+  description: string;
+  imageUrl?: string;
+  categoryId?: string;
+  categoryName?: string;
+  subCategories?: SubCategoryItem[];
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  locationMethod?: 'AUTO_GPS' | 'MANUAL_ENTRY' | string;
+  address?: string;
+  status: 'INITIATED' | 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | string;
+  latitude?: number;
+  longitude?: number;
+  reviewNote?: string;
+  isAnonymous?: boolean;
+  createdBy?: string;
+  creatorFullName?: string;
+  creatorPhoneNumber?: string;
+  images?: string[];
+  createdAt: string;
+  duration?: number;
+  departmentId?: string;
+  departmentName?: string;
+}
+
+export interface PageResponse<T> {
+  totalPages: number;
+  totalElements: number;
+  size: number;
+  content: T[];
+  number: number;
+  numberOfElements: number;
+  first: boolean;
+  last: boolean;
+  empty: boolean;
+}
+
+export async function getMyReportedTickets(
+  accessToken?: string | null,
+  page: number = 0,
+  size: number = 20,
+  sort: string = 'createdAt,desc'
+): Promise<PageResponse<ReportedTicket>> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+    sort,
+  });
+
+  const url = `${API_BASE_URL}/api/v1/tickets/my-reports?${queryParams.toString()}`;
+  console.log('📋 GET MY REPORTED TICKETS URL:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('📋 GET MY REPORTED TICKETS STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    // Response không phải JSON
+  }
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể tải danh sách báo cáo (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+export function mapBackendStatus(status?: string): {
+  statusText: string;
+  statusKey: 'received' | 'processing' | 'done' | 'rejected';
+  color: string;
+  bgColor: string;
+  borderColor: string;
+} {
+  const upper = (status || '').toUpperCase();
+  switch (upper) {
+    case 'INITIATED':
+      return {
+        statusText: 'ĐÃ TIẾP NHẬN',
+        statusKey: 'received',
+        color: '#64748b',
+        bgColor: '#f8fafc',
+        borderColor: '#e2e8f0',
+      };
+    case 'OPEN':
+    case 'ASSIGNED':
+    case 'IN_PROGRESS':
+      return {
+        statusText: upper === 'ASSIGNED' ? 'ĐÃ PHÂN CÔNG' : 'ĐANG XỬ LÝ',
+        statusKey: 'processing',
+        color: '#ea580c',
+        bgColor: 'rgba(249, 115, 22, 0.08)',
+        borderColor: 'rgba(249, 115, 22, 0.25)',
+      };
+    case 'RESOLVED':
+    case 'COMPLETED':
+      return {
+        statusText: 'HOÀN THÀNH',
+        statusKey: 'done',
+        color: '#16a34a',
+        bgColor: '#f0fdf4',
+        borderColor: '#bbf7d0',
+      };
+    case 'REJECTED':
+      return {
+        statusText: 'TỪ CHỐI',
+        statusKey: 'rejected',
+        color: '#dc2626',
+        bgColor: '#fef2f2',
+        borderColor: '#fca5a5',
+      };
+    case 'CANCELLED':
+      return {
+        statusText: 'ĐÃ HỦY',
+        statusKey: 'rejected',
+        color: '#94a3b8',
+        bgColor: '#f1f5f9',
+        borderColor: '#cbd5e1',
+      };
+    default:
+      return {
+        statusText: status || 'CHỜ XỬ LÝ',
+        statusKey: 'received',
+        color: '#64748b',
+        bgColor: '#f8fafc',
+        borderColor: '#e2e8f0',
+      };
   }
 }

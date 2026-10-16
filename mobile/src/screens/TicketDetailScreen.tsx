@@ -10,9 +10,11 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { ReportedTicket, mapBackendStatus } from '../api';
 
 interface Props {
   ticketId: string | null;
+  ticketData?: ReportedTicket | null;
   goBack: () => void;
   navigate: (s: string) => void;
 }
@@ -111,8 +113,31 @@ function getTimeline(statusKey: string) {
   return steps.map((s, i) => ({ ...s, done: i <= activeIdx, active: i === activeIdx }));
 }
 
-export default function TicketDetailScreen({ ticketId, goBack, navigate }: Props) {
-  const ticket = MOCK_TICKETS_FULL.find((t) => t.id === ticketId) || MOCK_TICKETS_FULL[0];
+export default function TicketDetailScreen({ ticketId, ticketData, goBack, navigate }: Props) {
+  let ticket: Ticket;
+  if (ticketData) {
+    const stInfo = mapBackendStatus(ticketData.status);
+    ticket = {
+      id: ticketData.id,
+      category: ticketData.categoryName || ticketData.subCategories?.[0]?.name || ticketData.description || 'Sự cố hạ tầng',
+      address: ticketData.address || 'Chưa xác định vị trí',
+      submittedAt: ticketData.createdAt ? new Date(ticketData.createdAt).toLocaleString('vi-VN') : 'Vừa xong',
+      locationMethod: ticketData.locationMethod === 'MANUAL_ENTRY' ? 'MANUAL_PIN' : 'AUTO_GPS',
+      agency: ticketData.departmentName || 'Chờ phân công cơ quan xử lý',
+      deadline: ticketData.duration ? `${ticketData.duration} giờ` : 'Theo quy định',
+      upvotes: 0,
+      severity: ((ticketData.severity || 'MEDIUM').toUpperCase() as any),
+      status: stInfo.statusText,
+      statusKey: stInfo.statusKey,
+      description: ticketData.description || 'Không có mô tả chi tiết.',
+      imageUrl:
+        ticketData.imageUrl ||
+        (ticketData.images && ticketData.images[0]) ||
+        'https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=800&h=400&fit=crop&auto=format',
+    };
+  } else {
+    ticket = MOCK_TICKETS_FULL.find((t) => t.id === ticketId) || MOCK_TICKETS_FULL[0];
+  }
 
   if (!ticketId) {
     return (
@@ -142,8 +167,10 @@ export default function TicketDetailScreen({ ticketId, goBack, navigate }: Props
           <Ionicons name="arrow-back" size={20} color="#0f172a" />
         </TouchableOpacity>
         <View style={styles.headerTitleCol}>
-          <Text style={styles.ticketIdText}>{ticket.id}</Text>
-          <Text style={styles.headerSub}>Chi tiết vé sự cố</Text>
+          <Text style={styles.headerTitleText}>Chi tiết phản ánh</Text>
+          <Text style={styles.headerSub} numberOfLines={1}>
+            {ticket.category || 'Thông tin sự cố'}
+          </Text>
         </View>
         <View
           style={[
@@ -366,15 +393,15 @@ const styles = StyleSheet.create({
   headerTitleCol: {
     flex: 1,
   },
-  ticketIdText: {
-    fontSize: 18,
+  headerTitleText: {
+    fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   headerSub: {
     fontSize: 11,
     color: '#64748b',
+    marginTop: 2,
   },
   statusBadgeHeader: {
     flexDirection: 'row',
