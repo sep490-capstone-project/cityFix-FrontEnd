@@ -103,30 +103,18 @@ export default function ReviewDraftScreen({
       const effectiveSubCatId =
         draft.userSubCategoryId ||
         draft.aiAnalysis.subCategoryId ||
+        (draft.aiAnalysis as any)?.subCategoryIds?.[0] ||
         '';
+
+      if (!effectiveSubCatId) {
+        throw new Error('Chưa có danh mục con (subCategory). Vui lòng thử phân tích lại ảnh.');
+      }
 
       const effectivePriority =
         draft.aiAnalysis.priority ||
         (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
         'MEDIUM';
 
-      // const requestBody = {
-      //   description:
-      //     draft.userDescription ||
-      //     draft.aiAnalysis.description ||
-      //     '',
-      //   imageUrl: draft.imageUrls[0],
-      //   categoryId: effectiveCatId,
-      //   subCategoryId: effectiveSubCatId,
-      //   severity: draft.aiAnalysis.severity,
-      //   priority: effectivePriority,
-      //   dangerLevel: draft.aiAnalysis.dangerLevel,
-      //   locationMethod: draft.locationMethod || 'AUTO_GPS',
-      //   address: draft.address || '',
-      //   latitude: draft.location.lat,
-      //   longitude: draft.location.lng,
-      //   confidenceScore: draft.aiAnalysis.confidenceScore || 0,
-      // };
       const requestBody = {
   description:
     draft.userDescription ||
