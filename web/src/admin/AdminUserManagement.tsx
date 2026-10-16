@@ -8,6 +8,7 @@ import {
   AdminUser,
   getDepartments,
   DepartmentItem,
+  formatDepartmentLevel,
   ApiError,
 } from '../services';
 
@@ -762,7 +763,7 @@ export default function UserManagement() {
                     <option value="">— Không có —</option>
                     {departments.map((d) => (
                       <option key={d.departmentId} value={d.departmentId}>
-                        {d.name} ({d.level || 'Cơ quan'})
+                        {d.name} {d.level ? `(${formatDepartmentLevel(d.level)})` : ''}
                       </option>
                     ))}
                   </select>

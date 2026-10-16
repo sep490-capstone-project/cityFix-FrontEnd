@@ -26,6 +26,7 @@ import {
   updateDepartment,
   deleteDepartment,
   DepartmentItem,
+  formatDepartmentLevel,
   ApiError,
 } from '../services';
 
@@ -344,7 +345,7 @@ function SubCategoryMgmt({
     name: string;
     description: string;
     sla: number;
-    priority: string;
+    priority: SubCategoryPriority;
     isActive: boolean;
   }>({
     categoryId: '',
@@ -415,7 +416,7 @@ function SubCategoryMgmt({
       name: s.name || '',
       description: s.description || '',
       sla: s.sla ?? 24,
-      priority: s.priority || 'LOW',
+      priority: (s.priority as SubCategoryPriority) || 'LOW',
       isActive: (s.isActive ?? s.active) !== false,
     });
     setSel(s);
@@ -544,7 +545,6 @@ function SubCategoryMgmt({
               <option value="LOW">Thấp (LOW)</option>
               <option value="MEDIUM">Trung bình (MEDIUM)</option>
               <option value="HIGH">Cao (HIGH)</option>
-              <option value="URGENT">Khẩn cấp (URGENT)</option>
             </select>
           </div>
 
@@ -625,21 +625,17 @@ function SubCategoryMgmt({
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  {prio === 'URGENT' ? (
-                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">
-                      Khẩn cấp (URGENT)
-                    </span>
-                  ) : prio === 'HIGH' ? (
+                  {prio === 'HIGH' ? (
                     <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">
-                      Cao (HIGH)
+                      Cao
                     </span>
                   ) : prio === 'MEDIUM' ? (
                     <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
-                      Trung bình (MEDIUM)
+                      Trung bình
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                      Thấp (LOW)
+                      Thấp
                     </span>
                   )}
                 </td>
@@ -733,13 +729,12 @@ function SubCategoryMgmt({
             </label>
             <select
               value={form.priority}
-              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as SubCategoryPriority }))}
               className={inpModal}
             >
               <option value="LOW">Thấp (LOW)</option>
               <option value="MEDIUM">Trung bình (MEDIUM)</option>
               <option value="HIGH">Cao (HIGH)</option>
-              <option value="URGENT">Khẩn cấp (URGENT)</option>
             </select>
           </div>
 
@@ -1004,7 +999,7 @@ function DepartmentMgmt() {
                       : 'text-blue-600 bg-blue-50 border-blue-200'
                   }`}
                 >
-                  {d.level}
+                  {formatDepartmentLevel(d.level)}
                 </span>
               </td>
               <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-500">
@@ -1068,8 +1063,8 @@ function DepartmentMgmt() {
               onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
               className={inpModal}
             >
-              <option value="CITY">Cấp Thành phố (CITY)</option>
-              <option value="WARD">Cấp Phường/Quận (WARD)</option>
+              <option value="CITY">Cấp Thành phố</option>
+              <option value="WARD">Cấp Phường/Quận</option>
             </select>
           </div>
 
@@ -1496,7 +1491,7 @@ function RoutingMgmt() {
               <option value="">-- Chọn cơ quan chịu trách nhiệm --</option>
               {departments.map((d) => (
                 <option key={d.departmentId} value={d.departmentId}>
-                  {d.name} ({d.level})
+                  {d.name} {d.level ? `(${formatDepartmentLevel(d.level)})` : ''}
                 </option>
               ))}
             </select>

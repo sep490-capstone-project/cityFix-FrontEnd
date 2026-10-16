@@ -3,7 +3,7 @@ import { getAccessToken, ApiError, ApiResponse } from './auth';
 
 const BASE_URL = APP_CONFIG.API_BASE_URL.replace(/\/+$/, '');
 
-export type SubCategoryPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | string;
+export type SubCategoryPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface AdminSubCategory {
   subCategoryId: string;
@@ -23,7 +23,7 @@ export interface CreateSubCategoryPayload {
   name: string;
   description?: string;
   sla?: number;
-  priority?: string;
+  priority?: SubCategoryPriority;
   isActive?: boolean;
 }
 
@@ -32,7 +32,7 @@ export interface UpdateSubCategoryPayload {
   name: string;
   description?: string;
   sla?: number;
-  priority?: string;
+  priority?: SubCategoryPriority;
   isActive?: boolean;
 }
 

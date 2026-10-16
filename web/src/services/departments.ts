@@ -14,6 +14,13 @@ export interface DepartmentItem {
   isActive?: boolean;
 }
 
+export function formatDepartmentLevel(level?: string): string {
+  if (!level) return '—';
+  if (level === 'CITY') return 'Cấp Thành phố';
+  if (level === 'WARD') return 'Cấp Phường/Quận';
+  return level;
+}
+
 export interface CreateDepartmentPayload {
   name: string;
   level: string;

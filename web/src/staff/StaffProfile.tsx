@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, getDept } from '../data';
-import { getProfile, updateProfile, getDepartments, getDepartmentById, DepartmentItem, UserProfile, ApiError } from '../services';
+import { getProfile, updateProfile, getDepartments, getDepartmentById, DepartmentItem, formatDepartmentLevel, UserProfile, ApiError } from '../services';
 
 interface Props {
   currentUser: User;
@@ -381,7 +381,7 @@ export default function StaffProfile({ currentUser, onProfileUpdated }: Props) {
             {[
               { label: 'Mã cơ quan', val: dept.departmentId, mono: true },
               { label: 'Tên cơ quan', val: dept.name },
-              { label: 'Cấp', val: dept.level },
+              { label: 'Cấp', val: formatDepartmentLevel(dept.level) },
               { label: 'Điện thoại', val: dept.phoneNumber, mono: true },
               { label: 'Email', val: dept.contactEmail, mono: true },
             ].map((f) => (
