@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,18 @@ import {
   StyleSheet,
   StatusBar,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { ReportedTicket, mapBackendStatus } from '../api';
+import { ReportedTicket, mapBackendStatus, cancelTicket } from '../api';
 
 interface Props {
   ticketId: string | null;
   ticketData?: ReportedTicket | null;
   goBack: () => void;
   navigate: (s: string) => void;
+  onTicketCancelled?: (updatedTicket: ReportedTicket) => void;
 }
 
 export interface Ticket {
@@ -30,9 +33,10 @@ export interface Ticket {
   upvotes: number;
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   status: string;
-  statusKey: 'processing' | 'received' | 'done' | 'rejected';
+  statusKey: 'processing' | 'received' | 'done' | 'rejected' | 'cancelled';
   description: string;
   imageUrl: string;
+  rawStatus?: string;
 }
 
 export const MOCK_TICKETS_FULL: Ticket[] = [
@@ -94,6 +98,7 @@ const STATUS_MAP = {
   received: { label: 'Đã tiếp nhận', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
   done: { label: 'Hoàn thành', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
   rejected: { label: 'Từ chối', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+  cancelled: { label: 'Đã hủy', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' },
 };
 
 const SEVERITY_MAP = {
@@ -104,6 +109,18 @@ const SEVERITY_MAP = {
 };
 
 function getTimeline(statusKey: string) {
+  if (statusKey === 'cancelled') {
+    return [
+      { key: 'received', label: 'Đã tiếp nhận', desc: 'Hệ thống đã ghi nhận báo cáo từ người dân', done: true, active: false },
+      { key: 'cancelled', label: 'Đã hủy', desc: 'Người dân đã hủy yêu cầu xử lý này', done: true, active: true },
+    ];
+  }
+  if (statusKey === 'rejected') {
+    return [
+      { key: 'received', label: 'Đã tiếp nhận', desc: 'Hệ thống đã ghi nhận báo cáo từ người dân', done: true, active: false },
+      { key: 'rejected', label: 'Từ chối', desc: 'Sự cố không thuộc diện xử lý', done: true, active: true },
+    ];
+  }
   const steps = [
     { key: 'received', label: 'Đã tiếp nhận', desc: 'Hệ thống ghi nhận báo cáo từ người dân' },
     { key: 'processing', label: 'Đang xử lý', desc: 'Cơ quan chức năng đã điều động nhân sự kiểm tra' },
@@ -113,7 +130,22 @@ function getTimeline(statusKey: string) {
   return steps.map((s, i) => ({ ...s, done: i <= activeIdx, active: i === activeIdx }));
 }
 
-export default function TicketDetailScreen({ ticketId, ticketData, goBack, navigate }: Props) {
+export default function TicketDetailScreen({
+  ticketId,
+  ticketData: initialTicketData,
+  goBack,
+  navigate,
+  onTicketCancelled,
+}: Props) {
+  const [ticketData, setTicketData] = useState<ReportedTicket | null>(initialTicketData || null);
+  const [cancelling, setCancelling] = useState(false);
+
+  useEffect(() => {
+    if (initialTicketData) {
+      setTicketData(initialTicketData);
+    }
+  }, [initialTicketData]);
+
   let ticket: Ticket;
   if (ticketData) {
     const stInfo = mapBackendStatus(ticketData.status);
@@ -134,12 +166,46 @@ export default function TicketDetailScreen({ ticketId, ticketData, goBack, navig
         ticketData.imageUrl ||
         (ticketData.images && ticketData.images[0]) ||
         'https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=800&h=400&fit=crop&auto=format',
+      rawStatus: ticketData.status,
     };
   } else {
     ticket = MOCK_TICKETS_FULL.find((t) => t.id === ticketId) || MOCK_TICKETS_FULL[0];
   }
 
-  if (!ticketId) {
+  const isInitiated = (ticketData?.status || ticket.rawStatus || '').toUpperCase() === 'INITIATED';
+
+  const handleCancelTicket = () => {
+    const targetId = ticketData?.id || ticket.id;
+    if (!targetId) return;
+
+    Alert.alert(
+      'Hủy vé phản ánh',
+      'Bạn có chắc chắn muốn hủy vé phản ánh này không? Sau khi hủy, yêu cầu sẽ không được chuyển cho cơ quan xử lý.',
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Xác nhận hủy',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setCancelling(true);
+              const updatedTicket = await cancelTicket(targetId);
+              setTicketData(updatedTicket);
+              onTicketCancelled?.(updatedTicket);
+              Alert.alert('Thành công', 'Vé phản ánh đã được hủy thành công.');
+            } catch (err: any) {
+              console.error('❌ Lỗi hủy vé:', err);
+              Alert.alert('Không thể hủy vé', err?.message || 'Có lỗi xảy ra khi hủy vé.');
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (!ticketId && !ticketData) {
     return (
       <View style={styles.notFoundContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -180,7 +246,7 @@ export default function TicketDetailScreen({ ticketId, ticketData, goBack, navig
         >
           <View style={[styles.statusDot, { backgroundColor: st.color }]} />
           <Text style={[styles.statusBadgeText, { color: st.color }]}>
-            {st.label}
+            {ticket.status || st.label}
           </Text>
         </View>
       </View>
@@ -331,6 +397,43 @@ export default function TicketDetailScreen({ ticketId, ticketData, goBack, navig
               <Ionicons name="checkmark-circle-outline" size={20} color="#ffffff" />
               <Text style={styles.resolutionBtnText}>XEM BẰNG CHỨNG XỬ LÝ</Text>
             </TouchableOpacity>
+          ) : null}
+
+          {/* Action CTA for Initiated Tickets (Cancel) */}
+          {isInitiated ? (
+            <View style={styles.cancelActionCard}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={handleCancelTicket}
+                disabled={cancelling}
+                activeOpacity={0.8}
+              >
+                {cancelling ? (
+                  <ActivityIndicator size="small" color="#dc2626" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    <Text style={styles.cancelBtnText}>HỦY VÉ PHẢN ÁNH</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.cancelHintText}>
+                Người dân chỉ có thể hủy vé khi ở trạng thái tiếp nhận (INITIATED).
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Banner for Cancelled Tickets */}
+          {ticket.statusKey === 'cancelled' || (ticket.rawStatus || '').toUpperCase() === 'CANCELLED' ? (
+            <View style={styles.cancelledBanner}>
+              <Ionicons name="information-circle-outline" size={20} color="#64748b" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cancelledBannerTitle}>Vé đã được hủy</Text>
+                <Text style={styles.cancelledBannerText}>
+                  Bạn đã hủy yêu cầu xử lý sự cố này.
+                </Text>
+              </View>
+            </View>
           ) : null}
         </View>
       </ScrollView>
@@ -659,5 +762,56 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#ffffff',
     letterSpacing: 0.8,
+  },
+
+  /* Cancel CTA */
+  cancelActionCard: {
+    marginTop: 10,
+    gap: 8,
+    alignItems: 'center',
+  },
+  cancelBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1.5,
+    borderColor: '#fca5a5',
+    borderRadius: 16,
+    paddingVertical: 14,
+  },
+  cancelBtnText: {
+    color: '#dc2626',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  cancelHintText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
+  cancelledBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 10,
+  },
+  cancelledBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  cancelledBannerText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
   },
 });

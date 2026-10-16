@@ -25,32 +25,27 @@ interface Props {
   openTicket: (id: string, ticketObj?: ReportedTicket) => void;
 }
 
-type FilterKey = 'all' | 'processing' | 'received' | 'done';
+type FilterKey = 'all' | 'processing' | 'received' | 'done' | 'cancelled';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tất cả' },
-  { key: 'processing', label: 'Đang xử lý' },
   { key: 'received', label: 'Đã tiếp nhận' },
+  { key: 'processing', label: 'Đang xử lý' },
   { key: 'done', label: 'Hoàn thành' },
+  { key: 'cancelled', label: 'Đã hủy' },
 ];
 
-function formatTimeAgo(dateString?: string): string {
+function formatDate(dateString?: string): string {
   if (!dateString) return '';
   try {
     const d = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    if (diffMins < 1) return 'Vừa xong';
-    if (diffMins < 60) return `${diffMins} phút trước`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays} ngày trước`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} tuần trước`;
-    return d.toLocaleDateString('vi-VN');
+    if (isNaN(d.getTime())) return '';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
   } catch {
-    return dateString;
+    return '';
   }
 }
 
@@ -255,7 +250,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
                   <Text style={styles.ticketAddress} numberOfLines={1}>
                     {t.address || 'Chưa xác định vị trí'}
                   </Text>
-                  <Text style={styles.ticketTime}>{formatTimeAgo(t.createdAt)}</Text>
+                  <Text style={styles.ticketTime}>{formatDate(t.createdAt)}</Text>
                 </View>
 
                 <View style={styles.ticketRight}>
@@ -539,9 +534,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   ticketTime: {
-    fontSize: 9,
+    fontSize: 11,
     color: '#94a3b8',
     marginTop: 4,
+    fontWeight: '500',
   },
   ticketRight: {
     alignItems: 'flex-end',
