@@ -80,11 +80,16 @@ const ACCESS_TOKEN_KEY = 'cityfix_access_token';
 const REFRESH_TOKEN_KEY = 'cityfix_refresh_token';
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  return (
+    localStorage.getItem(ACCESS_TOKEN_KEY) ||
+    localStorage.getItem('accessToken') ||
+    localStorage.getItem('token')
+  );
 }
 
 export function setAccessToken(token: string): void {
   localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  localStorage.setItem('accessToken', token);
 }
 
 export function getRefreshToken(): string | null {
@@ -98,6 +103,8 @@ export function setRefreshToken(token: string): void {
 export function clearTokens(): void {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('token');
 }
 
 export function decodeJwt(token: string): Record<string, any> | null {
