@@ -121,7 +121,7 @@ useEffect(() => {
         ...draft,
         aiAnalysis: result,
         userCategoryId: result.categoryId,
-        userSubCategoryId: result.subCategoryId,
+        userSubCategoryId: result.subCategoryId || (result as any).subCategoryIds?.[0] || null,
       });
 
       setDone(true);

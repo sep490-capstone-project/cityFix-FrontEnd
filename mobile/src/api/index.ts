@@ -538,15 +538,22 @@ export async function createTicket(
     description: data.description,
     imageUrl: data.imageUrl,
     categoryId: data.categoryId,
-    subCategoryId: data.subCategoryIds,
+    subCategoryIds: Array.isArray(data.subCategoryIds) && data.subCategoryIds.length > 0
+      ? data.subCategoryIds
+      : (data as any).subCategoryId
+      ? [(data as any).subCategoryId]
+      : [],
     severity: data.severity,
     priority: data.priority,
+    dangerLevel: data.dangerLevel,
     locationMethod: data.locationMethod,
     address: data.address,
     latitude: data.latitude,
     longitude: data.longitude,
     confidenceScore: data.confidenceScore ?? data.aiConfidenceScore ?? 0,
   };
+
+  console.log('🎫 PAYLOAD SENT TO BACKEND:', JSON.stringify(payloadBody, null, 2));
 
   const response = await fetch(
     `${API_BASE_URL}/api/v1/tickets`,
