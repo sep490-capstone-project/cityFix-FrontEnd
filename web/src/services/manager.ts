@@ -24,13 +24,58 @@ export interface ManagerTicketRoute {
   departmentId: string;
 }
 
+export interface ReviewStepItemPayload {
+  stepId: string;
+  assigneeId: string;
+  orderIndex: number;
+  notes?: string;
+  stepName?: string;
+  duration?: number;
+}
+
 export interface ReviewTicketPayload {
-  categoryId?: string;
-  targetDepartmentId?: string;
-  routes?: ManagerTicketRoute[];
-  departmentIds: string[];
   isLifeThreatening?: boolean;
   reviewNote?: string;
+  subCategoryIds?: string[];
+  steps?: ReviewStepItemPayload[];
+  categoryId?: string;
+  targetDepartmentId?: string;
+  departmentIds?: string[];
+  routes?: ManagerTicketRoute[];
+}
+
+export interface DepartmentStaffUser {
+  userId?: string;
+  id?: string;
+  email: string;
+  fullName: string;
+  phoneNumber?: string;
+  phone?: string;
+  province?: string;
+  ward?: string;
+  address?: string;
+  roleId?: string;
+  role?: string;
+  departmentId?: string;
+  departmentName?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+export interface ManagerDepartment {
+  departmentId: string;
+  id?: string;
+  name: string;
+  level?: string;
+  contactEmail?: string;
+  phoneNumber?: string;
+  officerCount?: number;
+  isActive?: boolean;
+  users?: DepartmentStaffUser[];
+  staffs?: DepartmentStaffUser[];
+  officers?: DepartmentStaffUser[];
+  members?: DepartmentStaffUser[];
+  employees?: DepartmentStaffUser[];
 }
 
 export interface RejectTicketPayload {
@@ -74,6 +119,8 @@ export interface ManagerTicketItem {
   imageUrl?: string;
   categoryId?: string;
   categoryName?: string;
+  subCategoryId?: string;
+  subCategoryName?: string;
   subCategories?: Array<{ id?: string; subCategoryId?: string; name?: string; subCategoryName?: string }>;
   severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   priority?: string;
@@ -128,10 +175,23 @@ async function managerRequest<T>(
     throw new ApiError('Không thể kết nối đến máy chủ. Vui lòng kiểm tra mạng.');
   }
 
-  const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
-  const message = payload?.message || `Yêu cầu thất bại (${response.status})`;
+  const payload = (await response.json().catch(() => null)) as any;
+  let message = payload?.message || payload?.error || `Yêu cầu thất bại (${response.status})`;
+
+  if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+    const errorDetails = payload.errors
+      .map((e: any) => (e.field ? `${e.field}: ${e.defaultMessage || e.message}` : e.defaultMessage || e.message || JSON.stringify(e)))
+      .join(', ');
+    message = `${message} [Chi tiết: ${errorDetails}]`;
+  } else if (payload?.data && typeof payload.data === 'string') {
+    message = `${message} (${payload.data})`;
+  }
 
   if (!response.ok || (payload && payload.success === false)) {
+    console.error(`[managerRequest Error] ${options.method || 'GET'} ${url} status=${response.status}`, {
+      payload,
+      message,
+    });
     throw new ApiError(message, response.status, payload);
   }
 
@@ -211,12 +271,26 @@ export async function reviewManagerTicket(
   ticketId: string,
   payload: ReviewTicketPayload
 ): Promise<ManagerTicketItem> {
+  const cleanBody = {
+    isLifeThreatening: Boolean(payload.isLifeThreatening),
+    reviewNote: payload.reviewNote?.trim() || 'Đã tiếp nhận và giao các cán bộ phụ trách xử lý khẩn cấp',
+    subCategoryIds: payload.subCategoryIds || [],
+    steps: (payload.steps || []).map((s, idx) => ({
+      stepId: s.stepId,
+      assigneeId: s.assigneeId,
+      orderIndex: typeof s.orderIndex === 'number' ? s.orderIndex : idx + 1,
+      notes: s.notes?.trim() || s.stepName || 'Tiến hành xử lý theo quy trình',
+    })),
+  };
+
+  console.log(`[reviewManagerTicket] PUT /api/v1/manager/tickets/${ticketId}/review:`, cleanBody);
+
   try {
     return await managerRequest<ManagerTicketItem>(
       `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/review`,
       {
         method: 'PUT',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(cleanBody),
       }
     );
   } catch (err: any) {
@@ -225,7 +299,7 @@ export async function reviewManagerTicket(
         `/api/v1/admin/tickets/${encodeURIComponent(ticketId)}/review`,
         {
           method: 'PUT',
-          body: JSON.stringify(payload),
+          body: JSON.stringify(cleanBody),
         }
       );
     }
@@ -284,18 +358,31 @@ export async function getManagerInitiatedTickets(params?: {
   }
 
   const qs = query.toString() ? `?${query.toString()}` : '';
+  let res: any;
   try {
-    return await managerRequest<PageManagerTickets>(`/api/v1/manager/tickets/initiated${qs}`, {
+    res = await managerRequest<any>(`/api/v1/manager/tickets/initiated${qs}`, {
       method: 'GET',
     });
   } catch (err: any) {
     if (err?.status === 404) {
-      return await managerRequest<PageManagerTickets>(`/api/v1/admin/tickets/initiated${qs}`, {
+      res = await managerRequest<any>(`/api/v1/admin/tickets/initiated${qs}`, {
         method: 'GET',
       });
+    } else {
+      throw err;
     }
-    throw err;
   }
+
+  if (Array.isArray(res)) {
+    return {
+      content: res,
+      totalPages: 1,
+      totalElements: res.length,
+      size: res.length,
+      number: 0,
+    };
+  }
+  return res as PageManagerTickets;
 }
 
 /**
@@ -327,5 +414,136 @@ export async function getSuggestedDepartments(
       );
     }
     throw err;
+  }
+}
+
+/**
+ * 9. Lấy danh sách toàn bộ phòng ban và nhân sự cho Manager
+ * GET /api/v1/manager/tickets/departments
+ */
+export async function getManagerDepartments(): Promise<ManagerDepartment[]> {
+  try {
+    const res = await managerRequest<any>('/api/v1/manager/tickets/departments', {
+      method: 'GET',
+    });
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.content)) return res.content;
+    if (Array.isArray(res?.data)) return res.data;
+    return [];
+  } catch (err: any) {
+    if (err?.status === 404) {
+      // Fallback nếu môi trường cũ dùng /api/v1/manager/departments hoặc /api/v1/departments
+      try {
+        const fallback = await managerRequest<any>('/api/v1/manager/departments', { method: 'GET' });
+        if (Array.isArray(fallback)) return fallback;
+        if (Array.isArray(fallback?.content)) return fallback.content;
+        if (Array.isArray(fallback?.data)) return fallback.data;
+      } catch {
+        const res = await managerRequest<any>('/api/v1/departments', {
+          method: 'GET',
+        });
+        if (Array.isArray(res)) return res;
+        if (Array.isArray(res?.content)) return res.content;
+        if (Array.isArray(res?.data)) return res.data;
+      }
+      return [];
+    }
+    throw err;
+  }
+}
+
+/**
+ * 10. Xem danh sách nhân sự của một phòng ban
+ * GET /api/v1/departments/{id}/users (Quyền ADMIN, MANAGER)
+ */
+export async function getDepartmentUsers(departmentId: string): Promise<DepartmentStaffUser[]> {
+  try {
+    const res = await managerRequest<any>(
+      `/api/v1/departments/${encodeURIComponent(departmentId)}/users`,
+      {
+        method: 'GET',
+      }
+    );
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.content)) return res.content;
+    if (Array.isArray(res?.data)) return res.data;
+    return [];
+  } catch (err) {
+    console.warn(`Lỗi khi tải users của phòng ban ${departmentId}:`, err);
+    return [];
+  }
+}
+
+/**
+ * 11. Gán danh sách nhân sự vào phòng ban
+ * POST /api/v1/departments/{id}/users (Quyền ADMIN)
+ */
+export async function addDepartmentUsers(
+  departmentId: string,
+  userIds: string[]
+): Promise<any> {
+  return managerRequest<any>(
+    `/api/v1/departments/${encodeURIComponent(departmentId)}/users`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ userIds }),
+    }
+  );
+}
+
+/**
+ * 12. Xóa nhân sự khỏi phòng ban
+ * DELETE /api/v1/departments/{id}/users/{userId} (Quyền ADMIN)
+ */
+export async function removeDepartmentUser(
+  departmentId: string,
+  userId: string
+): Promise<void> {
+  await managerRequest<void>(
+    `/api/v1/departments/${encodeURIComponent(departmentId)}/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+/**
+ * 13. Lấy danh sách quy trình các bước của subcategory
+ * GET /api/v1/admin/steps/sub-category/{subCategoryId}
+ */
+export async function getStepsBySubCategory(
+  subCategoryId: string
+): Promise<Array<{
+  stepId: string;
+  subCategoryId: string;
+  stepName: string;
+  description: string;
+  duration: number;
+}>> {
+  try {
+    const res = await managerRequest<any>(
+      `/api/v1/admin/steps/sub-category/${encodeURIComponent(subCategoryId)}`,
+      {
+        method: 'GET',
+      }
+    );
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.content)) return res.content;
+    if (Array.isArray(res?.data)) return res.data;
+    return [];
+  } catch (err: any) {
+    try {
+      const fallback = await managerRequest<any>(
+        `/api/v1/steps/sub-category/${encodeURIComponent(subCategoryId)}`,
+        { method: 'GET' }
+      );
+      if (Array.isArray(fallback)) return fallback;
+      if (Array.isArray(fallback?.content)) return fallback.content;
+      if (Array.isArray(fallback?.data)) return fallback.data;
+    } catch {
+      // Ignored
+    }
+    console.warn(`Lỗi khi tải quy trình của subcategory ${subCategoryId}:`, err);
+    return [];
   }
 }

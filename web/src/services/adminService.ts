@@ -1,4 +1,7 @@
-const API_BASE_URL = 'https://cityfix-backend-80ar.onrender.com';
+import { APP_CONFIG } from '../config';
+import { getAccessToken } from './auth';
+
+const API_BASE_URL = APP_CONFIG.API_BASE_URL.replace(/\/+$/, '');
 
 export interface AdminStep {
   stepId: string;
@@ -25,7 +28,7 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<ApiResponse<T>> {
-  const token = localStorage.getItem('accessToken');
+  const token = getAccessToken();
 
   if (!token) {
     throw new Error('Không tìm thấy access token. Vui lòng đăng nhập lại.');

@@ -4,11 +4,12 @@ import ManagerDashboard from './ManagerDashboard';
 import ManagerTickets from './ManagerTickets';
 import ManagerTicketDetail from './ManagerTicketDetail';
 import ManagerDispatch from './ManagerDispatch';
+import ManagerStaff from './ManagerStaff';
 import ManagerProfile from './ManagerProfile';
 import cityfixLogo from '../assets/cityfix-logo.png';
 import { getProfile, getDepartments, getDepartmentById, DepartmentItem, UserProfile } from '../services';
 
-type ManagerPage = 'dashboard' | 'tickets' | 'ticket-detail' | 'dispatch' | 'profile';
+type ManagerPage = 'dashboard' | 'tickets' | 'ticket-detail' | 'dispatch' | 'staff' | 'profile';
 
 interface Props {
   userId: string;
@@ -128,11 +129,12 @@ export default function ManagerApp({ userId, onLogout }: Props) {
   }
 
   const NAV = [
-  { key: 'dashboard', label: 'Dashboard', icon: <GridIcon /> },
-  { key: 'tickets', label: 'Quản lý Hồ sơ', icon: <TicketIcon /> },
-  { key: 'dispatch', label: 'Điều phối', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg> },
-  { key: 'profile', label: 'Tài khoản', icon: <UserIcon /> }
-] as const;
+    { key: 'dashboard', label: 'Dashboard', icon: <GridIcon /> },
+    { key: 'tickets', label: 'Quản lý Hồ sơ', icon: <TicketIcon /> },
+    { key: 'dispatch', label: 'Điều phối & Duyệt vé', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg> },
+    { key: 'staff', label: 'Cán bộ phòng ban', icon: <StaffIcon /> },
+    { key: 'profile', label: 'Tài khoản', icon: <UserIcon /> }
+  ] as const;
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
@@ -204,7 +206,9 @@ export default function ManagerApp({ userId, onLogout }: Props) {
           <div className="flex-1">
             <h1 className="font-display text-[20px] font-extrabold text-gray-900 uppercase tracking-tight">
               {page === 'dashboard' ? 'Dashboard' :
-               page === 'tickets' || page === 'ticket-detail' ? 'Hồ sơ của tôi' : 'Hồ sơ cá nhân'}
+               page === 'tickets' || page === 'ticket-detail' ? 'Hồ sơ của tôi' :
+               page === 'dispatch' ? 'Điều phối & Duyệt vé' :
+               page === 'staff' ? 'Cán bộ & Phòng ban' : 'Hồ sơ cá nhân'}
             </h1>
           </div>
           <p className="font-mono-cf text-[11px] text-gray-400 tracking-wider">10/09/2026</p>
@@ -222,6 +226,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
           {page === 'dashboard' && <ManagerDashboard currentUser={currentUser} onOpenTicket={openTicket} onViewAll={() => setPage('tickets')} />}
           {page === 'tickets' && <ManagerTickets currentUser={currentUser} onOpenTicket={openTicket} />}
           {page === 'dispatch' && <ManagerDispatch onOpenTicket={openTicket} />}
+          {page === 'staff' && <ManagerStaff currentUser={currentUser} />}
           {page === 'ticket-detail' && selectedTicket && (
             <ManagerTicketDetail ticket={selectedTicket} currentUser={currentUser} onBack={() => setPage('tickets')} />
           )}
@@ -241,5 +246,6 @@ export default function ManagerApp({ userId, onLogout }: Props) {
 
 function GridIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>; }
 function TicketIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5v2M15 11v2M15 17v2M5 5h14a2 2 0 012 2v3a2 2 0 000 4v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 000-4V7a2 2 0 012-2z"/></svg>; }
+function StaffIcon()  { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>; }
 function UserIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function LogoutIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>; }
