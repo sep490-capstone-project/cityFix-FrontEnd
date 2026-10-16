@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,14 @@ import {
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from './LoginScreen';
+import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Props {
   navigate: (screen: string) => void;
   authUser: AuthUser | null;
+  openTicket?: (id: string, ticketObj?: any) => void;
 }
 
 const QUICK_CATS = [
@@ -88,9 +90,9 @@ const MY_TICKETS = [
 
 const COMMUNITY_FEED = [
   { time: '14 phút', user: 'Minh T.', action: 'báo cáo ổ gà', loc: 'Hoàng Diệu, Q.4', avatar: 'MT', report: true },
-  { time: '32 phút', user: 'Lan N.', action: 'upvote vé CF-2821', loc: 'Bình Thạnh', avatar: 'LN', report: false },
+  { time: '32 phút', user: 'Lan N.', action: 'ủng hộ sự cố ngập úng', loc: 'Bình Thạnh', avatar: 'LN', report: false },
   { time: '1 giờ', user: 'Hùng P.', action: 'báo cáo đèn hỏng', loc: 'Lê Văn Sỹ, Q.3', avatar: 'HP', report: true },
-  { time: '2 giờ', user: 'Thu M.', action: 'upvote vé CF-2853', loc: 'Q.5', avatar: 'TM', report: false },
+  { time: '2 giờ', user: 'Thu M.', action: 'ủng hộ sự cố mặt đường', loc: 'Q.5', avatar: 'TM', report: false },
 ];
 
 function SectionLabel({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
@@ -116,9 +118,20 @@ function getGreeting() {
   return 'Chào buổi tối';
 }
 
-export default function HomeScreen({ navigate, authUser }: Props) {
+export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'my-reports' | 'profile'>('home');
+  const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
+
+  useEffect(() => {
+    getMyReportedTickets(null, 0, 3)
+      .then((res) => {
+        if (res && Array.isArray(res.content)) {
+          setRealTickets(res.content);
+        }
+      })
+      .catch((e) => console.log('HomeScreen tickets load note:', e?.message));
+  }, []);
 
   const initials = (authUser?.fullName?.trim() || '?')
     .split(/\s+/)
@@ -305,7 +318,6 @@ export default function HomeScreen({ navigate, authUser }: Props) {
                 </View>
 
                 <View style={styles.trendingBody}>
-                  <Text style={styles.trendingId}>{t.id}</Text>
                   <Text style={styles.trendingCategory} numberOfLines={1}>
                     {t.category}
                   </Text>
@@ -358,46 +370,97 @@ export default function HomeScreen({ navigate, authUser }: Props) {
             onAction={() => navigate('my-reports')}
           />
           <View style={styles.ticketsList}>
-            {MY_TICKETS.map((t) => (
-              <View key={t.id} style={styles.ticketCard}>
-                <View style={styles.ticketAccentLine} />
-                <View style={styles.ticketBody}>
-                  <Text style={styles.ticketId}>{t.id}</Text>
-                  <Text style={styles.ticketCategory} numberOfLines={1}>
-                    {t.category}
-                  </Text>
-                  <Text style={styles.ticketAddress} numberOfLines={1}>
-                    {t.address}
-                  </Text>
-                </View>
-                <View style={styles.ticketStatusCol}>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      t.statusKey === 'processing'
-                        ? styles.statusProcessing
-                        : t.statusKey === 'done'
-                        ? styles.statusDone
-                        : styles.statusReceived,
-                    ]}
+            {realTickets.length > 0 ? (
+              realTickets.slice(0, 3).map((t) => {
+                const st = mapBackendStatus(t.status);
+                const catName = t.categoryName || t.subCategories?.[0]?.name || t.description || 'Sự cố';
+                const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleDateString('vi-VN') : '';
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={styles.ticketCard}
+                    onPress={() => openTicket?.(t.id, t)}
+                    activeOpacity={0.75}
                   >
-                    <Text
+                    <View
                       style={[
-                        styles.statusText,
-                        t.statusKey === 'processing'
-                          ? { color: '#ea580c' }
-                          : t.statusKey === 'done'
-                          ? { color: '#16a34a' }
-                          : { color: '#64748b' },
+                        styles.ticketAccentLine,
+                        { backgroundColor: st.color || '#f97316' },
                       ]}
-                    >
-                      {t.status}
+                    />
+                    <View style={styles.ticketBody}>
+                      <Text style={styles.ticketCategory} numberOfLines={1}>
+                        {catName}
+                      </Text>
+                      <Text style={styles.ticketAddress} numberOfLines={1}>
+                        {t.address || 'Chưa xác định vị trí'}
+                      </Text>
+                    </View>
+                    <View style={styles.ticketStatusCol}>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor: st.bgColor,
+                            borderColor: st.borderColor,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.statusText, { color: st.color }]}>
+                          {st.statusText}
+                        </Text>
+                      </View>
+                      <Text style={styles.ticketTime}>{timeStr}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              MY_TICKETS.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={styles.ticketCard}
+                  onPress={() => navigate('my-reports')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.ticketAccentLine} />
+                  <View style={styles.ticketBody}>
+                    <Text style={styles.ticketCategory} numberOfLines={1}>
+                      {t.category}
+                    </Text>
+                    <Text style={styles.ticketAddress} numberOfLines={1}>
+                      {t.address}
                     </Text>
                   </View>
-                  <Text style={styles.ticketTime}>{t.time}</Text>
-                </View>
-              </View>
-            ))}
+                  <View style={styles.ticketStatusCol}>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        t.statusKey === 'processing'
+                          ? styles.statusProcessing
+                          : t.statusKey === 'done'
+                          ? styles.statusDone
+                          : styles.statusReceived,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusText,
+                          t.statusKey === 'processing'
+                            ? { color: '#ea580c' }
+                            : t.statusKey === 'done'
+                            ? { color: '#16a34a' }
+                            : { color: '#64748b' },
+                        ]}
+                      >
+                        {t.status}
+                      </Text>
+                    </View>
+                    <Text style={styles.ticketTime}>{t.time}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </View>
 

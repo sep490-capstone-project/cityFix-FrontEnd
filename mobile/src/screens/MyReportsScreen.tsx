@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,68 +7,23 @@ import {
   StyleSheet,
   StatusBar,
   Platform,
+  RefreshControl,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from './LoginScreen';
+import {
+  getMyReportedTickets,
+  ReportedTicket,
+  mapBackendStatus,
+} from '../api';
 
 interface Props {
   navigate: (screen: string) => void;
   authUser: AuthUser | null;
-  openTicket: (id: string) => void;
+  openTicket: (id: string, ticketObj?: ReportedTicket) => void;
 }
-
-export const MY_REPORTS_TICKETS = [
-  {
-    id: 'CF-2910',
-    category: 'Đèn đường chiếu sáng không hoạt động',
-    categoryKey: 'cat-002',
-    address: '128 Nguyễn Trãi, Phường 3, Quận 5',
-    status: 'ĐANG XỬ LÝ',
-    statusKey: 'processing',
-    time: '20 phút trước',
-    icon: 'lightbulb-outline' as const,
-  },
-  {
-    id: 'CF-2898',
-    category: 'Nắp cống bị bể gây nguy hiểm',
-    categoryKey: 'cat-005',
-    address: '45 Trần Hưng Đạo, Phường Phạm Ngũ Lão, Q.1',
-    status: 'ĐÃ TIẾP NHẬN',
-    statusKey: 'received',
-    time: '2 giờ trước',
-    icon: 'water-outline' as const,
-  },
-  {
-    id: 'CF-2853',
-    category: 'Ổ gà sụt lún nguy hiểm lòng đường',
-    categoryKey: 'cat-001',
-    address: 'Nguyễn Văn Cừ, Q.5',
-    status: 'ĐANG XỬ LÝ',
-    statusKey: 'processing',
-    time: '5 giờ trước',
-    icon: 'car-wash' as const,
-  },
-  {
-    id: 'CF-2750',
-    category: 'Cây xanh che khuất biển báo giao thông',
-    categoryKey: 'cat-004',
-    address: 'Hẻm 210 Lê Văn Sỹ, Phường 10, Q.3',
-    status: 'HOÀN THÀNH',
-    statusKey: 'done',
-    time: '3 ngày trước',
-    icon: 'tree' as const,
-  },
-  {
-    id: 'CF-2620',
-    category: 'Sạt lở gạch lát vỉa hè người đi bộ',
-    categoryKey: 'cat-006',
-    address: 'Đinh Tiên Hoàng, Bình Thạnh',
-    status: 'HOÀN THÀNH',
-    statusKey: 'done',
-    time: '1 tuần trước',
-    icon: 'walk' as const,
-  },
-];
 
 type FilterKey = 'all' | 'processing' | 'received' | 'done';
 
@@ -79,17 +34,80 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'done', label: 'Hoàn thành' },
 ];
 
+function formatTimeAgo(dateString?: string): string {
+  if (!dateString) return '';
+  try {
+    const d = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 1) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays} ngày trước`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} tuần trước`;
+    return d.toLocaleDateString('vi-VN');
+  } catch {
+    return dateString;
+  }
+}
+
+function getCategoryIcon(catName?: string): any {
+  const lower = (catName || '').toLowerCase();
+  if (lower.includes('đèn') || lower.includes('chiếu sáng')) return 'lightbulb-outline';
+  if (lower.includes('cống') || lower.includes('nước') || lower.includes('ngập')) return 'water-outline';
+  if (lower.includes('ổ gà') || lower.includes('đường') || lower.includes('mặt đường')) return 'car-wash';
+  if (lower.includes('cây') || lower.includes('gãy')) return 'tree';
+  if (lower.includes('vỉa hè') || lower.includes('lối đi')) return 'walk';
+  if (lower.includes('rác') || lower.includes('vệ sinh')) return 'trash-can-outline';
+  return 'alert-circle-outline';
+}
+
 export default function MyReportsScreen({ navigate, authUser, openTicket }: Props) {
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [tickets, setTickets] = useState<ReportedTicket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered =
-    filter === 'all'
-      ? MY_REPORTS_TICKETS
-      : MY_REPORTS_TICKETS.filter((t) => t.statusKey === filter);
+  const fetchTickets = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+
+      const res = await getMyReportedTickets(null, 0, 50, 'createdAt,desc');
+      if (res && Array.isArray(res.content)) {
+        setTickets(res.content);
+      } else {
+        setTickets([]);
+      }
+    } catch (err: any) {
+      console.error('❌ Lỗi tải danh sách báo cáo:', err);
+      setError(err?.message || 'Không thể tải danh sách báo cáo.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTickets();
+  }, [fetchTickets]);
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return tickets;
+    return tickets.filter((t) => {
+      const { statusKey } = mapBackendStatus(t.status);
+      return statusKey === filter;
+    });
+  }, [tickets, filter]);
 
   function countFor(key: FilterKey) {
-    if (key === 'all') return MY_REPORTS_TICKETS.length;
-    return MY_REPORTS_TICKETS.filter((t) => t.statusKey === key).length;
+    if (key === 'all') return tickets.length;
+    return tickets.filter((t) => mapBackendStatus(t.status).statusKey === key).length;
   }
 
   return (
@@ -104,7 +122,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
           <Text style={styles.headerTitle}>BÁO CÁO CỦA TÔI</Text>
         </View>
         <Text style={styles.headerSub}>
-          {authUser?.fullName ?? 'Người dân'} · {MY_REPORTS_TICKETS.length} vé báo cáo
+          {authUser?.fullName ?? 'Người dân'} · {tickets.length} vé báo cáo
         </Text>
       </View>
 
@@ -140,68 +158,125 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
       </View>
 
       {/* Ticket List Area */}
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollArea}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchTickets(true)}
+            colors={['#ea580c']}
+            tintColor="#ea580c"
+          />
+        }
+      >
         <View style={styles.contentPadding}>
-          {filtered.length === 0 ? (
+          {loading && !refreshing ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#ea580c" />
+              <Text style={styles.loadingText}>Đang tải danh sách báo cáo...</Text>
+            </View>
+          ) : null}
+
+          {error && !loading && tickets.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIconBox, { backgroundColor: '#fee2e2' }]}>
+                <Ionicons name="alert-circle-outline" size={32} color="#dc2626" />
+              </View>
+              <Text style={[styles.emptyText, { color: '#dc2626' }]}>{error}</Text>
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={() => fetchTickets(false)}
+              >
+                <Ionicons name="reload-outline" size={16} color="#ffffff" />
+                <Text style={styles.retryBtnText}>Thử lại</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {!loading && !error && filtered.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIconBox}>
                 <Ionicons name="document-text-outline" size={32} color="#94a3b8" />
               </View>
-              <Text style={styles.emptyText}>Không tìm thấy vé báo cáo nào</Text>
+              <Text style={styles.emptyText}>
+                {filter === 'all'
+                  ? 'Bạn chưa gửi báo cáo sự cố nào'
+                  : 'Không tìm thấy vé báo cáo ở trạng thái này'}
+              </Text>
+              {filter === 'all' ? (
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  onPress={() => navigate('location')}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="#ffffff" />
+                  <Text style={styles.retryBtnText}>Tạo báo cáo ngay</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
 
-          {filtered.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={styles.ticketCard}
-              onPress={() => openTicket(t.id)}
-              activeOpacity={0.75}
-            >
-              <View style={styles.ticketAccentLine} />
-              <View style={styles.categoryIconBox}>
-                <MaterialCommunityIcons name={t.icon} size={20} color="#f97316" />
-              </View>
+          {!loading && filtered.map((t) => {
+            const stInfo = mapBackendStatus(t.status);
+            const catName =
+              t.categoryName ||
+              t.subCategories?.[0]?.name ||
+              t.description ||
+              'Sự cố đô thị';
+            const iconName = getCategoryIcon(catName);
+            const photoUrl = t.imageUrl || (t.images && t.images[0]);
 
-              <View style={styles.ticketBody}>
-                <Text style={styles.ticketId}>{t.id}</Text>
-                <Text style={styles.ticketCategory} numberOfLines={1}>
-                  {t.category}
-                </Text>
-                <Text style={styles.ticketAddress} numberOfLines={1}>
-                  {t.address}
-                </Text>
-                <Text style={styles.ticketTime}>{t.time}</Text>
-              </View>
-
-              <View style={styles.ticketRight}>
+            return (
+              <TouchableOpacity
+                key={t.id}
+                style={styles.ticketCard}
+                onPress={() => openTicket(t.id, t)}
+                activeOpacity={0.75}
+              >
                 <View
                   style={[
-                    styles.statusBadge,
-                    t.statusKey === 'processing'
-                      ? styles.statusProcessing
-                      : t.statusKey === 'done'
-                      ? styles.statusDone
-                      : styles.statusReceived,
+                    styles.ticketAccentLine,
+                    { backgroundColor: stInfo.color || '#f97316' },
                   ]}
-                >
-                  <Text
+                />
+
+                {photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.ticketThumbnail} />
+                ) : (
+                  <View style={styles.categoryIconBox}>
+                    <MaterialCommunityIcons name={iconName} size={20} color="#f97316" />
+                  </View>
+                )}
+
+                <View style={styles.ticketBody}>
+                  <Text style={styles.ticketCategory} numberOfLines={1}>
+                    {catName}
+                  </Text>
+                  <Text style={styles.ticketAddress} numberOfLines={1}>
+                    {t.address || 'Chưa xác định vị trí'}
+                  </Text>
+                  <Text style={styles.ticketTime}>{formatTimeAgo(t.createdAt)}</Text>
+                </View>
+
+                <View style={styles.ticketRight}>
+                  <View
                     style={[
-                      styles.statusText,
-                      t.statusKey === 'processing'
-                        ? { color: '#ea580c' }
-                        : t.statusKey === 'done'
-                        ? { color: '#16a34a' }
-                        : { color: '#64748b' },
+                      styles.statusBadge,
+                      {
+                        backgroundColor: stInfo.bgColor,
+                        borderColor: stInfo.borderColor,
+                      },
                     ]}
                   >
-                    {t.status}
-                  </Text>
+                    <Text style={[styles.statusText, { color: stInfo.color }]}>
+                      {stInfo.statusText}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
 
@@ -354,6 +429,17 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 10,
   },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -371,6 +457,23 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#94a3b8',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ea580c',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  retryBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 
   /* Ticket Card */
@@ -400,12 +503,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#f97316',
   },
   categoryIconBox: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: 'rgba(249, 115, 22, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 4,
+  },
+  ticketThumbnail: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
     marginLeft: 4,
   },
   ticketBody: {
@@ -415,6 +525,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#94a3b8',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontWeight: '700',
   },
   ticketCategory: {
     fontSize: 13,
@@ -441,18 +552,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-  },
-  statusProcessing: {
-    backgroundColor: 'rgba(249, 115, 22, 0.08)',
-    borderColor: 'rgba(249, 115, 22, 0.25)',
-  },
-  statusDone: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
-  },
-  statusReceived: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#e2e8f0',
   },
   statusText: {
     fontSize: 9,
