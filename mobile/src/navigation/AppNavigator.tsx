@@ -193,6 +193,9 @@ export default function AppNavigator() {
         ticketData={selectedTicket}
         goBack={() => setCurrentScreen(previousScreen)} // Returns to my-reports, profile, or home dynamically!
         navigate={handleNavigate}
+        onTicketCancelled={(updated) => {
+          setSelectedTicket(updated);
+        }}
       />
     );
   }

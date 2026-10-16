@@ -87,8 +87,8 @@ export async function login(
 
   const payload =
     (await response.json().catch(() => null)) as
-      | ApiResponse<LoginData>
-      | null;
+    | ApiResponse<LoginData>
+    | null;
 
   const message =
     payload?.message ||
@@ -168,8 +168,8 @@ async function post<T>(
 
   const payload =
     (await response.json().catch(() => null)) as
-      | ApiResponse<T>
-      | null;
+    | ApiResponse<T>
+    | null;
 
   const message =
     payload?.message ||
@@ -467,7 +467,7 @@ export async function analyzeReportImage(
   if (!response.ok) {
     throw new ApiError(
       payload?.message ||
-        `AI Analyze failed: ${response.status}`,
+      `AI Analyze failed: ${response.status}`,
       response.status
     );
   }
@@ -475,7 +475,7 @@ export async function analyzeReportImage(
   if (!payload?.success || !payload?.data) {
     throw new ApiError(
       payload?.message ||
-        'Backend không trả về kết quả AI.',
+      'Backend không trả về kết quả AI.',
       response.status
     );
   }
@@ -542,8 +542,8 @@ export async function createTicket(
     subCategoryIds: Array.isArray(data.subCategoryIds) && data.subCategoryIds.length > 0
       ? data.subCategoryIds
       : (data as any).subCategoryId
-      ? [(data as any).subCategoryId]
-      : [],
+        ? [(data as any).subCategoryId]
+        : [],
     severity: data.severity,
     priority: data.priority,
     dangerLevel: data.dangerLevel,
@@ -585,7 +585,7 @@ export async function createTicket(
   if (!response.ok || !payload?.success) {
     throw new ApiError(
       payload?.message ||
-        `Tạo báo cáo thất bại (${response.status})`,
+      `Tạo báo cáo thất bại (${response.status})`,
       response.status
     );
   }
@@ -646,7 +646,7 @@ export async function checkDuplicates(
   if (!response.ok || !payload?.success) {
     throw new ApiError(
       payload?.message ||
-        `Kiểm tra trùng lặp thất bại (${response.status})`,
+      `Kiểm tra trùng lặp thất bại (${response.status})`,
       response.status
     );
   }
@@ -687,7 +687,7 @@ export async function upvoteTicket(
   if (!response.ok || (payload && payload.success === false)) {
     throw new ApiError(
       payload?.message ||
-        `Upvote thất bại (${response.status})`,
+      `Upvote thất bại (${response.status})`,
       response.status
     );
   }
@@ -798,9 +798,65 @@ export async function getMyReportedTickets(
   return payload.data;
 }
 
+/* =========================================================
+   CANCEL TICKET
+   PUT /api/v1/tickets/{id}/cancel
+   Người dân hủy vé do chính mình tạo (khi ở trạng thái INITIATED)
+   ========================================================= */
+
+export async function cancelTicket(
+  ticketId: string,
+  accessToken?: string | null
+): Promise<ReportedTicket> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/tickets/${ticketId}/cancel`;
+  console.log('🚫 CANCEL TICKET URL:', url);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch {
+    throw new ApiError('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
+  }
+
+  const text = await response.text();
+  console.log('🚫 CANCEL TICKET STATUS:', response.status);
+  console.log('🚫 CANCEL TICKET RESPONSE:', text);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    // Response không phải JSON
+  }
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Hủy vé thất bại (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
 export function mapBackendStatus(status?: string): {
   statusText: string;
-  statusKey: 'received' | 'processing' | 'done' | 'rejected';
+  statusKey: 'received' | 'processing' | 'done' | 'rejected' | 'cancelled';
   color: string;
   bgColor: string;
   borderColor: string;
@@ -845,8 +901,8 @@ export function mapBackendStatus(status?: string): {
     case 'CANCELLED':
       return {
         statusText: 'ĐÃ HỦY',
-        statusKey: 'rejected',
-        color: '#94a3b8',
+        statusKey: 'cancelled',
+        color: '#64748b',
         bgColor: '#f1f5f9',
         borderColor: '#cbd5e1',
       };
