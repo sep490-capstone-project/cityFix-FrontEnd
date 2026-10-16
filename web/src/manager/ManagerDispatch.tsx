@@ -113,10 +113,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         const list = Array.isArray(val)
           ? val
           : Array.isArray(val.content)
-          ? val.content
-          : Array.isArray(val.data)
-          ? val.data
-          : [];
+            ? val.content
+            : Array.isArray(val.data)
+              ? val.data
+              : [];
         if (list.length > 0) {
           setTickets(list);
         } else {
@@ -133,10 +133,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         const list = Array.isArray(val)
           ? val
           : Array.isArray(val.content)
-          ? val.content
-          : Array.isArray(val.data)
-          ? val.data
-          : [];
+            ? val.content
+            : Array.isArray(val.data)
+              ? val.data
+              : [];
         if (list.length > 0) {
           loadedCats = list;
         }
@@ -159,10 +159,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         const list = Array.isArray(val)
           ? val
           : Array.isArray(val.content)
-          ? val.content
-          : Array.isArray(val.data)
-          ? val.data
-          : [];
+            ? val.content
+            : Array.isArray(val.data)
+              ? val.data
+              : [];
         if (list.length > 0) {
           loadedDepts = list.filter((d: any) => d && d.departmentId);
         }
@@ -192,10 +192,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         const deptsList = Array.isArray(val)
           ? val
           : Array.isArray(val.data)
-          ? val.data
-          : Array.isArray(val.content)
-          ? val.content
-          : [];
+            ? val.data
+            : Array.isArray(val.content)
+              ? val.content
+              : [];
         deptsList.forEach((dept: any) => {
           const rawUsers =
             dept.users ||
@@ -230,10 +230,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         const stepsList = Array.isArray(val)
           ? val
           : Array.isArray(val.data)
-          ? val.data
-          : Array.isArray(val.content)
-          ? val.content
-          : [];
+            ? val.data
+            : Array.isArray(val.content)
+              ? val.content
+              : [];
         setAllSystemSteps(stepsList);
       }
     } catch (err) {
@@ -663,7 +663,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   });
 
   return (
-    <div className="p-6 space-y-5 screen-enter">
+    <div className="p-6 space-y-5">
       {/* Header Trang */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -876,9 +876,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           MODAL ĐIỀU PHỐI & PHÂN CÔNG CHUYÊN NGHIỆP
          ========================================================================= */}
       {selectedTicket && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl md:rounded-3xl w-full max-w-5xl h-[90vh] max-h-[860px] shadow-2xl flex flex-col overflow-hidden my-auto animate-in zoom-in-95 duration-150">
-            
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm overflow-hidden">
+  <div className="bg-white border border-slate-200 rounded-2xl w-[calc(100vw-2rem)] max-w-7xl h-[calc(100dvh-2rem)] shadow-2xl flex flex-col overflow-hidden">
+
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white flex-shrink-0">
               <div className="flex items-center gap-3.5 min-w-0">
@@ -888,7 +888,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono-cf text-[14px] font-extrabold text-gray-900">
-                      Hồ sơ #{((selectedTicket.id || selectedTicket.ticketId) || '').slice(0, 8)}
+                      Hồ sơ 
                     </span>
                     <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border text-amber-700 bg-amber-50 border-amber-200">
                       Chờ Quản lý điều phối
@@ -912,22 +912,20 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                   <button
                     type="button"
                     onClick={() => setModalView('dispatch')}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                      modalView === 'dispatch'
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${modalView === 'dispatch'
                         ? 'bg-white text-orange-600 shadow-xs'
                         : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                      }`}
                   >
                     ⚡ Phân công & Tiếp nhận
                   </button>
                   <button
                     type="button"
                     onClick={() => setModalView('reject')}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                      modalView === 'reject'
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${modalView === 'reject'
                         ? 'bg-white text-red-600 shadow-xs'
                         : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                      }`}
                   >
                     ✕ Từ chối
                   </button>
@@ -935,11 +933,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     <button
                       type="button"
                       onClick={() => setModalView('steps')}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                        modalView === 'steps'
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${modalView === 'steps'
                           ? 'bg-white text-blue-600 shadow-xs'
                           : 'text-gray-600 hover:text-gray-900'
-                      }`}
+                        }`}
                     >
                       Tiến độ ({steps.length})
                     </button>
@@ -960,11 +957,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             {/* Thông báo feedback */}
             {feedback && (
               <div
-                className={`mx-6 mt-4 p-3.5 rounded-2xl border text-[12px] flex items-center justify-between flex-shrink-0 ${
-                  feedback.type === 'success'
+                className={`mx-6 mt-4 p-3.5 rounded-2xl border text-[12px] flex items-center justify-between flex-shrink-0 ${feedback.type === 'success'
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                     : 'bg-red-50 border-red-200 text-red-800'
-                }`}
+                  }`}
               >
                 <span className="font-semibold">{feedback.message}</span>
                 <button onClick={() => setFeedback(null)} className="cursor-pointer font-bold ml-2">
@@ -974,12 +970,12 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             )}
 
             {/* Modal Body - 2 Cột Chuyên Nghiệp */}
-            <div className="overflow-y-auto flex-1 p-6">
-              
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
+
               {/* CHẾ ĐỘ 1: PHÂN CÔNG & ĐIỀU PHỐI CHÍNH */}
               {modalView === 'dispatch' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  
+
                   {/* CỘT TRÁI (5/12): THÔNG TIN HIỆN TRƯỜNG & PHẢN ÁNH */}
                   <div className="lg:col-span-5 space-y-4">
                     <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-4.5 space-y-3.5">
@@ -1061,7 +1057,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
                   {/* CỘT PHẢI (7/12): BIỂU MẪU ĐIỀU PHỐI VÀ PHÂN CÔNG QUY TRÌNH BƯỚC */}
                   <div className="lg:col-span-7 space-y-4">
-                    
+
                     {/* 1. Lựa chọn Phân loại / SubCategory */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-4.5 space-y-3 shadow-xs">
                       <div className="flex items-center justify-between">
@@ -1120,16 +1116,14 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     {/* 2. Đánh dấu tình huống khẩn cấp (isLifeThreatening) - Toggle Card liền mạch */}
                     <div
                       onClick={() => setIsLifeThreatening(!isLifeThreatening)}
-                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between select-none ${
-                        isLifeThreatening
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between select-none ${isLifeThreatening
                           ? 'bg-red-50/90 border-red-300 ring-1 ring-red-300'
                           : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold ${
-                          isLifeThreatening ? 'bg-red-600 text-white shadow-xs' : 'bg-slate-100 text-slate-400'
-                        }`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold ${isLifeThreatening ? 'bg-red-600 text-white shadow-xs' : 'bg-slate-100 text-slate-400'
+                          }`}>
                           🚨
                         </div>
                         <div>
