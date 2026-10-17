@@ -729,7 +729,7 @@ export interface ReportedTicket {
   creatorPhoneNumber?: string;
   images?: string[];
   createdAt: string;
-  duration?: number;
+  deadline: string | null;
   departmentId?: string;
   departmentName?: string;
 }

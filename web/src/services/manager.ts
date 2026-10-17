@@ -13,7 +13,7 @@ export interface TicketStep {
   orderIndex?: number;
   startedAt?: string;
   completedAt?: string;
-  deadline?: string;
+  deadline?: string | null;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -31,6 +31,7 @@ export interface ReviewStepItemPayload {
   notes?: string;
   stepName?: string;
   duration?: number;
+  deadline?: string | null;
 }
 
 export interface ReviewTicketPayload {
@@ -136,7 +137,7 @@ export interface ManagerTicketItem {
   createdBy?: string;
   createdAt?: string;
   steps?: TicketStep[];
-  duration?: any;
+  deadline?: string | null;
 }
 
 export interface PageManagerTickets {
@@ -279,6 +280,7 @@ export async function reviewManagerTicket(
       stepId: s.stepId,
       assigneeId: s.assigneeId,
       orderIndex: typeof s.orderIndex === 'number' ? s.orderIndex : idx + 1,
+      deadline: s.deadline ? s.deadline : null,
       notes: s.notes?.trim() || s.stepName || 'Tiến hành xử lý theo quy trình',
     })),
   };
@@ -546,4 +548,79 @@ export async function getStepsBySubCategory(
     console.warn(`Lỗi khi tải quy trình của subcategory ${subCategoryId}:`, err);
     return [];
   }
+}
+
+/**
+ * 14. Cập nhật trạng thái một bước xử lý
+ * PATCH /api/v1/ticket-steps/{stepId}/status?status=...
+ */
+export async function updateTicketStepStatus(
+  stepId: string,
+  status: string
+): Promise<TicketStep> {
+  return managerRequest<TicketStep>(
+    `/api/v1/ticket-steps/${encodeURIComponent(stepId)}/status?status=${encodeURIComponent(status)}`,
+    {
+      method: 'PATCH',
+    }
+  );
+}
+
+/**
+ * 15. Xóa mềm một bước xử lý
+ * DELETE /api/v1/ticket-steps/{id}
+ */
+export async function deleteTicketStep(
+  id: string
+): Promise<void> {
+  await managerRequest<void>(
+    `/api/v1/ticket-steps/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
+/**
+ * 16. Lấy danh sách các bước xử lý của một vé
+ * GET /api/v1/tickets/{ticketId}/steps (hoặc fallback GET /api/v1/ticket-steps/ticket/{ticketId})
+ */
+export async function getTicketSteps(ticketId: string): Promise<TicketStep[]> {
+  try {
+    const res = await managerRequest<any>(
+      `/api/v1/tickets/${encodeURIComponent(ticketId)}/steps`,
+      { method: 'GET' }
+    );
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.content)) return res.content;
+    if (Array.isArray(res?.data)) return res.data;
+    return [];
+  } catch (err: any) {
+    if (err?.status === 404) {
+      try {
+        const fallback = await managerRequest<any>(
+          `/api/v1/ticket-steps/ticket/${encodeURIComponent(ticketId)}`,
+          { method: 'GET' }
+        );
+        if (Array.isArray(fallback)) return fallback;
+        if (Array.isArray(fallback?.content)) return fallback.content;
+        if (Array.isArray(fallback?.data)) return fallback.data;
+      } catch {
+        // Fallback failed
+      }
+    }
+    console.warn(`Lỗi khi tải danh sách bước xử lý của vé ${ticketId}:`, err);
+    return [];
+  }
+}
+
+/**
+ * 17. Lấy thông tin chi tiết một vé theo ID
+ * GET /api/v1/tickets/{ticketId}
+ */
+export async function getTicketById(ticketId: string): Promise<ManagerTicketItem> {
+  return managerRequest<ManagerTicketItem>(
+    `/api/v1/tickets/${encodeURIComponent(ticketId)}`,
+    { method: 'GET' }
+  );
 }

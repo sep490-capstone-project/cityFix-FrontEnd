@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Ticket, User, getCat, getDept, getUser, statusInfo, sevInfo, dangerInfo, TICKET_HISTORY, DEPARTMENTS } from '../data';
 
 interface Props {
@@ -167,7 +167,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <div className="space-y-2">
               <InfoItem label="Cơ quan" val={dept?.name ?? ticket.departmentId} />
               <InfoItem label="Nhân viên xử lý" val={assignee?.fullName ?? ticket.assigneeId ?? 'Chưa phân công'} />
-              <InfoItem label="Hạn xử lý" val={ticket.deadline ?? '—'} />
+              <InfoItem label="Hạn xử lý" val={ticket.deadline ? (ticket.deadline.includes('T') ? ticket.deadline.replace('T', ' ').slice(0, 16) : ticket.deadline) : (ticket.status === 'INITIATED' ? 'Chưa thiết lập (Chờ duyệt)' : '—')} />
             </div>
           </Section>
 
