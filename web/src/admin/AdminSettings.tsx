@@ -401,7 +401,7 @@ function SubCategoryMgmt({
       categoryId: selectedCatId || (cats[0]?.id || cats[0]?.categoryId || ''),
       name: '',
       description: '',
-      sla: 24,
+      sla: 0,
       priority: 'LOW',
       isActive: true,
     });
@@ -415,7 +415,7 @@ function SubCategoryMgmt({
       categoryId: s.categoryId || '',
       name: s.name || '',
       description: s.description || '',
-      sla: s.sla ?? 24,
+      sla: s.sla ?? 0,
       priority: (s.priority as SubCategoryPriority) || 'LOW',
       isActive: (s.isActive ?? s.active) !== false,
     });
@@ -707,21 +707,17 @@ function SubCategoryMgmt({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Thời gian SLA (giờ) <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={form.sla}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, sla: Number(e.target.value) || 0 }))
-              }
-              placeholder="24"
-              className={inpModal}
-            />
-          </div>
+          {modal === 'edit' && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] flex items-center justify-between">
+                <span>Thời gian SLA (giờ)</span>
+                <span className="text-[10px] font-normal text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">Tự động tính từ các bước</span>
+              </label>
+              <div className="bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold">
+                {form.sla ?? 0} giờ
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">

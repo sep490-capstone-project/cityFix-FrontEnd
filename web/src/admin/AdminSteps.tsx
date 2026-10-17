@@ -307,7 +307,10 @@ export default function AdminSteps() {
       setEditingStep(null);
       form.resetFields();
 
-      await loadSteps(filterSubCategoryId);
+      await Promise.all([
+        loadSteps(filterSubCategoryId),
+        loadSubCategories(),
+      ]);
     } catch (error) {
       message.error(
         error instanceof Error
@@ -325,7 +328,10 @@ export default function AdminSteps() {
       await adminStepApi.delete(stepId);
 
       message.success('Xóa Step thành công.');
-      await loadSteps(filterSubCategoryId);
+      await Promise.all([
+        loadSteps(filterSubCategoryId),
+        loadSubCategories(),
+      ]);
     } catch (error) {
       message.error(
         error instanceof Error
@@ -396,7 +402,7 @@ export default function AdminSteps() {
       key: 'duration',
       width: 120,
       render: (value: number) => (
-        <Tag color="blue">{value ?? 0}</Tag>
+        <Tag color="blue">{value ?? 0} giờ</Tag>
       ),
     },
     {
@@ -473,8 +479,8 @@ export default function AdminSteps() {
         <Alert
           type="info"
           showIcon
-          message="Thông tin thời lượng"
-          description="Đơn vị của duration chưa được xác nhận. Hãy kiểm tra với backend trước khi hiển thị phút hoặc giờ."
+          message="Thời lượng quy trình xử lý"
+          description="Thời lượng của mỗi bước được tính bằng đơn vị Giờ (h). Tổng thời lượng của các bước active sẽ được Backend tự động tính thành SLA cho danh mục con tương ứng."
           style={{ marginBottom: 20 }}
         />
 
@@ -595,7 +601,7 @@ export default function AdminSteps() {
 
           <Form.Item
             name="duration"
-            label="Thời lượng (duration)"
+            label="Thời lượng (giờ)"
             rules={[
               {
                 required: true,
@@ -607,7 +613,8 @@ export default function AdminSteps() {
               min={0}
               precision={0}
               style={{ width: '100%' }}
-              placeholder="Nhập giá trị duration"
+              placeholder="Nhập số giờ (VD: 24)"
+              addonAfter="giờ"
             />
           </Form.Item>
         </Form>

@@ -156,7 +156,15 @@ export default function TicketDetailScreen({
       submittedAt: ticketData.createdAt ? new Date(ticketData.createdAt).toLocaleString('vi-VN') : 'Vừa xong',
       locationMethod: ticketData.locationMethod === 'MANUAL_ENTRY' ? 'MANUAL_PIN' : 'AUTO_GPS',
       agency: ticketData.departmentName || 'Chờ phân công cơ quan xử lý',
-      deadline: ticketData.duration ? `${ticketData.duration} giờ` : 'Theo quy định',
+      deadline: ticketData.deadline
+        ? new Date(ticketData.deadline).toLocaleString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          })
+        : (ticketData.status === 'INITIATED' ? 'Chờ duyệt / Chưa có hạn chót' : 'Chưa có hạn chót'),
       upvotes: 0,
       severity: ((ticketData.severity || 'MEDIUM').toUpperCase() as any),
       status: stInfo.statusText,

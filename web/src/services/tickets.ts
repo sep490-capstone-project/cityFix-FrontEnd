@@ -22,6 +22,7 @@ export interface TicketResponse {
   reviewNote?: string;
   createdBy: string;
   createdAt: string;
+  deadline: string | null;
 }
 
 export interface PageTicketResponse {

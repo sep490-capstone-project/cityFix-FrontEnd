@@ -80,6 +80,7 @@ export default function TicketList({ onOpenTicket }: Props) {
         updatedAt: new Date(t.createdAt).toLocaleString('vi-VN'),
         isLifeThreatening: t.dangerLevel === 'CRITICAL' || t.severity === 'CRITICAL',
         needsManualReview: t.status === 'INITIATED',
+        deadline: t.deadline ? new Date(t.deadline).toLocaleString('vi-VN') : (t.status === 'INITIATED' ? 'Chưa thiết lập (Chờ duyệt)' : undefined),
       }));
 
   const filtered = displayTickets.filter((t) => {

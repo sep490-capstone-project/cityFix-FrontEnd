@@ -15,6 +15,11 @@ import {
   rejectManagerTicket,
   getSuggestedDepartments,
   updateStepDeadline,
+  updateTicketStepDeadlines,
+  updateTicketStepStatus,
+  deleteTicketStep,
+  getTicketSteps,
+  getTicketById,
   reorderTicketSteps,
   ManagerTicketItem,
   SuggestedDepartment,
@@ -273,7 +278,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           duration: st.duration || 24,
           orderIndex: idx + 1,
           assigneeId: staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
-          notes: st.description || st.stepName || (idx === 0 ? 'Tiến hành khảo sát hiện trường trong 24h' : 'Tiến hành xử lý khắc phục'),
+          deadline: null,
+          notes: st.description || st.stepName || (idx === 0 ? 'Tiến hành khảo sát hiện trường' : 'Tiến hành xử lý khắc phục'),
         }));
         setReviewSteps(formatted);
       } else if (ticket?.steps && ticket.steps.length > 0) {
@@ -284,6 +290,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             duration: 24,
             orderIndex: idx + 1,
             assigneeId: st.assigneeId || staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
+            deadline: st.deadline || null,
             notes: st.notes || 'Tiến hành xử lý hiện trường',
           }))
         );
@@ -434,6 +441,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         duration: candidate?.duration || 24,
         orderIndex: nextIndex,
         assigneeId: staffList[0]?.userId || '',
+        deadline: null,
         notes: candidate?.description || 'Tiến hành xử lý theo quy trình',
       },
     ]);
@@ -529,6 +537,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         stepId: s.stepId.trim(),
         assigneeId: s.assigneeId.trim(),
         orderIndex: idx + 1,
+        deadline: s.deadline?.trim() ? s.deadline.trim() : null,
         notes: (s.notes?.trim() || s.stepName || 'Tiến hành xử lý theo quy trình'),
       })),
     };
@@ -604,18 +613,66 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     }
   }
 
+  // Fetch lại steps và ticket sau khi cập nhật để đồng bộ dữ liệu Backend mới nhất (không tự tính cascade ở FE)
+  async function refreshTicketAndSteps(ticketId: string) {
+    if (!ticketId) return;
+    try {
+      const [updatedSteps, updatedTicket] = await Promise.all([
+        getTicketSteps(ticketId).catch(() => null),
+        getTicketById(ticketId).catch(() => null),
+      ]);
+      if (updatedSteps && updatedSteps.length > 0) {
+        setSteps(updatedSteps);
+      }
+      if (updatedTicket) {
+        setSelectedTicket((prev) => (prev ? { ...prev, ...updatedTicket } : updatedTicket));
+        setTickets((prev) =>
+          prev.map((t) => ((t.id || t.ticketId) === ticketId ? { ...t, ...updatedTicket } : t))
+        );
+      }
+    } catch (fetchErr) {
+      console.warn('Lỗi khi fetch lại ticket và steps:', fetchErr);
+    }
+  }
+
   // 3. Cập nhật deadline cho bước
   async function handleUpdateStepDeadline(stepId: string, deadlineStr: string) {
     if (!selectedTicket || !stepId) return;
+    const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
     try {
       await updateStepDeadline(stepId, { deadline: deadlineStr });
-      setSteps((prev) =>
-        prev.map((s) => ((s.stepId || s.id) === stepId ? { ...s, deadline: deadlineStr } : s))
-      );
       setEditingStepDeadline(null);
       setFeedback({ type: 'success', message: 'Đã cập nhật thời hạn hoàn thành cho bước xử lý.' });
+      await refreshTicketAndSteps(ticketId);
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || 'Cập nhật thời hạn thất bại.' });
+    }
+  }
+
+  // 3.1. Cập nhật trạng thái cho bước (PATCH /api/v1/ticket-steps/{stepId}/status?status=...)
+  async function handleUpdateStepStatus(stepId: string, newStatus: string) {
+    if (!selectedTicket || !stepId) return;
+    const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
+    try {
+      await updateTicketStepStatus(stepId, newStatus);
+      setFeedback({ type: 'success', message: `Đã cập nhật trạng thái bước xử lý thành ${newStatus}.` });
+      await refreshTicketAndSteps(ticketId);
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Cập nhật trạng thái bước thất bại.' });
+    }
+  }
+
+  // 3.2. Xóa mềm bước (DELETE /api/v1/ticket-steps/{id})
+  async function handleDeleteStep(stepId: string) {
+    if (!selectedTicket || !stepId) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bước xử lý này? Backend sẽ tự động tính lại hạn chót tổng.')) return;
+    const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
+    try {
+      await deleteTicketStep(stepId);
+      setFeedback({ type: 'success', message: 'Đã xóa bước xử lý thành công.' });
+      await refreshTicketAndSteps(ticketId);
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Xóa bước xử lý thất bại.' });
     }
   }
 
@@ -1163,7 +1220,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             <span>📋</span> Quy trình xử lý & Phân công cán bộ ({reviewSteps.length} bước)
                           </h4>
                           <p className="text-[11px] text-slate-500 mt-0.5">
-                            Hạn chót tự động tính theo công thức: <code className="font-mono text-orange-600 font-bold bg-orange-50 px-1 py-0.5 rounded">now + duration</code>
+                            Hạn chót từng bước có thể nhập hoặc bỏ trống. Khi bỏ trống, Backend sẽ tự động tính dây chuyền theo thứ tự và thời lượng quy định.
                           </p>
                         </div>
 
@@ -1300,8 +1357,28 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       onChange={(e) =>
                                         handleReviewStepFieldChange(idx, 'notes', e.target.value)
                                       }
-                                      placeholder="Ví dụ: Tiến hành khảo sát hiện trường trong 24h"
+                                      placeholder="Ví dụ: Tiến hành khảo sát hiện trường"
                                       className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-[11px] font-medium text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
+                                    />
+                                  </div>
+
+                                  {/* Hạn chót bước tùy chọn (Backend tự tính nếu để trống) */}
+                                  <div className="col-span-1 md:col-span-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+                                        Hạn chót bước (Tùy chọn)
+                                      </label>
+                                      <span className="text-[10px] text-slate-400">
+                                        Để trống: Backend tự tính theo thời lượng ({st.duration || 24}h)
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="datetime-local"
+                                      value={st.deadline || ''}
+                                      onChange={(e) =>
+                                        handleReviewStepFieldChange(idx, 'deadline', e.target.value || null)
+                                      }
+                                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
                                     />
                                   </div>
                                 </div>
@@ -1403,6 +1480,19 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     </div>
                   </div>
 
+                  {/* Hiển thị hạn chót tổng của Ticket */}
+                  <div className="flex items-center justify-between p-3.5 bg-orange-50/80 border border-orange-200 rounded-xl text-xs">
+                    <div>
+                      <span className="font-bold text-orange-950">Hạn chót tổng của Ticket: </span>
+                      <span className="font-mono-cf font-extrabold text-orange-700 ml-1">
+                        {selectedTicket.deadline ? selectedTicket.deadline.replace('T', ' ').slice(0, 16) : 'Chưa thiết lập (tính theo các bước)'}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-orange-600">
+                      Backend tự động tính lại hạn chót tổng khi các bước thay đổi hoặc bị hủy/xóa
+                    </span>
+                  </div>
+
                   {steps.length === 0 ? (
                     <div className="p-12 text-center bg-slate-50 border border-dashed border-slate-300 rounded-2xl text-slate-500 text-[13px] space-y-1">
                       <p className="font-bold text-slate-700">Chưa có các bước xử lý nào được kích hoạt</p>
@@ -1418,42 +1508,59 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         return (
                           <div
                             key={stepId}
-                            className="flex items-center gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition-colors"
+                            className="flex flex-col md:flex-row md:items-center gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition-colors"
                           >
-                            <div className="flex flex-col items-center gap-0.5">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveStep(idx, 'up')}
-                                className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                title="Đưa lên trên"
-                              >
-                                ▲
-                              </button>
-                              <span className="font-mono-cf text-[12px] font-bold text-slate-600 w-5 text-center">
-                                {idx + 1}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={idx === steps.length - 1}
-                                onClick={() => handleMoveStep(idx, 'down')}
-                                className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                title="Hạ xuống dưới"
-                              >
-                                ▼
-                              </button>
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[13px] font-bold text-slate-900 truncate">
-                                {st.stepName || `Bước ${idx + 1}`}
-                              </p>
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                Cán bộ phụ trách: <span className="font-semibold text-slate-700">{st.assigneeName || 'Chưa phân công'}</span> · Trạng thái: {st.status || 'Chờ thực hiện'}
-                              </p>
-                            </div>
-
                             <div className="flex items-center gap-2">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveStep(idx, 'up')}
+                                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
+                                  title="Đưa lên trên"
+                                >
+                                  ▲
+                                </button>
+                                <span className="font-mono-cf text-[12px] font-bold text-slate-600 w-5 text-center">
+                                  {idx + 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={idx === steps.length - 1}
+                                  onClick={() => handleMoveStep(idx, 'down')}
+                                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
+                                  title="Hạ xuống dưới"
+                                >
+                                  ▼
+                                </button>
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-bold text-slate-900 truncate">
+                                  {st.stepName || `Bước ${idx + 1}`}
+                                </p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  Cán bộ: <span className="font-semibold text-slate-700">{st.assigneeName || 'Chưa phân công'}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap ml-auto">
+                              {/* Trạng thái step (PATCH /api/v1/ticket-steps/{stepId}/status?status=...) */}
+                              <select
+                                value={st.status || 'PENDING'}
+                                onChange={(e) => handleUpdateStepStatus(stepId, e.target.value)}
+                                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none hover:border-orange-500"
+                                title="Cập nhật trạng thái bước"
+                              >
+                                <option value="PENDING">PENDING (Chờ xử lý)</option>
+                                <option value="IN_PROGRESS">IN_PROGRESS (Đang xử lý)</option>
+                                <option value="RESOLVED">RESOLVED (Đã xử lý)</option>
+                                <option value="TRANSFERRED">TRANSFERRED (Chuyển tiếp)</option>
+                                <option value="CANCELLED">CANCELLED (Hủy bước)</option>
+                              </select>
+
+                              {/* Chỉnh sửa deadline (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) */}
                               {isEditingDeadline ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -1483,8 +1590,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </button>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono-cf text-[11px] text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono-cf text-[11px] text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg">
                                     {st.deadline ? st.deadline.replace('T', ' ') : 'Chưa có hạn chót'}
                                   </span>
                                   <button
@@ -1501,6 +1608,16 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </button>
                                 </div>
                               )}
+
+                              {/* Xóa step (DELETE /api/v1/ticket-steps/{id}) */}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStep(stepId)}
+                                className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg cursor-pointer"
+                                title="Xóa bước này (Backend sẽ tính lại hạn chót tổng)"
+                              >
+                                Xóa
+                              </button>
                             </div>
                           </div>
                         );
