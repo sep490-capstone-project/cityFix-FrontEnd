@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  TICKETS,
   SEV_MAP,
   DANGER_MAP,
-  CATEGORIES as FALLBACK_CATEGORIES,
-  DEPARTMENTS as FALLBACK_DEPARTMENTS,
-  ROUTING_RULES,
   sevInfo,
   dangerInfo,
 } from '../data';
@@ -122,13 +118,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             : Array.isArray(val.data)
               ? val.data
               : [];
-        if (list.length > 0) {
-          setTickets(list);
-        } else {
-          setTickets(getFallbackInitiatedTickets());
-        }
+        setTickets(list);
       } else {
-        setTickets(getFallbackInitiatedTickets());
+        setTickets([]);
       }
 
       // 2. Categories
@@ -146,15 +138,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           loadedCats = list;
         }
       }
-      if (loadedCats.length === 0) {
-        loadedCats = FALLBACK_CATEGORIES.map((c) => ({
-          id: c.categoryId,
-          categoryId: c.categoryId,
-          name: c.name,
-          description: c.description,
-          isActive: c.isActive,
-        }));
-      }
       setCategories(loadedCats);
 
       // 3. Departments
@@ -171,16 +154,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         if (list.length > 0) {
           loadedDepts = list.filter((d: any) => d && d.departmentId);
         }
-      }
-      if (loadedDepts.length === 0) {
-        loadedDepts = FALLBACK_DEPARTMENTS.map((d) => ({
-          departmentId: d.departmentId,
-          name: d.name,
-          level: d.level,
-          contactEmail: d.contactEmail,
-          phoneNumber: d.phoneNumber,
-          isActive: true,
-        }));
       }
       setDepartments(loadedDepts);
 
@@ -261,14 +234,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         stepsFromApi = await getStepsBySubCategory(subCatId);
       }
 
-      // Nếu API subcategory chưa có bước, thử lọc từ allSystemSteps
+      // Nếu API subcategory chưa có bước, thử lọc từ allSystemSteps theo subCategoryId
       if (stepsFromApi.length === 0 && subCatId) {
         stepsFromApi = allSystemSteps.filter((st) => st.subCategoryId === subCatId);
-      }
-
-      // Nếu vẫn chưa có và hệ thống có các bước quy trình, lấy gợi ý từ allSystemSteps
-      if (stepsFromApi.length === 0 && allSystemSteps.length > 0) {
-        stepsFromApi = allSystemSteps.slice(0, 2);
       }
 
       if (stepsFromApi && stepsFromApi.length > 0) {
@@ -279,7 +247,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           orderIndex: idx + 1,
           assigneeId: staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
           deadline: null,
-          notes: st.description || st.stepName || (idx === 0 ? 'Tiến hành khảo sát hiện trường' : 'Tiến hành xử lý khắc phục'),
+          notes: st.description || st.stepName || '',
         }));
         setReviewSteps(formatted);
       } else if (ticket?.steps && ticket.steps.length > 0) {
@@ -291,7 +259,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             orderIndex: idx + 1,
             assigneeId: st.assigneeId || staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
             deadline: st.deadline || null,
-            notes: st.notes || 'Tiến hành xử lý hiện trường',
+            notes: st.notes || '',
           }))
         );
       } else {
@@ -331,16 +299,16 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         return prev;
       });
     } else {
-      currentCatId = categories[0]?.id || categories[0]?.categoryId || 'CAT001';
+      currentCatId = categories[0]?.id || categories[0]?.categoryId || '';
     }
 
-    const defaultDept = departments[0]?.departmentId || 'D002';
+    const defaultDept = departments[0]?.departmentId || '';
 
     setReviewCatId(currentCatId);
     setTargetDeptId(defaultDept);
-    setSelectedDeptIds([defaultDept]);
+    setSelectedDeptIds(defaultDept ? [defaultDept] : []);
     setIsLifeThreatening(Boolean(ticket.isLifeThreatening));
-    setReviewNote('Đã tiếp nhận và giao các cán bộ phụ trách xử lý khẩn cấp');
+    setReviewNote('');
     setRejectReason('');
     setRejectCatId(currentCatId);
     setRejectDeptId('');
@@ -358,10 +326,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       });
     }
 
-    if (foundSubCatIds.length === 0 && allSubCategories.length > 0) {
-      // Gợi ý subcategory đầu tiên nếu vé chưa có
-      foundSubCatIds.push(allSubCategories[0].subCategoryId);
-    }
     setSelectedSubCategoryIds(foundSubCatIds);
 
     // 3. Tải quy trình các bước của SubCategory
@@ -384,28 +348,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           setSelectedDeptIds([suggestions[0].departmentId]);
         }
       } else {
-        const rule = ROUTING_RULES.find((r) => r.categoryId === catId);
-        if (rule) {
-          const dept =
-            departments.find((d) => d.departmentId === rule.departmentId) ||
-            FALLBACK_DEPARTMENTS.find((d) => d.departmentId === rule.departmentId);
-          if (dept) {
-            setSuggestedDepts([
-              {
-                departmentId: dept.departmentId,
-                name: dept.name,
-                level: dept.level,
-                contactEmail: dept.contactEmail,
-                phoneNumber: dept.phoneNumber,
-                isActive: true,
-              },
-            ]);
-            setTargetDeptId(dept.departmentId);
-            setSelectedDeptIds([dept.departmentId]);
-          }
-        } else {
-          setSuggestedDepts([]);
-        }
+        setSuggestedDepts([]);
       }
     } catch (e) {
       console.warn('Lỗi khi tải phòng ban gợi ý:', e);
@@ -442,7 +385,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         orderIndex: nextIndex,
         assigneeId: staffList[0]?.userId || '',
         deadline: null,
-        notes: candidate?.description || 'Tiến hành xử lý theo quy trình',
+        notes: candidate?.description || candidate?.stepName || '',
       },
     ]);
   }
@@ -1599,7 +1542,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     onClick={() =>
                                       setEditingStepDeadline({
                                         stepId,
-                                        deadline: st.deadline ? st.deadline.slice(0, 16) : '2026-10-15T18:00',
+                                        deadline: st.deadline ? st.deadline.slice(0, 16) : '',
                                       })
                                     }
                                     className="px-2.5 py-1 text-[11px] font-semibold border border-slate-300 bg-white hover:bg-slate-50 rounded-lg cursor-pointer"
@@ -1695,55 +1638,5 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       )}
     </div>
   );
-}
-
-// Dữ liệu mẫu hồ sơ chờ duyệt (INITIATED) bám sát theo tài liệu BE
-function getFallbackInitiatedTickets(): ManagerTicketItem[] {
-  return [
-    {
-      id: 'ticket-oga-001',
-      ticketId: 'ticket-oga-001',
-      description: 'Ổ gà lớn giữa đường gây nguy hiểm cho người tham gia giao thông',
-      address: '123 Đường Lê Lợi, Phường Bến Nghé, Quận 1, TP.HCM',
-      status: 'INITIATED',
-      severity: 'HIGH',
-      dangerLevel: 'DANGEROUS',
-      categoryId: 'CAT001',
-      categoryName: 'Hạ tầng giao thông',
-      subCategoryId: 'sub-oga-001',
-      subCategoryName: 'Ổ gà, sụt lún mặt đường',
-      subCategories: [
-        {
-          id: 'sub-oga-001',
-          subCategoryId: 'sub-oga-001',
-          name: 'Ổ gà, sụt lún mặt đường',
-        },
-      ],
-      isLifeThreatening: false,
-      createdAt: '2026-10-15T09:30:00Z',
-    },
-    {
-      id: 'ticket-ngap-002',
-      ticketId: 'ticket-ngap-002',
-      description: 'Cống thoát nước bị nghẹt rác gây ngập cục bộ sau mưa',
-      address: '45 Đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM',
-      status: 'INITIATED',
-      severity: 'MEDIUM',
-      dangerLevel: 'CAUTION',
-      categoryId: 'CAT002',
-      categoryName: 'Thoát nước & Ngập úng',
-      subCategoryId: 'sub-cong-002',
-      subCategoryName: 'Cống nghẹt, ứ đọng nước',
-      subCategories: [
-        {
-          id: 'sub-cong-002',
-          subCategoryId: 'sub-cong-002',
-          name: 'Cống nghẹt, ứ đọng nước',
-        },
-      ],
-      isLifeThreatening: false,
-      createdAt: '2026-10-15T10:15:00Z',
-    },
-  ];
 }
 
