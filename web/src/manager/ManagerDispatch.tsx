@@ -37,7 +37,7 @@ import {
 } from '../services';
 
 interface Props {
-  onOpenTicket: (id: string) => void;
+  onOpenTicket: (ticketOrId: any) => void;
 }
 
 type ModalView = 'dispatch' | 'reject' | 'steps';
@@ -857,7 +857,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => onOpenTicket(ticketId)}
+                          onClick={() => onOpenTicket(t)}
                           className="px-3 py-1.5 rounded-xl border border-gray-300 hover:border-gray-400 text-gray-700 text-[11px] font-bold transition-colors cursor-pointer"
                         >
                           Chi tiết
@@ -1451,117 +1451,143 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         return (
                           <div
                             key={stepId}
-                            className="flex flex-col md:flex-row md:items-center gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition-colors"
+                            className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition-colors space-y-2.5"
                           >
-                            <div className="flex items-center gap-2">
-                              <div className="flex flex-col items-center gap-0.5">
-                                <button
-                                  type="button"
-                                  disabled={idx === 0}
-                                  onClick={() => handleMoveStep(idx, 'up')}
-                                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                  title="Đưa lên trên"
-                                >
-                                  ▲
-                                </button>
-                                <span className="font-mono-cf text-[12px] font-bold text-slate-600 w-5 text-center">
-                                  {idx + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={idx === steps.length - 1}
-                                  onClick={() => handleMoveStep(idx, 'down')}
-                                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                  title="Hạ xuống dưới"
-                                >
-                                  ▼
-                                </button>
-                              </div>
-
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[13px] font-bold text-slate-900 truncate">
-                                  {st.stepName || `Bước ${idx + 1}`}
-                                </p>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                  Cán bộ: <span className="font-semibold text-slate-700">{st.assigneeName || 'Chưa phân công'}</span>
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-wrap ml-auto">
-                              {/* Trạng thái step (PATCH /api/v1/ticket-steps/{stepId}/status?status=...) */}
-                              <select
-                                value={st.status || 'PENDING'}
-                                onChange={(e) => handleUpdateStepStatus(stepId, e.target.value)}
-                                className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none hover:border-orange-500"
-                                title="Cập nhật trạng thái bước"
-                              >
-                                <option value="PENDING">PENDING (Chờ xử lý)</option>
-                                <option value="IN_PROGRESS">IN_PROGRESS (Đang xử lý)</option>
-                                <option value="RESOLVED">RESOLVED (Đã xử lý)</option>
-                                <option value="TRANSFERRED">TRANSFERRED (Chuyển tiếp)</option>
-                                <option value="CANCELLED">CANCELLED (Hủy bước)</option>
-                              </select>
-
-                              {/* Chỉnh sửa deadline (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) */}
-                              {isEditingDeadline ? (
-                                <div className="flex items-center gap-1.5">
-                                  <input
-                                    type="datetime-local"
-                                    value={editingStepDeadline.deadline}
-                                    onChange={(e) =>
-                                      setEditingStepDeadline({
-                                        ...editingStepDeadline,
-                                        deadline: e.target.value,
-                                      })
-                                    }
-                                    className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] outline-none"
-                                  />
+                            <div className="flex flex-col md:flex-row md:items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex flex-col items-center gap-0.5">
                                   <button
                                     type="button"
-                                    onClick={() => handleUpdateStepDeadline(stepId, editingStepDeadline.deadline)}
-                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                                    disabled={idx === 0}
+                                    onClick={() => handleMoveStep(idx, 'up')}
+                                    className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
+                                    title="Đưa lên trên"
                                   >
-                                    Lưu
+                                    ▲
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingStepDeadline(null)}
-                                    className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer"
-                                  >
-                                    Hủy
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono-cf text-[11px] text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg">
-                                    {st.deadline ? st.deadline.replace('T', ' ') : 'Chưa có hạn chót'}
+                                  <span className="font-mono-cf text-[12px] font-bold text-slate-600 w-5 text-center">
+                                    {idx + 1}
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setEditingStepDeadline({
-                                        stepId,
-                                        deadline: st.deadline ? st.deadline.slice(0, 16) : '',
-                                      })
-                                    }
-                                    className="px-2.5 py-1 text-[11px] font-semibold border border-slate-300 bg-white hover:bg-slate-50 rounded-lg cursor-pointer"
+                                    disabled={idx === steps.length - 1}
+                                    onClick={() => handleMoveStep(idx, 'down')}
+                                    className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
+                                    title="Hạ xuống dưới"
                                   >
-                                    Đổi hạn
+                                    ▼
                                   </button>
                                 </div>
-                              )}
 
-                              {/* Xóa step (DELETE /api/v1/ticket-steps/{id}) */}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteStep(stepId)}
-                                className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg cursor-pointer"
-                                title="Xóa bước này (Backend sẽ tính lại hạn chót tổng)"
-                              >
-                                Xóa
-                              </button>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[13px] font-bold text-slate-900 truncate">
+                                    {st.stepName || `Bước ${idx + 1}`}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 mt-0.5">
+                                    Cán bộ: <span className="font-semibold text-slate-700">{st.assigneeName || 'Chưa phân công'}</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-wrap ml-auto">
+                                {/* Trạng thái step (PATCH /api/v1/ticket-steps/{stepId}/status?status=...) */}
+                                <select
+                                  value={st.status || 'PENDING'}
+                                  onChange={(e) => handleUpdateStepStatus(stepId, e.target.value)}
+                                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none hover:border-orange-500"
+                                  title="Cập nhật trạng thái bước"
+                                >
+                                  <option value="PENDING">PENDING (Chờ xử lý)</option>
+                                  <option value="IN_PROGRESS">IN_PROGRESS (Đang xử lý)</option>
+                                  <option value="RESOLVED">RESOLVED (Đã xử lý)</option>
+                                  <option value="TRANSFERRED">TRANSFERRED (Chuyển tiếp)</option>
+                                  <option value="CANCELLED">CANCELLED (Hủy bước)</option>
+                                </select>
+
+                                {/* Chỉnh sửa deadline (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) */}
+                                {isEditingDeadline ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="datetime-local"
+                                      value={editingStepDeadline.deadline}
+                                      onChange={(e) =>
+                                        setEditingStepDeadline({
+                                          ...editingStepDeadline,
+                                          deadline: e.target.value,
+                                        })
+                                      }
+                                      className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] outline-none"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateStepDeadline(stepId, editingStepDeadline.deadline)}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                                    >
+                                      Lưu
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingStepDeadline(null)}
+                                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer"
+                                    >
+                                      Hủy
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono-cf text-[11px] text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-lg">
+                                      {st.deadline ? st.deadline.replace('T', ' ') : 'Chưa có hạn chót'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditingStepDeadline({
+                                          stepId,
+                                          deadline: st.deadline ? st.deadline.slice(0, 16) : '',
+                                        })
+                                      }
+                                      className="px-2.5 py-1 text-[11px] font-semibold border border-slate-300 bg-white hover:bg-slate-50 rounded-lg cursor-pointer"
+                                    >
+                                      Đổi hạn
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Xóa step (DELETE /api/v1/ticket-steps/{id}) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStep(stepId)}
+                                  className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg cursor-pointer"
+                                  title="Xóa bước này (Backend sẽ tính lại hạn chót tổng)"
+                                >
+                                  Xóa
+                                </button>
+                              </div>
                             </div>
+
+                            {/* Bằng chứng đã có của bước */}
+                            {st.evidences && st.evidences.length > 0 && (
+                              <div className="pt-2 border-t border-slate-200/60">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1.5">
+                                  📎 Bằng chứng nghiệm thu ({st.evidences.length} ảnh):
+                                </span>
+                                <div className="flex gap-2 flex-wrap">
+                                  {st.evidences.map((ev, i) => (
+                                    <div
+                                      key={ev.evidenceId || i}
+                                      className="group relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs"
+                                    >
+                                      <img src={ev.imageUrl} alt="Bằng chứng" className="w-full h-full object-cover" />
+                                      {ev.resolutionNote && (
+                                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-[8px] text-white overflow-hidden leading-tight flex items-center justify-center text-center">
+                                          {ev.resolutionNote}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

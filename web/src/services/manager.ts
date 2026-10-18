@@ -3,6 +3,15 @@ import { getAccessToken, ApiError, ApiResponse } from './auth';
 
 const BASE_URL = APP_CONFIG.API_BASE_URL.replace(/\/+$/, '');
 
+export interface TicketStepEvidence {
+  evidenceId: string;
+  ticketStepId: string;
+  imageUrl: string;
+  resolutionNote?: string;
+  staffName?: string;
+  createdAt: string;
+}
+
 export interface TicketStep {
   id?: string;
   stepId?: string;
@@ -15,6 +24,7 @@ export interface TicketStep {
   completedAt?: string;
   deadline?: string | null;
   notes?: string;
+  evidences?: TicketStepEvidence[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -164,6 +174,11 @@ async function managerRequest<T>(
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+
+  // Tránh ghi đè Content-Type khi gửi FormData để trình duyệt tự thêm boundary
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  }
 
   if (token && !headers.Authorization) {
     headers.Authorization = `Bearer ${token}`;
@@ -583,12 +598,12 @@ export async function deleteTicketStep(
 
 /**
  * 16. Lấy danh sách các bước xử lý của một vé
- * GET /api/v1/tickets/{ticketId}/steps (hoặc fallback GET /api/v1/ticket-steps/ticket/{ticketId})
+ * GET /api/v1/ticket-steps/ticket/{ticketId} (hoặc fallback GET /api/v1/tickets/{ticketId}/steps)
  */
 export async function getTicketSteps(ticketId: string): Promise<TicketStep[]> {
   try {
     const res = await managerRequest<any>(
-      `/api/v1/tickets/${encodeURIComponent(ticketId)}/steps`,
+      `/api/v1/ticket-steps/ticket/${encodeURIComponent(ticketId)}`,
       { method: 'GET' }
     );
     if (Array.isArray(res)) return res;
@@ -599,7 +614,7 @@ export async function getTicketSteps(ticketId: string): Promise<TicketStep[]> {
     if (err?.status === 404) {
       try {
         const fallback = await managerRequest<any>(
-          `/api/v1/ticket-steps/ticket/${encodeURIComponent(ticketId)}`,
+          `/api/v1/tickets/${encodeURIComponent(ticketId)}/steps`,
           { method: 'GET' }
         );
         if (Array.isArray(fallback)) return fallback;
@@ -623,4 +638,34 @@ export async function getTicketById(ticketId: string): Promise<ManagerTicketItem
     `/api/v1/tickets/${encodeURIComponent(ticketId)}`,
     { method: 'GET' }
   );
+}
+
+/**
+ * 18. Upload bằng chứng xử lý cho bước
+ * POST /api/v1/ticket-steps/{stepId}/evidences?resolutionNote=...
+ * Body: FormData (files)
+ * Tự động chuyển bước sang RESOLVED theo mô tả backend
+ */
+export async function uploadStepEvidence(
+  stepId: string,
+  files: File[],
+  resolutionNote?: string
+): Promise<TicketStepEvidence[]> {
+  const formData = new FormData();
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+
+  const query = resolutionNote ? `?resolutionNote=${encodeURIComponent(resolutionNote)}` : '';
+  const res = await managerRequest<any>(
+    `/api/v1/ticket-steps/${encodeURIComponent(stepId)}/evidences${query}`,
+    {
+      method: 'POST',
+      body: formData,
+    }
+  );
+
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.data)) return res.data;
+  return [];
 }

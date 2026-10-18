@@ -1,425 +1,611 @@
-import { useState } from 'react';
-import { Ticket, User, getCat, getDept, getUser, statusInfo, sevInfo, dangerInfo, TICKET_HISTORY, DEPARTMENTS } from '../data';
+import { useState, useEffect } from 'react';
+import { Ticket, User, getCat, getDept, statusInfo, sevInfo, dangerInfo } from '../data';
+import {
+  getTicketSteps,
+  getTicketById,
+  updateTicketStepStatus,
+  deleteTicketStep,
+  uploadStepEvidence,
+  TicketStep,
+  TicketStepEvidence,
+  ManagerTicketItem,
+  ApiError,
+} from '../services';
 
 interface Props {
-  ticket: Ticket;
+  ticket?: Ticket | ManagerTicketItem;
+  ticketId?: string;
   currentUser: User;
   onBack: () => void;
 }
 
-export default function ManagerTicketDetail({ ticket: initialTicket, currentUser, onBack }: Props) {
-  const [ticket, setTicket] = useState(initialTicket);
-  const [showResForm, setShowResForm] = useState(false);
-  const [resNote, setResNote] = useState('');
-  const [managerActionDone, setManagerActionDone] = useState(false);
-  const [resImg, setResImg] = useState('');
-  const [done, setDone] = useState(false);
-  // Flow 3: progress chat
-  const [progressNotes, setProgressNotes] = useState<{ text: string; time: string }[]>([]);
-  const [progressInput, setProgressInput] = useState('');
-  // Flow 3: transfer dept
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [transferDept, setTransferDept] = useState('');
-  const [transferReason, setTransferReason] = useState('');
-  const [transferred, setTransferred] = useState(false);
+export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: propTicketId, currentUser, onBack }: Props) {
+  const actualTicketId = (initialTicket as any)?.ticketId || (initialTicket as any)?.id || propTicketId || '';
+  
+  const [ticket, setTicket] = useState<any>(initialTicket || null);
+  const [steps, setSteps] = useState<TicketStep[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const cat    = getCat(ticket.categoryId);
-  const dept   = getDept(ticket.departmentId);
-  const si     = statusInfo(ticket.status);
-  const sv     = sevInfo(ticket.severity);
-  const di     = dangerInfo(ticket.dangerLevel);
-  const aiSv   = sevInfo(ticket.aiSeverity ?? '');
-  const aiDi   = dangerInfo(ticket.aiDangerLevel ?? '');
-  const assignee = getUser(ticket.assigneeId ?? '');
-  const history = TICKET_HISTORY[ticket.ticketId] ?? [];
+  // Modal Upload bằng chứng
+  const [evidenceStep, setEvidenceStep] = useState<TicketStep | null>(null);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [uploading, setUploading] = useState(false);
 
-  const canStartWork = ticket.status === 'ASSIGNED' && ticket.assigneeId === currentUser.userId;
-  const canSubmitRes = ticket.status === 'IN_PROGRESS' && ticket.assigneeId === currentUser.userId;
+  // Modal xem ảnh phóng to
+  const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
 
-  function startWork() {
-    setTicket({ ...ticket, status: 'IN_PROGRESS' });
+  // Tải chi tiết Ticket và các bước từ Backend
+  async function loadData() {
+    if (!actualTicketId) return;
+    setLoading(true);
+    try {
+      const [ticketRes, stepsRes] = await Promise.allSettled([
+        getTicketById(actualTicketId),
+        getTicketSteps(actualTicketId),
+      ]);
+
+      if (ticketRes.status === 'fulfilled' && ticketRes.value) {
+        setTicket((prev: any) => ({ ...prev, ...ticketRes.value }));
+      }
+      if (stepsRes.status === 'fulfilled' && Array.isArray(stepsRes.value)) {
+        setSteps(stepsRes.value);
+      }
+    } catch (err) {
+      console.warn('Lỗi khi tải dữ liệu chi tiết vé:', err);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function submitResolution() {
-    if (!resNote.trim()) return;
-    setTicket({ ...ticket, status: 'RESOLVED' });
-    setShowResForm(false);
-    setDone(true);
+  useEffect(() => {
+    if (initialTicket) {
+      setTicket(initialTicket);
+    }
+    loadData();
+  }, [actualTicketId, initialTicket]);
+
+  // Xử lý chọn file ảnh bằng chứng
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setEvidenceFiles((prev) => [...prev, ...files]);
+
+    const newPreviews = files.map((file) => URL.createObjectURL(file));
+    setEvidencePreviews((prev) => [...prev, ...newPreviews]);
   }
 
-  function addProgressNote() {
-    if (!progressInput.trim()) return;
-    setProgressNotes(n => [...n, { text: progressInput, time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) }]);
-    setProgressInput('');
+  function removeFile(index: number) {
+    setEvidenceFiles((prev) => prev.filter((_, i) => i !== index));
+    setEvidencePreviews((prev) => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
   }
 
-  function handleTransfer() {
-    if (!transferDept || !transferReason.trim()) return;
-    setTransferred(true);
-    setShowTransfer(false);
-    setTicket(t => ({ ...t, departmentId: transferDept }));
+  // Upload bằng chứng (POST /api/v1/ticket-steps/{stepId}/evidences?resolutionNote=...)
+  async function handleSubmitEvidence() {
+    const stepId = evidenceStep?.stepId || evidenceStep?.id;
+    if (!stepId) return;
+    if (evidenceFiles.length === 0) {
+      setFeedback({ type: 'error', message: 'Vui lòng chọn ít nhất 1 ảnh bằng chứng xử lý.' });
+      return;
+    }
+
+    setUploading(true);
+    setFeedback(null);
+    try {
+      await uploadStepEvidence(stepId, evidenceFiles, resolutionNote.trim());
+      setFeedback({
+        type: 'success',
+        message: `Đã upload ${evidenceFiles.length} bằng chứng thành công! Bước đã được chuyển sang ĐÃ GIẢI QUYẾT (RESOLVED).`,
+      });
+
+      // Dọn dẹp form
+      setEvidenceStep(null);
+      setEvidenceFiles([]);
+      evidencePreviews.forEach((url) => URL.revokeObjectURL(url));
+      setEvidencePreviews([]);
+      setResolutionNote('');
+
+      // Reload dữ liệu mới nhất
+      await loadData();
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Tải lên bằng chứng thất bại. Vui lòng thử lại.';
+      setFeedback({ type: 'error', message: msg });
+    } finally {
+      setUploading(false);
+    }
   }
+
+  // Cập nhật trạng thái bước (PATCH /api/v1/ticket-steps/{stepId}/status?status=...)
+  async function handleUpdateStatus(stepId: string, newStatus: string) {
+    try {
+      await updateTicketStepStatus(stepId, newStatus);
+      setFeedback({ type: 'success', message: `Đã cập nhật trạng thái bước sang ${newStatus}.` });
+      await loadData();
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Không thể cập nhật trạng thái bước.';
+      setFeedback({ type: 'error', message: msg });
+    }
+  }
+
+  // Xóa mềm bước (DELETE /api/v1/ticket-steps/{id})
+  async function handleDeleteStep(stepId: string) {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bước xử lý này? Backend sẽ tự động tính lại hạn chót tổng của Ticket.')) return;
+    try {
+      await deleteTicketStep(stepId);
+      setFeedback({ type: 'success', message: 'Đã xóa bước xử lý thành công.' });
+      await loadData();
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Không thể xóa bước xử lý.';
+      setFeedback({ type: 'error', message: msg });
+    }
+  }
+
+  const cat = getCat(ticket?.categoryId);
+  const dept = getDept(ticket?.departmentId);
+  const si = statusInfo(ticket?.status || 'PENDING');
+  const sv = sevInfo(ticket?.severity || 'LOW');
+  const di = dangerInfo(ticket?.dangerLevel || 'SAFE');
 
   return (
-    <div className="p-6 max-w-5xl mx-auto screen-enter space-y-4">
-      {/* Back + header */}
-      <div className="flex items-center gap-3">
-        <button onClick={onBack}
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-[13px] font-semibold transition-colors">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-          Quay lại
+    <div className="p-6 max-w-6xl mx-auto space-y-5 screen-enter">
+      {/* Thanh Điều hướng & Thao tác Đầu trang */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-[13px] font-semibold transition-all shadow-xs cursor-pointer active:scale-95"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Quay lại
+          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-[18px] font-black text-gray-900 tracking-tight">
+                Hồ sơ #{actualTicketId ? actualTicketId.slice(0, 8) : '—'}
+              </h2>
+              <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1.5 ${si.cls}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
+                {si.label}
+              </span>
+              {ticket?.isLifeThreatening && (
+                <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border border-red-300 bg-red-50 text-red-700 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                  Ưu tiên khẩn cấp
+                </span>
+              )}
+            </div>
+            <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
+              📍 {ticket?.address || 'Chưa xác định địa chỉ hiện trường'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={loadData}
+          disabled={loading}
+          className="p-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-2 text-xs font-semibold"
+          title="Làm mới dữ liệu"
+        >
+          <svg className={`w-4 h-4 ${loading ? 'animate-spin text-orange-500' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+          </svg>
+          {loading ? 'Đang tải...' : 'Làm mới'}
         </button>
-        <div className="flex-1" />
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border inline-flex items-center gap-1.5 ${si.cls}`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
-          {si.label}
-        </span>
       </div>
 
-      {/* Life-threatening banner */}
-      {ticket.isLifeThreatening && (
-        <div className="relative rounded-2xl overflow-hidden border border-red-500/40">
-          <div className="absolute inset-0 bg-gradient-to-r from-red-50 to-white" />
-          <div className="absolute inset-0 opacity-[0.03]" style={{ background: 'repeating-linear-gradient(-45deg,#ef4444,#ef4444 8px,transparent 8px,transparent 16px)' }} />
-          <div className="relative flex items-center gap-3 px-5 py-3">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <p className="text-[13px] font-bold text-red-300">Cảnh báo: Hồ sơ này có nguy cơ đe dọa tính mạng người dân</p>
-          </div>
+      {/* Thông báo Feedback */}
+      {feedback && (
+        <div
+          className={`p-3.5 rounded-2xl border text-[12px] flex items-center justify-between shadow-xs ${
+            feedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          <span className="font-semibold">{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="cursor-pointer font-bold ml-2">
+            ✕
+          </button>
         </div>
       )}
 
-      {done && (
-        <div className="relative rounded-2xl overflow-hidden border border-green-500/40">
-          <div className="absolute inset-0 bg-green-50" />
-          <div className="relative flex items-center gap-3 px-5 py-3">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <p className="text-[13px] font-bold text-green-400">Đã ghi nhận kết quả xử lý. Hồ sơ chuyển sang trạng thái Đã giải quyết.</p>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2 space-y-4">
-          {/* A – Thông tin hồ sơ */}
-          <Section title="A — Thông tin hồ sơ">
-            <InfoGrid items={[
-              { label: 'ID hồ sơ', val: ticket.ticketId, mono: true },
-              { label: 'Danh mục', val: cat?.name },
-              { label: 'Địa chỉ', val: ticket.address },
-              { label: 'Phường / Quận', val: `${ticket.ward} — ${ticket.district}` },
-              { label: 'Tỉnh / TP', val: ticket.province },
-              { label: 'Ngày tạo', val: ticket.createdAt, mono: true },
-            ]} />
-            <div className="flex gap-2 flex-wrap mt-2">
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${sv.cls}`}>{sv.label}</span>
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${di.cls}`}>{di.label}</span>
-              {ticket.isLifeThreatening && (
-                <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400">Đe dọa tính mạng</span>
-              )}
+      {/* Bố cục 2 Cột Chuyên Nghiệp */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* CỘT TRÁI (5/12): THÔNG TIN PHẢN ÁNH TỪ NGƯỜI DÂN */}
+        <div className="lg:col-span-5 space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                <span>📸</span> Thông tin hiện trường
+              </h3>
+              <span className="font-mono-cf text-[11px] text-gray-400">
+                {ticket?.createdAt ? ticket.createdAt.replace('T', ' ').slice(0, 16) : '—'}
+              </span>
             </div>
-          </Section>
 
-          {/* B – Vị trí */}
-          <Section title="B — Vị trí & Bằng chứng">
-            <div className="rounded-xl overflow-hidden bg-gray-50 border border-gray-300 h-36 flex items-center justify-center">
-              <div className="text-center space-y-1">
-                <svg className="mx-auto text-gray-300" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <p className="text-[11px] text-gray-300">{ticket.address}, {ticket.ward}</p>
+            {/* Ảnh hiện trường ban đầu */}
+            {ticket?.imageUrl || (ticket?.evidenceUrls && ticket.evidenceUrls.length > 0) ? (
+              <div
+                onClick={() => setZoomImageUrl(ticket.imageUrl || ticket.evidenceUrls[0])}
+                className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-100 aspect-video group cursor-pointer shadow-2xs"
+              >
+                <img
+                  src={ticket?.imageUrl || ticket?.evidenceUrls?.[0]}
+                  alt="Hiện trường"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                  🔍 Bấm để phóng to
+                </div>
               </div>
-            </div>
-            {(ticket.evidenceUrls?.length ?? 0) > 0 && (
-              <div className="flex gap-2 mt-2 flex-wrap">
-                {ticket.evidenceUrls!.map((u, i) => (
-                  <div key={i} className="w-20 h-20 rounded-xl bg-gray-50 border border-gray-300 flex items-center justify-center text-gray-300">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                  </div>
-                ))}
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400 text-xs bg-gray-50/50">
+                Không có ảnh chụp hiện trường
               </div>
             )}
-          </Section>
 
-          {/* C – Người báo cáo */}
-          <Section title="C — Người báo cáo">
-            <InfoGrid items={[
-              { label: 'Họ tên', val: ticket.reporterName },
-              { label: 'Điện thoại', val: ticket.reporterPhone, mono: true },
-              { label: 'Email', val: ticket.reporterEmail, mono: true },
-              { label: 'Kênh gửi', val: ticket.reportedVia },
-            ]} />
-          </Section>
-
-          {/* D – Kết quả AI (read-only) */}
-          <Section title="D — Phân tích AI (chỉ xem)">
-            <div className="relative rounded-xl border border-gray-200 bg-gray-50/60 px-4 py-3 grid grid-cols-2 gap-3">
-              <div className="absolute top-2 right-2">
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-lg border border-gray-300 text-gray-400 bg-white uppercase tracking-wider">Chỉ xem</span>
-              </div>
-              <InfoItem label="Mức độ AI" val={aiSv.label} badge cls={aiSv.cls} />
-              <InfoItem label="Nguy hiểm AI" val={aiDi.label} badge cls={aiDi.cls} />
-              <InfoItem label="Điểm xác minh" val={ticket.aiVerificationScore != null ? String(ticket.aiVerificationScore) : '—'} />
-              <InfoItem label="Cần xét duyệt thủ công" val={ticket.needsManualReview ? 'Có' : 'Không'} />
+            {/* Nội dung phản ánh */}
+            <div>
+              <span className="text-[11px] font-bold text-gray-400 block mb-1">Mô tả sự cố:</span>
+              <p className="text-[12px] text-gray-800 leading-relaxed bg-gray-50/70 border border-gray-200 rounded-xl p-3 font-medium">
+                {ticket?.description || 'Không có mô tả chi tiết'}
+              </p>
             </div>
-          </Section>
+
+            {/* Địa chỉ */}
+            <div>
+              <span className="text-[11px] font-bold text-gray-400 block mb-1">Địa điểm:</span>
+              <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-gray-50/70 border border-gray-200 rounded-xl p-3">
+                <span className="text-orange-500 flex-shrink-0 mt-0.5">📍</span>
+                <span className="font-medium">{ticket?.address || '—'}</span>
+              </div>
+            </div>
+
+            {/* Phân loại & Mức độ */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
+                <span className="text-[10px] font-bold text-gray-400 block mb-1">Danh mục</span>
+                <span className="text-[11px] font-bold text-gray-800 truncate block">
+                  {ticket?.categoryName || cat?.name || 'Chưa phân loại'}
+                </span>
+              </div>
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
+                <span className="text-[10px] font-bold text-gray-400 block mb-1">Hạn chót tổng</span>
+                <span className="font-mono-cf text-[11px] font-extrabold text-orange-700 truncate block">
+                  {ticket?.deadline ? ticket.deadline.replace('T', ' ').slice(0, 16) : 'Tính theo các bước'}
+                </span>
+              </div>
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
+                <span className="text-[10px] font-bold text-gray-400 block mb-1">Mức nghiêm trọng</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${sv.cls}`}>
+                  {sv.label}
+                </span>
+              </div>
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
+                <span className="text-[10px] font-bold text-gray-400 block mb-1">Mức nguy hiểm</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${di.cls}`}>
+                  {di.label}
+                </span>
+              </div>
+            </div>
+
+            {/* Ý kiến chỉ đạo của Quản lý */}
+            {ticket?.reviewNote && (
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900">
+                <span className="font-bold block mb-0.5">💬 Ý kiến chỉ đạo điều phối:</span>
+                <p className="italic">{ticket.reviewNote}</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-4">
-          {/* E – Phân công (read-only) */}
-          <Section title="E — Phân công (chỉ xem)">
-            <div className="space-y-2">
-              <InfoItem label="Cơ quan" val={dept?.name ?? ticket.departmentId} />
-              <InfoItem label="Nhân viên xử lý" val={assignee?.fullName ?? ticket.assigneeId ?? 'Chưa phân công'} />
-              <InfoItem label="Hạn xử lý" val={ticket.deadline ? (ticket.deadline.includes('T') ? ticket.deadline.replace('T', ' ').slice(0, 16) : ticket.deadline) : (ticket.status === 'INITIATED' ? 'Chưa thiết lập (Chờ duyệt)' : '—')} />
-            </div>
-          </Section>
-
-          
-          {/* QUẢN LÝ STAFF & TIMELINE (MANAGER) */}
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-            <div className="px-5 pt-3.5 pb-3 border-b border-gray-200 flex justify-between items-center">
-              <SectionLabel>Gán Staff & Timeline</SectionLabel>
-            </div>
-            <div className="px-5 py-4 space-y-4">
+        {/* CỘT PHẢI (7/12): TIẾN ĐỘ CÁC BƯỚC XỬ LÝ & BẰNG CHỨNG NGHIỆM THU */}
+        <div className="lg:col-span-7 space-y-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">Phân công Staff cho bước xử lý</label>
-                <select disabled={managerActionDone} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500/50 disabled:opacity-50">
-                  <option value="">-- Chọn Staff --</option>
-                  <option value="U010">Trần Minh Quân (Tổ kỹ thuật)</option>
-                  <option value="U011">Lê Văn B (Tổ hiện trường)</option>
-                </select>
+                <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>📋</span> Quy trình xử lý & Nghiệm thu ({steps.length} bước)
+                </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Theo dõi tiến độ, xem ảnh bằng chứng giải quyết và quản lý trạng thái từng bước
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">Hạn xử lý (Timeline)</label>
-                  <input type="datetime-local" defaultValue="2026-10-10T12:00" disabled={managerActionDone} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500/50 disabled:opacity-50" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">Ghi chú điều phối</label>
-                  <input type="text" placeholder="Yêu cầu xử lý gấp..." disabled={managerActionDone} className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500/50 disabled:opacity-50" />
-                </div>
-              </div>
-              {!managerActionDone ? (
-                <button onClick={() => { setManagerActionDone(true); alert('Đã cập nhật phân công và timeline thành công!'); }} className="bg-blue-600/10 text-blue-700 border border-blue-600/20 rounded-xl px-4 py-2 text-[12px] font-bold hover:bg-blue-600/20 transition-colors">
-                  Cập nhật thay đổi
-                </button>
-              ) : (
-                <button disabled className="bg-green-600/10 text-green-700 border border-green-600/20 rounded-xl px-4 py-2 text-[12px] font-bold">
-                  Đã lưu thay đổi
-                </button>
-              )}
             </div>
+
+            {/* Danh sách các bước */}
+            {steps.length === 0 ? (
+              <div className="py-12 text-center bg-gray-50 border border-dashed border-gray-300 rounded-xl text-gray-400 text-xs space-y-1">
+                <p className="font-bold text-gray-600">Hồ sơ chưa có bước xử lý nào được thiết lập</p>
+                <p className="text-[11px] text-gray-400">
+                  Các bước sẽ được khởi tạo khi Quản lý thực hiện phê duyệt tại trang Điều phối.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {steps.map((st, idx) => {
+                  const stepId = st.stepId || st.id || `step-${idx}`;
+                  const isResolved = st.status === 'RESOLVED';
+                  const evidences = st.evidences || [];
+
+                  return (
+                    <div
+                      key={stepId}
+                      className={`border rounded-2xl p-4 transition-all shadow-2xs space-y-3 ${
+                        isResolved
+                          ? 'bg-emerald-50/30 border-emerald-200'
+                          : st.status === 'IN_PROGRESS'
+                          ? 'bg-orange-50/30 border-orange-200 ring-1 ring-orange-200'
+                          : 'bg-slate-50/70 border-slate-200'
+                      }`}
+                    >
+                      {/* Tiêu đề bước */}
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200/60">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`w-6 h-6 rounded-full font-mono text-[11px] font-bold flex items-center justify-center shadow-xs text-white ${
+                              isResolved ? 'bg-emerald-600' : 'bg-orange-600'
+                            }`}
+                          >
+                            {st.orderIndex || idx + 1}
+                          </span>
+                          <div>
+                            <h4 className="text-[13px] font-extrabold text-gray-900">{st.stepName || `Bước ${idx + 1}`}</h4>
+                            <p className="text-[11px] text-gray-500">
+                              Cán bộ phụ trách: <span className="font-semibold text-gray-800">{st.assigneeName || 'Chưa phân công'}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Thao tác Trạng thái & Xóa */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Dropdown đổi trạng thái bước */}
+                          <select
+                            value={st.status || 'PENDING'}
+                            onChange={(e) => handleUpdateStatus(stepId, e.target.value)}
+                            className="bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-700 outline-none hover:border-orange-500 focus:border-orange-500 transition-colors shadow-2xs"
+                            title="Cập nhật trạng thái bước"
+                          >
+                            <option value="PENDING">PENDING (Chờ xử lý)</option>
+                            <option value="IN_PROGRESS">IN_PROGRESS (Đang xử lý)</option>
+                            <option value="RESOLVED">RESOLVED (Đã xử lý)</option>
+                            <option value="TRANSFERRED">TRANSFERRED (Chuyển tiếp)</option>
+                            <option value="CANCELLED">CANCELLED (Hủy bước)</option>
+                          </select>
+
+                          {/* Nút Xóa bước dành cho Manager */}
+                          {currentUser.role === 'MANAGER' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStep(stepId)}
+                              className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
+                              title="Xóa bước này"
+                            >
+                              Xóa
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Chi tiết Hạn chót & Ghi chú của bước */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-600">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-400">⏱️ Hạn chót:</span>
+                          <span className="font-mono-cf font-semibold text-gray-800">
+                            {st.deadline ? st.deadline.replace('T', ' ').slice(0, 16) : 'Chưa có hạn chót'}
+                          </span>
+                        </div>
+                        {st.notes && (
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-gray-400">📝 Nhiệm vụ:</span>
+                            <span className="font-medium text-gray-700 truncate">{st.notes}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* KHU VỰC BẰNG CHỨNG (EVIDENCES GALLERY) */}
+                      <div className="pt-2 border-t border-gray-200/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-gray-500 flex items-center gap-1">
+                            <span>📎</span> Bằng chứng nghiệm thu ({evidences.length} ảnh):
+                          </span>
+
+                          {/* Nút Upload bằng chứng */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEvidenceStep(st);
+                              setEvidenceFiles([]);
+                              setEvidencePreviews([]);
+                              setResolutionNote('');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
+                          >
+                            <span>+</span> Tải lên bằng chứng
+                          </button>
+                        </div>
+
+                        {evidences.length === 0 ? (
+                          <p className="text-[11px] italic text-gray-400 bg-white/70 border border-dashed border-gray-200 rounded-xl p-2.5 text-center">
+                            Chưa có ảnh bằng chứng nghiệm thu cho bước này.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+                            {evidences.map((ev, evIdx) => (
+                              <div
+                                key={ev.evidenceId || evIdx}
+                                className="group relative rounded-xl overflow-hidden border border-gray-200 bg-white shadow-2xs hover:border-orange-400 transition-all"
+                              >
+                                <div
+                                  onClick={() => setZoomImageUrl(ev.imageUrl)}
+                                  className="aspect-video bg-gray-100 overflow-hidden cursor-pointer"
+                                >
+                                  <img
+                                    src={ev.imageUrl}
+                                    alt="Bằng chứng"
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  />
+                                </div>
+                                <div className="p-2 space-y-0.5">
+                                  {ev.resolutionNote && (
+                                    <p className="text-[10px] font-medium text-gray-800 truncate" title={ev.resolutionNote}>
+                                      💬 {ev.resolutionNote}
+                                    </p>
+                                  )}
+                                  <p className="font-mono-cf text-[9px] text-gray-400 truncate">
+                                    {ev.staffName || 'Cán bộ'} · {ev.createdAt ? ev.createdAt.slice(0, 10) : ''}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+        </div>
+      </div>
 
-          {/* Action buttons */}
-
-          {canStartWork && (
-            <div className="bg-white border border-orange-500/20 rounded-2xl p-4 space-y-3">
-              <p className="text-[11px] text-orange-400/80 font-semibold uppercase tracking-wider">Hồ sơ được giao cho bạn</p>
-              <p className="text-[12px] text-gray-500">Nhấn nút bên dưới để bắt đầu xử lý hồ sơ này</p>
-              <button onClick={startWork}
-                className="w-full relative rounded-xl overflow-hidden px-4 py-3 active:scale-[0.97] transition-transform">
-                <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
-                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
-                <span className="relative text-white font-bold uppercase tracking-wide text-[13px]">Bắt đầu xử lý</span>
-              </button>
-            </div>
-          )}
-
-          {canSubmitRes && !showResForm && (
-            <div className="bg-white border border-green-500/20 rounded-2xl p-4 space-y-3">
-              <p className="text-[11px] text-green-400/80 font-semibold uppercase tracking-wider">Đang xử lý</p>
-              <p className="text-[12px] text-gray-500">Khi hoàn tất, ghi nhận kết quả xử lý</p>
-              <button onClick={() => setShowResForm(true)}
-                className="w-full relative rounded-xl overflow-hidden px-4 py-3 active:scale-[0.97] transition-transform">
-                <div className="absolute inset-0 bg-gradient-to-r from-green-800 to-green-600" />
-                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
-                <span className="relative text-white font-bold uppercase tracking-wide text-[13px]">Ghi nhận kết quả</span>
-              </button>
-            </div>
-          )}
-
-          {/* Flow 3: Transfer dept (Phát hiện vượt thẩm quyền) */}
-          {(canSubmitRes || canStartWork) && !done && !transferred && (
-            <div className="bg-white border border-amber-500/20 rounded-2xl overflow-hidden card-depth">
-              <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
-                <p className="text-[11px] font-bold text-amber-400/80 uppercase tracking-wider">Phát hiện vượt thẩm quyền?</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Nếu hồ sơ thuộc thẩm quyền cơ quan khác, chuyển giao ngay</p>
+      {/* =========================================================================
+          MODAL UPLOAD BẰNG CHỨNG XỬ LÝ (POST /api/v1/ticket-steps/{stepId}/evidences)
+         ========================================================================= */}
+      {evidenceStep && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-gray-200 w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header Modal */}
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/80 flex-shrink-0">
+              <div>
+                <h3 className="font-display text-[14px] font-bold text-gray-900 uppercase tracking-tight">
+                  Tải lên bằng chứng xử lý
+                </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Bước: <span className="font-semibold text-orange-600">{evidenceStep.stepName || 'Xử lý'}</span>
+                </p>
               </div>
-              {!showTransfer ? (
-                <div className="px-5 py-3">
-                  <button onClick={() => setShowTransfer(true)}
-                    className="w-full py-2.5 rounded-xl border border-amber-500/25 text-amber-400 text-[12px] font-bold uppercase tracking-wide hover:bg-amber-500/8 transition-colors active:scale-[0.97]">
-                    Chuyển giao cơ quan khác
-                  </button>
-                </div>
-              ) : (
-                <div className="px-5 py-3 space-y-2.5">
-                  <select value={transferDept} onChange={e => setTransferDept(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500/50">
-                    <option value="">— Chọn cơ quan đúng —</option>
-                    {DEPARTMENTS.filter(d => d.departmentId !== currentUser.departmentId).map(d =>
-                      <option key={d.departmentId} value={d.departmentId}>{d.name}</option>
-                    )}
-                  </select>
-                  <textarea value={transferReason} onChange={e => setTransferReason(e.target.value)}
-                    rows={2} placeholder="Lý do chuyển giao..."
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 placeholder-zinc-700 outline-none focus:border-orange-500/50 resize-none" />
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowTransfer(false)}
-                      className="flex-1 py-2 rounded-xl border border-gray-300 text-gray-600 text-[12px] font-semibold">Hủy</button>
-                    <button onClick={handleTransfer} disabled={!transferDept || !transferReason.trim()}
-                      className="flex-1 relative rounded-xl overflow-hidden py-2 active:scale-[0.97] transition-transform disabled:opacity-40">
-                      <div className="absolute inset-0 bg-gradient-to-r from-amber-800 to-amber-600" />
-                      <span className="relative text-white font-bold text-[12px]">Chuyển giao</span>
-                    </button>
+              <button
+                type="button"
+                onClick={() => setEvidenceStep(null)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Nội dung Modal */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Chọn file ảnh */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
+                  Hình ảnh kết quả / Bằng chứng nghiệm thu <span className="text-red-500">*</span>
+                </label>
+                <div className="border-2 border-dashed border-gray-300 hover:border-orange-500 rounded-2xl p-4 text-center bg-gray-50/50 hover:bg-orange-50/20 transition-all cursor-pointer relative">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  <div className="space-y-1">
+                    <span className="text-2xl block">📸</span>
+                    <p className="text-[12px] font-bold text-gray-700">Bấm để chọn hoặc kéo thả nhiều ảnh vào đây</p>
+                    <p className="text-[10px] text-gray-400">Hỗ trợ JPG, PNG, WEBP</p>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-
-          {transferred && (
-            <div className="relative rounded-2xl overflow-hidden border border-amber-500/30">
-              <div className="absolute inset-0 bg-amber-50" />
-              <div className="relative flex items-center gap-3 px-5 py-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <p className="text-[13px] font-bold text-amber-400">Đã chuyển giao sang {getDept(ticket.departmentId)?.name ?? ticket.departmentId}</p>
               </div>
-            </div>
-          )}
 
-          {/* Flow 3: Progress chat while IN_PROGRESS */}
-          {ticket.status === 'IN_PROGRESS' && !done && (
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-              <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
-                <SectionLabel>Cập nhật tiến độ</SectionLabel>
-              </div>
-              <div className="px-5 py-3 space-y-2.5">
-                {progressNotes.length > 0 && (
-                  <div className="space-y-2 max-h-36 overflow-y-auto scrollbar-thin">
-                    {progressNotes.map((n, i) => (
-                      <div key={i} className="bg-gray-50 rounded-xl px-3 py-2">
-                        <p className="text-[12px] text-gray-700">{n.text}</p>
-                        <p className="font-mono-cf text-[10px] text-gray-400 mt-0.5">{n.time} · {currentUser.fullName}</p>
+              {/* Danh sách ảnh xem trước */}
+              {evidencePreviews.length > 0 && (
+                <div>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1.5">
+                    Ảnh đã chọn ({evidencePreviews.length} ảnh):
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {evidencePreviews.map((url, i) => (
+                      <div key={i} className="relative rounded-xl overflow-hidden border border-gray-200 aspect-video group">
+                        <img src={url} alt={`Preview ${i}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] opacity-90 hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                          title="Xóa ảnh này"
+                        >
+                          ✕
+                        </button>
                       </div>
                     ))}
                   </div>
-                )}
-                <div className="flex gap-2">
-                  <input value={progressInput} onChange={e => setProgressInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addProgressNote()}
-                    placeholder="Nhập cập nhật tiến độ..."
-                    className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-[12px] text-gray-900 placeholder-zinc-700 outline-none focus:border-orange-500/50" />
-                  <button onClick={addProgressNote}
-                    className="px-3 py-2 rounded-xl bg-orange-500/15 border border-orange-500/20 text-orange-400 text-[12px] font-bold hover:bg-orange-500/20 transition-colors">
-                    Gửi
-                  </button>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Resolution form */}
-          {showResForm && (
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-              <div className="px-5 pt-4 pb-3 border-b border-gray-200">
-                <SectionLabel>Bằng chứng xử lý</SectionLabel>
+              {/* Ghi chú kết quả xử lý (resolutionNote) */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
+                  Ghi chú kết quả xử lý (resolutionNote)
+                </label>
+                <textarea
+                  rows={3}
+                  value={resolutionNote}
+                  onChange={(e) => setResolutionNote(e.target.value)}
+                  placeholder="Ví dụ: Đã khắc phục xong ổ gà, dặm vá thảm nhựa và vệ sinh khu vực mặt đường..."
+                  className="w-full bg-gray-50 focus:bg-white border border-gray-300 rounded-xl p-3 text-[12px] text-gray-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all font-medium"
+                />
               </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">URL ảnh sau xử lý (tùy chọn)</label>
-                  <input value={resImg} onChange={e => setResImg(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-[12px] text-gray-900 placeholder-zinc-700 outline-none focus:border-orange-500/50 transition-colors" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block mb-1.5">Ghi chú xử lý <span className="text-red-500">*</span></label>
-                  <textarea value={resNote} onChange={e => setResNote(e.target.value)}
-                    rows={4} placeholder="Mô tả công việc đã thực hiện..."
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-[12px] text-gray-900 placeholder-zinc-700 outline-none focus:border-orange-500/50 transition-colors resize-none" />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowResForm(false)}
-                    className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-[12px] text-gray-600 font-semibold hover:text-gray-800 transition-colors">
-                    Hủy
-                  </button>
-                  <button onClick={submitResolution} disabled={!resNote.trim()}
-                    className="flex-1 relative rounded-xl overflow-hidden px-3 py-2.5 active:scale-[0.97] transition-transform disabled:opacity-40">
-                    <div className="absolute inset-0 bg-gradient-to-r from-green-800 to-green-600" />
-                    <span className="relative text-white font-bold text-[12px]">Xác nhận</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* F – Timeline */}
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-            <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
-              <SectionLabel>F — Lịch sử hồ sơ</SectionLabel>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
+                ℹ️ <strong>Lưu ý:</strong> Sau khi tải lên bằng chứng thành công, Backend sẽ tự động cập nhật bước xử lý sang trạng thái <strong>RESOLVED (Đã xử lý)</strong>.
+              </div>
             </div>
-            {history.length === 0
-              ? <p className="px-5 py-5 text-[12px] text-gray-300">Chưa có lịch sử</p>
-              : (
-                <div className="px-5 py-4 space-y-3 relative before:absolute before:left-[22px] before:top-4 before:bottom-4 before:w-px before:bg-gray-100/60">
-                  {history.map((h, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="w-4 h-4 rounded-full border-2 border-gray-300 bg-white flex-shrink-0 mt-0.5 z-10" />
-                      <div className="min-w-0">
-                        <p className="text-[12px] text-gray-700">{h.note}</p>
-                        <p className="font-mono-cf text-[10px] text-gray-400 mt-0.5">{h.time} · {h.actor}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            }
+
+            {/* Footer Modal */}
+            <div className="px-5 py-3.5 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setEvidenceStep(null)}
+                className="px-4 py-2 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-[12px] font-bold transition-all cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={uploading || evidenceFiles.length === 0}
+                onClick={handleSubmitEvidence}
+                className="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-[12px] transition-all shadow-md shadow-orange-600/25 disabled:opacity-50 cursor-pointer active:scale-95 flex items-center gap-1.5"
+              >
+                <span>{uploading ? 'Đang tải lên...' : '✓ Xác nhận tải lên'}</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Modal Xem Ảnh Phóng To */}
+      {zoomImageUrl && (
+        <div
+          onClick={() => setZoomImageUrl(null)}
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 cursor-zoom-out animate-in fade-in"
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <img src={zoomImageUrl} alt="Phóng to" className="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl" />
+            <button
+              onClick={() => setZoomImageUrl(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-900 font-bold flex items-center justify-center shadow-lg hover:bg-gray-100 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-      <div className="px-5 pt-3.5 pb-3 border-b border-gray-200">
-        <SectionLabel>{title}</SectionLabel>
-      </div>
-      <div className="px-5 py-4">{children}</div>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex flex-col gap-0.5 opacity-70">
-        <div className="h-0.5 w-3 rounded-full bg-orange-500 opacity-90" />
-        <div className="h-0.5 w-3 rounded-full bg-orange-500 opacity-50" />
-      </div>
-      <p className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-[0.12em]">{children}</p>
-    </div>
-  );
-}
-
-function InfoGrid({ items }: { items: { label: string; val?: string; mono?: boolean }[] }) {
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      {items.map(it => <InfoItem key={it.label} label={it.label} val={it.val} mono={it.mono} />)}
-    </div>
-  );
-}
-
-function InfoItem({ label, val, mono, badge, cls }: { label: string; val?: string; mono?: boolean; badge?: boolean; cls?: string }) {
-  return (
-    <div>
-      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-0.5">{label}</p>
-      {badge && cls
-        ? <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${cls}`}>{val}</span>
-        : <p className={`text-[12px] text-gray-800 ${mono ? 'font-mono-cf' : ''}`}>{val ?? '—'}</p>
-      }
-    </div>
-  );
-}
-

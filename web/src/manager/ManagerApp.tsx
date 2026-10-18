@@ -109,10 +109,17 @@ export default function ManagerApp({ userId, onLogout }: Props) {
     };
   }, [userId]);
 
-  const selectedTicket = TICKETS.find(t => t.ticketId === selectedId);
+  const [selectedTicketData, setSelectedTicketData] = useState<any>(null);
 
-  function openTicket(id: string) {
-    setSelectedId(id);
+  function openTicket(ticketOrId: any) {
+    if (typeof ticketOrId === 'object' && ticketOrId !== null) {
+      setSelectedId(ticketOrId.id || ticketOrId.ticketId || '');
+      setSelectedTicketData(ticketOrId);
+    } else {
+      setSelectedId(ticketOrId);
+      const found = TICKETS.find(t => t.ticketId === ticketOrId);
+      setSelectedTicketData(found || null);
+    }
     setPage('ticket-detail');
   }
 
@@ -227,13 +234,13 @@ export default function ManagerApp({ userId, onLogout }: Props) {
           {page === 'tickets' && <ManagerTickets currentUser={currentUser} onOpenTicket={openTicket} />}
           {page === 'dispatch' && <ManagerDispatch onOpenTicket={openTicket} />}
           {page === 'staff' && <ManagerStaff currentUser={currentUser} />}
-          {page === 'ticket-detail' && selectedTicket && (
-            <ManagerTicketDetail ticket={selectedTicket} currentUser={currentUser} onBack={() => setPage('tickets')} />
-          )}
-          {page === 'ticket-detail' && !selectedTicket && (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-gray-400">Không tìm thấy hồ sơ</p>
-            </div>
+          {page === 'ticket-detail' && (
+            <ManagerTicketDetail
+              ticketId={selectedId || ''}
+              ticket={selectedTicketData}
+              currentUser={currentUser}
+              onBack={() => setPage('tickets')}
+            />
           )}
           {page === 'profile' && (
             <ManagerProfile currentUser={currentUser} onProfileUpdated={handleProfileUpdated} />
