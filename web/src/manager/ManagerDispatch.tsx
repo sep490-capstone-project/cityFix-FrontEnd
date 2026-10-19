@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
   SEV_MAP,
-  DANGER_MAP,
   sevInfo,
-  dangerInfo,
+  priorityInfo,
 } from '../data';
 import {
   getManagerInitiatedTickets,
@@ -93,7 +92,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   // Search & Filter
   const [search, setSearch] = useState('');
   const [sevFilter, setSevFilter] = useState<string>('all');
-  const [dangerFilter, setDangerFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
 
   // Load danh mục, phòng ban, cán bộ, và danh sách vé chờ duyệt
   async function fetchInitialData() {
@@ -650,7 +649,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   // Lọc vé
   const filteredTickets = tickets.filter((t) => {
     if (sevFilter !== 'all' && t.severity !== sevFilter) return false;
-    if (dangerFilter !== 'all' && t.dangerLevel !== dangerFilter) return false;
+    if (priorityFilter !== 'all') {
+      const p = (t.priority || t.subCategories?.[0]?.priority || '').toUpperCase();
+      if (p !== priorityFilter.toUpperCase()) return false;
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       const id = (t.id || t.ticketId || '').toLowerCase();
@@ -763,16 +765,15 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         </select>
 
         <select
-          value={dangerFilter}
-          onChange={(e) => setDangerFilter(e.target.value)}
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
           className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-medium outline-none cursor-pointer hover:bg-gray-100 transition-colors"
         >
-          <option value="all">Tất cả mức độ nguy hiểm</option>
-          {Object.entries(DANGER_MAP).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
-          ))}
+          <option value="all">Tất cả độ ưu tiên</option>
+          <option value="CRITICAL">Khẩn cấp (CRITICAL)</option>
+          <option value="HIGH">Ưu tiên cao (HIGH)</option>
+          <option value="MEDIUM">Trung bình (MEDIUM)</option>
+          <option value="LOW">Thấp (LOW)</option>
         </select>
       </div>
 
@@ -782,7 +783,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           <table className="w-full text-left min-w-[850px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
-                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ HIỆN TRƯỜNG', 'MỨC ĐỘ', 'NGUY HIỂM', 'KHẨN CẤP', 'THỜI GIAN TIẾP NHẬN', 'THAO TÁC'].map((h) => (
+                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ HIỆN TRƯỜNG', 'MỨC ĐỘ', 'ĐỘ ƯU TIÊN', 'THỜI GIAN TIẾP NHẬN', 'THAO TÁC'].map((h) => (
                   <th key={h} className="px-4 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -792,7 +793,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             <tbody className="divide-y divide-gray-100">
               {filteredTickets.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
                     {loading ? (
                       <div className="flex items-center justify-center gap-2 text-orange-600 font-medium">
                         <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -830,18 +831,14 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${dangerInfo(t.dangerLevel || 'SAFE').cls}`}>
-                        {dangerInfo(t.dangerLevel || 'SAFE').label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      {t.isLifeThreatening ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
-                          ⚠ Khẩn cấp
-                        </span>
-                      ) : (
-                        <span className="text-[12px] text-gray-400 font-medium">Bình thường</span>
-                      )}
+                      {(() => {
+                        const pi = priorityInfo(t.priority || t.subCategories?.[0]?.priority);
+                        return (
+                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${pi.cls}`}>
+                            {pi.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3.5 font-mono-cf text-[11px] text-gray-400 whitespace-nowrap">
                       {t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—'}
@@ -1029,9 +1026,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                           </span>
                         </div>
                         <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
-                          <span className="text-[10px] font-bold text-slate-400 block mb-1">Mức độ nguy hiểm</span>
-                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border inline-block ${dangerInfo(selectedTicket.dangerLevel || 'SAFE').cls}`}>
-                            {dangerInfo(selectedTicket.dangerLevel || 'SAFE').label}
+                          <span className="text-[10px] font-bold text-slate-400 block mb-1">Độ ưu tiên</span>
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border inline-block ${priorityInfo(selectedTicket.priority || selectedTicket.subCategories?.[0]?.priority).cls}`}>
+                            {priorityInfo(selectedTicket.priority || selectedTicket.subCategories?.[0]?.priority).label}
                           </span>
                         </div>
                       </div>

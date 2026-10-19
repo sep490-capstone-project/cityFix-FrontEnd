@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Ticket, User, getCat, getDept, statusInfo, sevInfo, dangerInfo } from '../data';
+import { Ticket, User, getCat, getDept, statusInfo, sevInfo, priorityInfo } from '../data';
 import {
   getTicketSteps,
   getTicketById,
@@ -150,7 +150,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
   const dept = getDept(ticket?.departmentId);
   const si = statusInfo(ticket?.status || 'PENDING');
   const sv = sevInfo(ticket?.severity || 'LOW');
-  const di = dangerInfo(ticket?.dangerLevel || 'SAFE');
+  const pi = priorityInfo(ticket?.priority || ticket?.subCategories?.[0]?.priority);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5 screen-enter">
@@ -288,9 +288,9 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 </span>
               </div>
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
-                <span className="text-[10px] font-bold text-gray-400 block mb-1">Mức nguy hiểm</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${di.cls}`}>
-                  {di.label}
+                <span className="text-[10px] font-bold text-gray-400 block mb-1">Độ ưu tiên</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${pi.cls}`}>
+                  {pi.label}
                 </span>
               </div>
             </div>
