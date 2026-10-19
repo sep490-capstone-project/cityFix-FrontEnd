@@ -128,11 +128,13 @@ export interface ManagerTicketItem {
   ticketId?: string;
   description: string;
   imageUrl?: string;
+  images?: string[];
   categoryId?: string;
   categoryName?: string;
   subCategoryId?: string;
   subCategoryName?: string;
-  subCategories?: Array<{ id?: string; subCategoryId?: string; name?: string; subCategoryName?: string }>;
+  subCategories?: Array<{ id?: string; subCategoryId?: string; name?: string; subCategoryName?: string; description?: string; sla?: number; priority?: string; active?: boolean }>;
+  categories?: Array<{ categoryId: string; categoryName: string }>;
   severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   priority?: string;
   dangerLevel?: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL';
@@ -145,9 +147,15 @@ export interface ManagerTicketItem {
   isLifeThreatening?: boolean;
   isAnonymous?: boolean;
   createdBy?: string;
+  creatorFullName?: string;
+  creatorPhoneNumber?: string;
   createdAt?: string;
   steps?: TicketStep[];
   deadline?: string | null;
+  departmentId?: string;
+  departmentName?: string;
+  assigneeId?: string;
+  assigneeName?: string;
 }
 
 export interface PageManagerTickets {
@@ -632,12 +640,24 @@ export async function getTicketSteps(ticketId: string): Promise<TicketStep[]> {
 /**
  * 17. Lấy thông tin chi tiết một vé theo ID
  * GET /api/v1/tickets/{ticketId}
+ * Có fallback sang GET /api/v1/manager/tickets nếu backend chưa có endpoint riêng
  */
 export async function getTicketById(ticketId: string): Promise<ManagerTicketItem> {
-  return managerRequest<ManagerTicketItem>(
-    `/api/v1/tickets/${encodeURIComponent(ticketId)}`,
-    { method: 'GET' }
-  );
+  try {
+    return await managerRequest<ManagerTicketItem>(
+      `/api/v1/tickets/${encodeURIComponent(ticketId)}`,
+      { method: 'GET' }
+    );
+  } catch (err: any) {
+    try {
+      const page = await getManagerTickets({ size: 100 });
+      const found = page.content?.find((t) => (t.id || t.ticketId) === ticketId);
+      if (found) return found;
+    } catch {
+      // Fallback failed
+    }
+    throw err;
+  }
 }
 
 /**
@@ -668,4 +688,69 @@ export async function uploadStepEvidence(
   if (Array.isArray(res)) return res;
   if (Array.isArray(res?.data)) return res.data;
   return [];
+}
+
+/**
+ * 19. Lấy toàn bộ vé có người xử lý thuộc phòng ban của Manager
+ * GET /api/v1/manager/tickets
+ * Trả về danh sách phân trang toàn bộ thông tin vé và tất cả các bước xử lý (ticket steps)
+ */
+export async function getManagerTickets(params?: {
+  departmentId?: string;
+  page?: number;
+  size?: number;
+  sort?: string[];
+}): Promise<PageManagerTickets> {
+  const query = new URLSearchParams();
+  if (params?.departmentId) query.append('departmentId', params.departmentId);
+  if (params?.page !== undefined) query.append('page', params.page.toString());
+  if (params?.size !== undefined) query.append('size', params.size.toString());
+  if (params?.sort && params.sort.length > 0) {
+    params.sort.forEach((s) => query.append('sort', s));
+  }
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await managerRequest<any>(`/api/v1/manager/tickets${qs}`, {
+    method: 'GET',
+  });
+
+  if (Array.isArray(res)) {
+    return {
+      content: res,
+      totalPages: 1,
+      totalElements: res.length,
+      size: res.length,
+      number: 0,
+    };
+  }
+  return res as PageManagerTickets;
+}
+
+/**
+ * 20. Lấy danh sách vé đang ở trạng thái RESOLVED kèm toàn bộ Ticket Step
+ * GET /api/v1/manager/tickets/resolved
+ */
+export async function getManagerResolvedTickets(params?: {
+  page?: number;
+  size?: number;
+}): Promise<PageManagerTickets> {
+  const query = new URLSearchParams();
+  if (params?.page !== undefined) query.append('page', params.page.toString());
+  if (params?.size !== undefined) query.append('size', params.size.toString());
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await managerRequest<any>(`/api/v1/manager/tickets/resolved${qs}`, {
+    method: 'GET',
+  });
+
+  if (Array.isArray(res)) {
+    return {
+      content: res,
+      totalPages: 1,
+      totalElements: res.length,
+      size: res.length,
+      number: 0,
+    };
+  }
+  return res as PageManagerTickets;
 }

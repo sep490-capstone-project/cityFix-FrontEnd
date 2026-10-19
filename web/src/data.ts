@@ -288,3 +288,19 @@ const FALLBACK_BADGE  = { label: 'Không xác định', cls: 'text-zinc-500 bg-z
 export function statusInfo(s: string)  { return STATUS_MAP[s as StatusKey]  ?? FALLBACK_STATUS; }
 export function sevInfo(s: string)     { return SEV_MAP[s as Severity]       ?? FALLBACK_BADGE;  }
 export function dangerInfo(s: string)  { return DANGER_MAP[s as DangerLevel] ?? FALLBACK_BADGE;  }
+
+export const PRIORITY_MAP: Record<string, { label: string; cls: string }> = {
+  CRITICAL: { label: 'Khẩn cấp',    cls: 'text-red-700 bg-red-100 border-red-300'       },
+  URGENT:   { label: 'Khẩn cấp',    cls: 'text-red-700 bg-red-100 border-red-300'       },
+  HIGH:     { label: 'Ưu tiên cao', cls: 'text-rose-600 bg-rose-50 border-rose-200'     },
+  MEDIUM:   { label: 'Trung bình',  cls: 'text-amber-700 bg-amber-50 border-amber-200'  },
+  NORMAL:   { label: 'Bình thường', cls: 'text-blue-700 bg-blue-50 border-blue-200'     },
+  LOW:      { label: 'Thấp',        cls: 'text-gray-600 bg-gray-100 border-gray-200'    },
+};
+
+export function priorityInfo(p?: string) {
+  if (!p) return { label: 'Chưa đặt', cls: 'text-gray-400 bg-gray-50 border-gray-200' };
+  const key = p.toUpperCase();
+  return PRIORITY_MAP[key] ?? { label: p, cls: 'text-gray-600 bg-gray-100 border-gray-200' };
+}
+
