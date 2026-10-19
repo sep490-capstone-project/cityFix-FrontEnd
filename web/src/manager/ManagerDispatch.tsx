@@ -770,10 +770,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-medium outline-none cursor-pointer hover:bg-gray-100 transition-colors"
         >
           <option value="all">Tất cả độ ưu tiên</option>
-          <option value="CRITICAL">Khẩn cấp (CRITICAL)</option>
-          <option value="HIGH">Ưu tiên cao (HIGH)</option>
-          <option value="MEDIUM">Trung bình (MEDIUM)</option>
-          <option value="LOW">Thấp (LOW)</option>
+          <option value="CRITICAL">Khẩn cấp</option>
+          <option value="HIGH">Ưu tiên cao</option>
+          <option value="MEDIUM">Trung bình</option>
+          <option value="LOW">Thấp</option>
         </select>
       </div>
 
@@ -1494,11 +1494,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none hover:border-orange-500"
                                   title="Cập nhật trạng thái bước"
                                 >
-                                  <option value="PENDING">PENDING (Chờ xử lý)</option>
-                                  <option value="IN_PROGRESS">IN_PROGRESS (Đang xử lý)</option>
-                                  <option value="RESOLVED">RESOLVED (Đã xử lý)</option>
-                                  <option value="TRANSFERRED">TRANSFERRED (Chuyển tiếp)</option>
-                                  <option value="CANCELLED">CANCELLED (Hủy bước)</option>
+                                  <option value="PENDING">Chờ xử lý</option>
+                                  <option value="IN_PROGRESS">Đang xử lý</option>
+                                  <option value="RESOLVED">Đã xử lý</option>
+                                  <option value="TRANSFERRED">Chuyển tiếp</option>
+                                  <option value="CANCELLED">Hủy bước</option>
                                 </select>
 
                                 {/* Chỉnh sửa deadline (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) */}

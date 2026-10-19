@@ -101,7 +101,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
       await uploadStepEvidence(stepId, evidenceFiles, resolutionNote.trim());
       setFeedback({
         type: 'success',
-        message: `Đã upload ${evidenceFiles.length} bằng chứng thành công! Bước đã được chuyển sang ĐÃ GIẢI QUYẾT (RESOLVED).`,
+        message: `Đã tải lên ${evidenceFiles.length} bằng chứng thành công! Bước đã được chuyển sang "Đã xử lý".`,
       });
 
       // Dọn dẹp form
@@ -372,11 +372,11 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                             className="bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-700 outline-none hover:border-orange-500 focus:border-orange-500 transition-colors shadow-2xs"
                             title="Cập nhật trạng thái bước"
                           >
-                            <option value="PENDING">PENDING (Chờ xử lý)</option>
-                            <option value="IN_PROGRESS">IN_PROGRESS (Đang xử lý)</option>
-                            <option value="RESOLVED">RESOLVED (Đã xử lý)</option>
-                            <option value="TRANSFERRED">TRANSFERRED (Chuyển tiếp)</option>
-                            <option value="CANCELLED">CANCELLED (Hủy bước)</option>
+                            <option value="PENDING">Chờ xử lý</option>
+                            <option value="IN_PROGRESS">Đang xử lý</option>
+                            <option value="RESOLVED">Đã xử lý</option>
+                            <option value="TRANSFERRED">Chuyển tiếp</option>
+                            <option value="CANCELLED">Hủy bước</option>
                           </select>
 
                           {/* Nút Xóa bước dành cho Manager */}
@@ -563,7 +563,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               </div>
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
-                ℹ️ <strong>Lưu ý:</strong> Sau khi tải lên bằng chứng thành công, Backend sẽ tự động cập nhật bước xử lý sang trạng thái <strong>RESOLVED (Đã xử lý)</strong>.
+                ℹ️ <strong>Lưu ý:</strong> Sau khi tải lên bằng chứng thành công, Backend sẽ tự động cập nhật bước xử lý sang trạng thái <strong>Đã xử lý</strong>.
               </div>
             </div>
 

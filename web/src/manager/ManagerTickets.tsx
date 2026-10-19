@@ -138,7 +138,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            ✓ Đã giải quyết (RESOLVED)
+            ✓ Đã giải quyết
           </button>
         </div>
 
@@ -224,10 +224,10 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
           className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold outline-none cursor-pointer hover:bg-gray-100 transition-colors shadow-2xs"
         >
           <option value="all">Mọi độ ưu tiên</option>
-          <option value="CRITICAL">Khẩn cấp (CRITICAL)</option>
-          <option value="HIGH">Ưu tiên cao (HIGH)</option>
-          <option value="MEDIUM">Trung bình (MEDIUM)</option>
-          <option value="LOW">Thấp (LOW)</option>
+          <option value="CRITICAL">Khẩn cấp</option>
+          <option value="HIGH">Ưu tiên cao</option>
+          <option value="MEDIUM">Trung bình</option>
+          <option value="LOW">Thấp</option>
         </select>
       </div>
 

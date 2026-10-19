@@ -93,10 +93,17 @@ export default function StaffApp({ userId, onLogout }: Props) {
     };
   }, [userId]);
 
-  const selectedTicket = TICKETS.find(t => t.ticketId === selectedId);
+  const [selectedTicketData, setSelectedTicketData] = useState<any>(null);
+  const selectedTicket = selectedTicketData || TICKETS.find(t => t.ticketId === selectedId);
 
-  function openTicket(id: string) {
-    setSelectedId(id);
+  function openTicket(ticketOrId: any) {
+    if (typeof ticketOrId === 'object' && ticketOrId !== null) {
+      setSelectedTicketData(ticketOrId);
+      setSelectedId(ticketOrId.id || ticketOrId.ticketId);
+    } else {
+      setSelectedId(ticketOrId);
+      setSelectedTicketData(null);
+    }
     setPage('ticket-detail');
   }
 

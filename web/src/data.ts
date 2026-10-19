@@ -253,14 +253,18 @@ export const USERS: User[] = [
 ];
 
 // ── Status Config ─────────────────────────────────────────────────────────────
-export const STATUS_MAP: Record<StatusKey, { label: string; cls: string; dot: string }> = {
-  INITIATED:      { label: 'Khởi tạo',       cls: 'text-zinc-400  bg-zinc-700/30    border-zinc-600/30',   dot: 'bg-zinc-400'   },
-  PENDING_REVIEW: { label: 'Chờ xét duyệt',  cls: 'text-amber-400 bg-amber-500/12   border-amber-500/25',  dot: 'bg-amber-400'  },
-  OPEN:           { label: 'Mở',              cls: 'text-blue-400  bg-blue-500/12    border-blue-500/25',   dot: 'bg-blue-400'   },
-  ASSIGNED:       { label: 'Đã phân công',   cls: 'text-purple-400 bg-purple-500/12 border-purple-500/25', dot: 'bg-purple-400' },
-  IN_PROGRESS:    { label: 'Đang xử lý',     cls: 'text-orange-400 bg-orange-500/12 border-orange-500/20', dot: 'bg-orange-400' },
-  RESOLVED:       { label: 'Đã giải quyết',  cls: 'text-teal-400  bg-teal-500/12    border-teal-500/20',   dot: 'bg-teal-400'   },
-  COMPLETED:      { label: 'Hoàn thành',     cls: 'text-green-400 bg-green-500/12   border-green-500/20',  dot: 'bg-green-400'  },
+export const STATUS_MAP: Record<string, { label: string; cls: string; dot: string }> = {
+  INITIATED:      { label: 'Khởi tạo',       cls: 'text-zinc-600  bg-zinc-100       border-zinc-200',      dot: 'bg-zinc-400'   },
+  PENDING_REVIEW: { label: 'Chờ xét duyệt',  cls: 'text-amber-700 bg-amber-50       border-amber-200',     dot: 'bg-amber-500'  },
+  PENDING:        { label: 'Chờ xử lý',      cls: 'text-amber-700 bg-amber-50       border-amber-200',     dot: 'bg-amber-500'  },
+  OPEN:           { label: 'Mở',              cls: 'text-blue-700  bg-blue-50        border-blue-200',      dot: 'bg-blue-500'   },
+  ASSIGNED:       { label: 'Đã phân công',   cls: 'text-purple-700 bg-purple-50     border-purple-200',    dot: 'bg-purple-500' },
+  IN_PROGRESS:    { label: 'Đang xử lý',     cls: 'text-orange-700 bg-orange-50     border-orange-200',    dot: 'bg-orange-500' },
+  RESOLVED:       { label: 'Đã giải quyết',  cls: 'text-teal-700  bg-teal-50        border-teal-200',      dot: 'bg-teal-500'   },
+  COMPLETED:      { label: 'Hoàn thành',     cls: 'text-green-700 bg-green-50       border-green-200',     dot: 'bg-green-500'  },
+  REJECTED:       { label: 'Từ chối',        cls: 'text-rose-700  bg-rose-50        border-rose-200',      dot: 'bg-rose-500'   },
+  CANCELLED:      { label: 'Đã hủy',         cls: 'text-gray-600  bg-gray-100       border-gray-200',      dot: 'bg-gray-400'   },
+  TRANSFERRED:    { label: 'Đã chuyển giao', cls: 'text-amber-700 bg-amber-50       border-amber-200',     dot: 'bg-amber-500'  },
 };
 
 export const SEV_MAP: Record<Severity, { label: string; cls: string }> = {
@@ -285,7 +289,11 @@ export function getUser(id: string) { return USERS.find(u => u.userId === id); }
 const FALLBACK_STATUS = { label: 'Không xác định', cls: 'text-zinc-500 bg-zinc-800/40 border-zinc-700/40', dot: 'bg-zinc-500' };
 const FALLBACK_BADGE  = { label: 'Không xác định', cls: 'text-zinc-500 bg-zinc-800/40 border-zinc-700/40' };
 
-export function statusInfo(s: string)  { return STATUS_MAP[s as StatusKey]  ?? FALLBACK_STATUS; }
+export function statusInfo(s?: string) {
+  if (!s) return FALLBACK_STATUS;
+  const key = s.toUpperCase();
+  return STATUS_MAP[key] ?? { label: s, cls: 'text-zinc-500 bg-zinc-100 border-zinc-200', dot: 'bg-zinc-400' };
+}
 export function sevInfo(s: string)     { return SEV_MAP[s as Severity]       ?? FALLBACK_BADGE;  }
 export function dangerInfo(s: string)  { return DANGER_MAP[s as DangerLevel] ?? FALLBACK_BADGE;  }
 
