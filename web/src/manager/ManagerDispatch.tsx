@@ -202,15 +202,37 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       }
 
       // 6. Quy trình tất cả các bước (Steps) trong hệ thống
+      let stepsList: any[] = [];
       if (stepsRes.status === 'fulfilled' && stepsRes.value) {
         const val: any = stepsRes.value;
-        const stepsList = Array.isArray(val)
+        stepsList = Array.isArray(val)
           ? val
           : Array.isArray(val.data)
             ? val.data
             : Array.isArray(val.content)
               ? val.content
               : [];
+      }
+
+      // Fallback cho Manager nếu /api/v1/admin/steps bị 403 Forbidden:
+      if (stepsList.length === 0 && subCatsRes.status === 'fulfilled' && Array.isArray(subCatsRes.value)) {
+        try {
+          const sampleSubCats = subCatsRes.value.slice(0, 15);
+          const stepsPromises = sampleSubCats.map((sc: any) =>
+            getStepsBySubCategory(sc.subCategoryId).catch(() => [])
+          );
+          const subCatStepsResults = await Promise.all(stepsPromises);
+          const stepMap = new Map();
+          subCatStepsResults.flat().forEach((st: any) => {
+            if (st && st.stepId) stepMap.set(st.stepId, st);
+          });
+          stepsList = Array.from(stepMap.values());
+        } catch (e) {
+          console.warn('Lỗi tải fallback steps cho Manager:', e);
+        }
+      }
+
+      if (stepsList.length > 0) {
         setAllSystemSteps(stepsList);
       }
     } catch (err) {
@@ -238,7 +260,16 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         stepsFromApi = allSystemSteps.filter((st) => st.subCategoryId === subCatId);
       }
 
+      // Đồng bộ các bước này vào allSystemSteps để Manager có thể chọn khi thêm bước
       if (stepsFromApi && stepsFromApi.length > 0) {
+        setAllSystemSteps((prev) => {
+          const map = new Map(prev.map((s) => [s.stepId, s]));
+          stepsFromApi.forEach((s) => {
+            if (s && s.stepId) map.set(s.stepId, s);
+          });
+          return Array.from(map.values());
+        });
+
         const formatted: ReviewStepItemPayload[] = stepsFromApi.map((st, idx) => ({
           stepId: st.stepId,
           stepName: st.stepName,
@@ -250,6 +281,23 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         }));
         setReviewSteps(formatted);
       } else if (ticket?.steps && ticket.steps.length > 0) {
+        // Đồng bộ các bước từ vé vào allSystemSteps
+        setAllSystemSteps((prev) => {
+          const map = new Map(prev.map((s) => [s.stepId, s]));
+          ticket.steps?.forEach((s: any) => {
+            const sId = s.stepId || s.id;
+            if (sId && isValidUuid(sId)) {
+              map.set(sId, {
+                stepId: sId,
+                stepName: s.stepName,
+                duration: s.duration || 24,
+                description: s.notes || s.stepName,
+              } as any);
+            }
+          });
+          return Array.from(map.values());
+        });
+
         setReviewSteps(
           ticket.steps.map((st, idx) => ({
             stepId: st.stepId || st.id || '',
@@ -374,7 +422,18 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   // Thao tác chỉnh sửa các bước trong Modal Duyệt vé
   function handleAddReviewStep() {
     const nextIndex = reviewSteps.length + 1;
-    const candidate = allSystemSteps[nextIndex % Math.max(allSystemSteps.length, 1)] || allSystemSteps[0];
+    // Tìm bước trong allSystemSteps chưa được sử dụng
+    const usedStepIds = new Set(reviewSteps.map((s) => s.stepId).filter(Boolean));
+    const unusedCandidate = allSystemSteps.find((s) => s.stepId && !usedStepIds.has(s.stepId));
+    const candidate = unusedCandidate || allSystemSteps[nextIndex % Math.max(allSystemSteps.length, 1)] || allSystemSteps[0];
+
+    if (!candidate || !candidate.stepId) {
+      setFeedback({
+        type: 'error',
+        message: 'Lưu ý: Không tìm thấy thêm bước mẫu trong quy trình của danh mục này. Vui lòng chọn bước có sẵn hoặc liên hệ Admin cấu hình thêm.',
+      });
+    }
+
     setReviewSteps((prev) => [
       ...prev,
       {
@@ -634,7 +693,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
     const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
     const stepOrders = reordered.map((s, idx) => ({
-      ticketStepId: s.stepId || s.id || '',
+      ticketStepId: s.id || s.stepId || '',
       orderIndex: idx,
     }));
 
@@ -1234,34 +1293,50 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </div>
                                 </div>
 
-                                {/* Lựa chọn bước từ danh sách quy trình chuẩn của hệ thống nếu cần đổi */}
-                                {allSystemSteps.length > 0 && (
-                                  <div>
-                                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide block mb-1">
+                                {/* Lựa chọn bước từ danh sách quy trình chuẩn của hệ thống */}
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
                                       Chọn bước quy trình (stepId) <span className="text-red-500">*</span>
                                     </label>
-                                    <select
-                                      value={st.stepId}
-                                      onChange={(e) => {
-                                        const chosen = allSystemSteps.find((s) => s.stepId === e.target.value);
-                                        if (chosen) {
-                                          handleReviewStepFieldChange(idx, 'stepId', chosen.stepId);
-                                          handleReviewStepFieldChange(idx, 'stepName', chosen.stepName);
-                                          handleReviewStepFieldChange(idx, 'duration', chosen.duration || 24);
-                                          handleReviewStepFieldChange(idx, 'notes', chosen.description || chosen.stepName);
-                                        }
-                                      }}
-                                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-orange-500"
-                                    >
-                                      <option value="">-- Chọn bước có sẵn trong hệ thống --</option>
-                                      {allSystemSteps.map((s) => (
-                                        <option key={s.stepId} value={s.stepId}>
-                                          {s.stepName} (⏱️ {s.duration || 24}h)
-                                        </option>
-                                      ))}
-                                    </select>
+                                    {!isValidUuid(st.stepId) && (
+                                      <span className="text-[10px] font-bold text-red-600">
+                                        ⚠️ Bắt buộc chọn bước
+                                      </span>
+                                    )}
                                   </div>
-                                )}
+                                  <select
+                                    value={st.stepId || ''}
+                                    onChange={(e) => {
+                                      const chosen = allSystemSteps.find((s) => s.stepId === e.target.value);
+                                      if (chosen) {
+                                        handleReviewStepFieldChange(idx, 'stepId', chosen.stepId);
+                                        handleReviewStepFieldChange(idx, 'stepName', chosen.stepName);
+                                        handleReviewStepFieldChange(idx, 'duration', chosen.duration || 24);
+                                        handleReviewStepFieldChange(idx, 'notes', chosen.description || chosen.stepName);
+                                      } else {
+                                        handleReviewStepFieldChange(idx, 'stepId', e.target.value);
+                                      }
+                                    }}
+                                    className={`w-full bg-white border rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none transition-colors cursor-pointer ${
+                                      !isValidUuid(st.stepId)
+                                        ? 'border-red-400 bg-red-50/20 focus:border-red-500 ring-1 ring-red-200'
+                                        : 'border-slate-300 focus:border-orange-500'
+                                    }`}
+                                  >
+                                    <option value="">-- Vui lòng chọn bước có sẵn trong quy trình (*) --</option>
+                                    {allSystemSteps.map((s) => (
+                                      <option key={s.stepId} value={s.stepId}>
+                                        {s.stepName} (⏱️ {s.duration || 24}h)
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {allSystemSteps.length === 0 && (
+                                    <p className="text-[10px] text-amber-600 mt-1">
+                                      ⚠️ Chưa có bước mẫu được tải. Vui lòng đảm bảo danh mục sự cố đã được cấu hình quy trình.
+                                    </p>
+                                  )}
+                                </div>
 
                                 {/* Form cấu hình bước: Cán bộ phụ trách (assigneeId) & Ghi chú (notes) */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1325,8 +1400,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
                                 {/* Step ID preview */}
                                 <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                                  <span className={`truncate max-w-[280px] ${isValidUuid(st.stepId) ? 'text-slate-400' : 'text-red-600 font-bold'}`}>
-                                    {isValidUuid(st.stepId) ? `stepId: ${st.stepId}` : `⚠️ stepId không hợp lệ: "${st.stepId || 'chưa chọn'}"`}
+                                  <span className={`truncate max-w-[340px] ${isValidUuid(st.stepId) ? 'text-slate-400' : 'text-red-600 font-bold'}`}>
+                                    {isValidUuid(st.stepId) ? `stepId: ${st.stepId}` : `⚠️ Chưa chọn bước quy trình (chọn ở menu phía trên)`}
                                   </span>
                                   <span className="text-slate-400">Thứ tự: {st.orderIndex || idx + 1}</span>
                                 </div>
@@ -1443,8 +1518,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                   ) : (
                     <div className="space-y-2.5">
                       {steps.map((st, idx) => {
-                        const stepId = st.stepId || st.id || `step-${idx}`;
-                        const isEditingDeadline = editingStepDeadline?.stepId === stepId;
+                        const stepInstanceId = st.id || (st as any).ticketStepId || '';
+                        const stepId = stepInstanceId || `step-${idx}`;
+                        const isEditingDeadline = editingStepDeadline?.stepId === stepInstanceId;
                         return (
                           <div
                             key={stepId}
@@ -1487,29 +1563,31 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                               </div>
 
                               <div className="flex items-center gap-2 flex-wrap ml-auto">
-                                {/* Trạng thái step (PATCH /api/v1/ticket-steps/{stepId}/status?status=...) */}
+                                {/* Trạng thái step (PUT /api/v1/manager/tickets/steps/{stepId}/status?status=...) */}
                                 <select
                                   value={st.status || 'PENDING'}
-                                  onChange={(e) => handleUpdateStepStatus(stepId, e.target.value)}
-                                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none hover:border-orange-500"
+                                  onChange={(e) => handleUpdateStepStatus(stepInstanceId, e.target.value)}
+                                  disabled={!stepInstanceId}
+                                  className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 outline-none hover:border-orange-500 cursor-pointer disabled:opacity-50"
                                   title="Cập nhật trạng thái bước"
                                 >
                                   <option value="PENDING">Chờ xử lý</option>
-                                  <option value="IN_PROGRESS">Đang xử lý</option>
-                                  <option value="RESOLVED">Đã xử lý</option>
+                                  <option value="IN_PROGRESS">Đang xử lý (Yêu cầu làm lại)</option>
+                                  <option value="RESOLVED">Đã giải quyết (Chờ duyệt)</option>
+                                  <option value="COMPLETED">Hoàn thành (Duyệt bước)</option>
                                   <option value="TRANSFERRED">Chuyển tiếp</option>
                                   <option value="CANCELLED">Hủy bước</option>
                                 </select>
 
                                 {/* Chỉnh sửa deadline (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) */}
-                                {isEditingDeadline ? (
+                                {isEditingDeadline && editingStepDeadline ? (
                                   <div className="flex items-center gap-1.5">
                                     <input
                                       type="datetime-local"
                                       value={editingStepDeadline.deadline}
                                       onChange={(e) =>
                                         setEditingStepDeadline({
-                                          ...editingStepDeadline,
+                                          stepId: editingStepDeadline.stepId,
                                           deadline: e.target.value,
                                         })
                                       }
@@ -1517,7 +1595,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     />
                                     <button
                                       type="button"
-                                      onClick={() => handleUpdateStepDeadline(stepId, editingStepDeadline.deadline)}
+                                      onClick={() => handleUpdateStepDeadline(stepInstanceId, editingStepDeadline.deadline)}
                                       className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer"
                                     >
                                       Lưu
@@ -1539,7 +1617,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       type="button"
                                       onClick={() =>
                                         setEditingStepDeadline({
-                                          stepId,
+                                          stepId: stepInstanceId,
                                           deadline: st.deadline ? st.deadline.slice(0, 16) : '',
                                         })
                                       }
@@ -1553,8 +1631,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                 {/* Xóa step (DELETE /api/v1/ticket-steps/{id}) */}
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteStep(stepId)}
-                                  className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg cursor-pointer"
+                                  onClick={() => handleDeleteStep(stepInstanceId)}
+                                  disabled={!stepInstanceId}
+                                  className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg cursor-pointer disabled:opacity-50"
                                   title="Xóa bước này (Backend sẽ tính lại hạn chót tổng)"
                                 >
                                   Xóa

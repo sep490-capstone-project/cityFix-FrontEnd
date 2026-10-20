@@ -7,6 +7,7 @@ import {
   rejectStaffTicket,
   updateStaffTicketStatus,
   submitStaffEvidence,
+  getStaffTicketSteps,
   getDepartments,
   DepartmentItem,
   getAdminCategories,
@@ -46,13 +47,13 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
   // 4. Status Form
   const [newStatus, setNewStatus] = useState<string>(ticket.status || 'IN_PROGRESS');
   const [statusNote, setStatusNote] = useState('');
+  const [statusStepId, setStatusStepId] = useState('');
 
   // 5. Evidence Form
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
   const [resolutionNote, setResolutionNote] = useState('');
   const [selectedStepId, setSelectedStepId] = useState('');
-  const [markResolvedAfterEvidence, setMarkResolvedAfterEvidence] = useState(true);
 
   // Zoom image
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
@@ -83,16 +84,33 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
 
     loadAuxData();
 
-    // Extract any existing evidences from steps
-    if (ticket.steps && ticket.steps.length > 0) {
-      const allEv: StaffTicketStepEvidence[] = [];
-      ticket.steps.forEach((st) => {
-        if (st.evidences && st.evidences.length > 0) {
-          allEv.push(...st.evidences);
+    // Fetch steps if missing, or extract any existing evidences from steps
+    async function initStepsAndEvidences() {
+      let currentSteps = ticket.steps;
+      if ((!currentSteps || currentSteps.length === 0) && ticketId) {
+        try {
+          const fetched = await getStaffTicketSteps(ticketId);
+          if (fetched && fetched.length > 0) {
+            currentSteps = fetched;
+            setTicket((prev) => ({ ...prev, steps: fetched }));
+          }
+        } catch (e) {
+          console.warn('Lỗi tải danh sách steps cho vé:', e);
         }
-      });
-      setEvidencesList(allEv);
+      }
+
+      if (currentSteps && currentSteps.length > 0) {
+        const allEv: StaffTicketStepEvidence[] = [];
+        currentSteps.forEach((st) => {
+          if (st.evidences && st.evidences.length > 0) {
+            allEv.push(...st.evidences);
+          }
+        });
+        setEvidencesList(allEv);
+      }
     }
+
+    initStepsAndEvidences();
   }, [ticketId, currentUser.departmentId]);
 
   // Clean previews on unmount
@@ -119,10 +137,10 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
 
   function openEvidenceModal() {
     const defaultStep =
-      ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED') ||
+      ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING') ||
       ticket.steps?.[0];
     if (defaultStep) {
-      setSelectedStepId(defaultStep.stepId || defaultStep.id || '');
+      setSelectedStepId(defaultStep.id || defaultStep.stepId || '');
     }
     setModalType('evidence');
   }
@@ -188,13 +206,32 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
     }
   }
 
+  function openStatusModal(target?: string) {
+    if (target) {
+      setNewStatus(target);
+    }
+    const activeStep =
+      ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING') ||
+      ticket.steps?.[0];
+    if (activeStep) {
+      setStatusStepId(activeStep.id || activeStep.stepId || '');
+    }
+    setModalType('status');
+  }
+
   // API 4: Cập nhật trạng thái
   async function handleStatusSubmit(target?: string) {
     const statusToSet = target || newStatus;
     setSubmitting(true);
     setFeedback(null);
     try {
-      const updated = await updateStaffTicketStatus(ticketId, statusToSet, statusNote);
+      const activeStepId =
+        statusStepId ||
+        ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING')?.id ||
+        ticket.steps?.[0]?.id ||
+        ticket.steps?.[0]?.stepId;
+
+      const updated = await updateStaffTicketStatus(ticketId, statusToSet, statusNote, activeStepId);
       setTicket((prev) => ({
         ...prev,
         ...updated,
@@ -219,29 +256,62 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
     }
     setSubmitting(true);
     setFeedback(null);
-    try {
-      const targetStepId =
-        selectedStepId ||
-        (ticket.steps && ticket.steps.length > 0 ? (ticket.steps[0].stepId || ticket.steps[0].id) : undefined);
+    const targetStepId =
+      selectedStepId ||
+      (ticket.steps && ticket.steps.length > 0 ? (ticket.steps[0].id || ticket.steps[0].stepId) : undefined);
 
+    if (!targetStepId) {
+      setFeedback({
+        type: 'error',
+        message: 'Hồ sơ chưa có bước quy trình (stepId) để đính kèm bằng chứng. Vui lòng kiểm tra lại danh sách bước.',
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    setFeedback(null);
+    try {
       const uploaded = await submitStaffEvidence(
-        ticketId,
+        targetStepId,
         evidenceFiles,
-        resolutionNote.trim(),
-        targetStepId
+        resolutionNote.trim()
       );
 
       if (uploaded && uploaded.length > 0) {
         setEvidencesList((prev) => [...uploaded, ...prev]);
       }
 
-      // Tùy chọn chuyển vé sang RESOLVED nếu cán bộ tick chọn
-      if (markResolvedAfterEvidence) {
-        await updateStaffTicketStatus(ticketId, 'RESOLVED', resolutionNote.trim());
-        setTicket((prev) => ({ ...prev, status: 'RESOLVED' }));
-      }
+      // Cập nhật trạng thái bước vừa hoàn thành sang RESOLVED
+      // Theo nghiệp vụ: khi TẤT CẢ các bước chuyển sang RESOLVED thì vé mới chuyển sang RESOLVED
+      setTicket((prev) => {
+        const updatedSteps = prev.steps?.map((st) => {
+          const sId = st.id || st.stepId;
+          if (sId === targetStepId) {
+            return {
+              ...st,
+              status: 'RESOLVED',
+              evidences: uploaded && uploaded.length > 0 ? [...(st.evidences || []), ...uploaded] : st.evidences,
+            };
+          }
+          return st;
+        });
 
-      setFeedback({ type: 'success', message: 'Đã tải lên bằng chứng xử lý thành công!' });
+        const allStepsResolved =
+          updatedSteps &&
+          updatedSteps.length > 0 &&
+          updatedSteps.every((s) => s.status === 'RESOLVED' || s.status === 'COMPLETED');
+
+        return {
+          ...prev,
+          steps: updatedSteps,
+          status: allStepsResolved ? 'RESOLVED' : prev.status,
+        };
+      });
+
+      setFeedback({
+        type: 'success',
+        message: 'Đã tải lên bằng chứng thành công! Bước quy trình đã chuyển sang "Đã giải quyết" (chờ quản lý duyệt hoàn thành).',
+      });
       setEvidenceFiles([]);
       setEvidencePreviews([]);
       setResolutionNote('');
@@ -319,7 +389,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
 
           <button
             type="button"
-            onClick={() => setModalType('status')}
+            onClick={() => openStatusModal()}
             className="px-3.5 py-2 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
           >
             <span>⚙</span> Đổi trạng thái
@@ -521,7 +591,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               </h3>
               <div className="space-y-2">
                 {ticket.steps.map((st, i) => (
-                  <div key={st.stepId || st.id || i} className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between">
+                  <div key={st.id || st.stepId || i} className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between">
                     <div>
                       <p className="text-[12px] font-bold text-gray-800">{st.stepName || `Bước ${i + 1}`}</p>
                       <p className="text-[11px] text-gray-500 mt-0.5">{st.notes || 'Không có ghi chú'}</p>
@@ -645,6 +715,23 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               <h3 className="text-base font-bold text-gray-900">⚙ Cập nhật trạng thái hồ sơ</h3>
               <button onClick={() => setModalType(null)} className="text-gray-400 hover:text-gray-700 cursor-pointer">✕</button>
             </div>
+            {/* Chọn bước áp dụng nếu vé có steps */}
+            {ticket.steps && ticket.steps.length > 0 && (
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Bước quy trình áp dụng:</label>
+                <select
+                  value={statusStepId}
+                  onChange={(e) => setStatusStepId(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-semibold outline-none focus:border-orange-500 cursor-pointer"
+                >
+                  {ticket.steps.map((st, i) => (
+                    <option key={st.id || st.stepId || i} value={st.id || st.stepId || ''}>
+                      {st.stepName || `Bước ${i + 1}`} ({statusInfo(st.status || 'PENDING').label})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Trạng thái mới:</label>
               <select
@@ -655,7 +742,6 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                 <option value="ASSIGNED">Đã phân công</option>
                 <option value="IN_PROGRESS">Đang xử lý</option>
                 <option value="RESOLVED">Đã giải quyết</option>
-                <option value="COMPLETED">Hoàn thành</option>
                 <option value="CANCELLED">Đã hủy</option>
               </select>
             </div>
@@ -700,7 +786,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             </div>
 
             {/* Chọn bước nếu vé có nhiều bước */}
-            {ticket.steps && ticket.steps.length > 0 && (
+            {ticket.steps && ticket.steps.length > 0 ? (
               <div>
                 <label className="text-[11px] font-bold text-gray-500 block mb-1.5">
                   Bước quy trình xử lý minh chứng:
@@ -711,11 +797,21 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-semibold outline-none focus:border-orange-500 cursor-pointer"
                 >
                   {ticket.steps.map((st, i) => (
-                    <option key={st.stepId || st.id || i} value={st.stepId || st.id || ''}>
+                    <option key={st.id || st.stepId || i} value={st.id || st.stepId || ''}>
                       {st.stepName || `Bước ${i + 1}`} ({statusInfo(st.status || 'PENDING').label})
                     </option>
                   ))}
                 </select>
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[12px] text-amber-800 flex items-start gap-2">
+                <span>⚠️</span>
+                <div>
+                  <p className="font-bold">Hồ sơ chưa có bước quy trình (step)</p>
+                  <p className="text-[11px] text-amber-700 mt-0.5">
+                    Hệ thống yêu cầu gắn minh chứng với một bước xử lý cụ thể. Vui lòng kiểm tra lại quy trình xử lý.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -763,18 +859,16 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               />
             </div>
 
-            {/* Đánh dấu đã giải quyết */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={markResolvedAfterEvidence}
-                onChange={(e) => setMarkResolvedAfterEvidence(e.target.checked)}
-                className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500"
-              />
-              <span className="text-[12px] font-semibold text-gray-700">
-                Đồng thời chuyển trạng thái hồ sơ sang "Đã giải quyết"
-              </span>
-            </label>
+            {/* Hướng dẫn quy trình xử lý */}
+            <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-[12px] text-blue-900 flex items-start gap-2.5">
+              <span className="text-sm">ℹ️</span>
+              <div className="space-y-0.5">
+                <p className="font-bold text-[12px] text-blue-950">Quy trình nghiệm thu:</p>
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  Gửi minh chứng sẽ chuyển bước này sang trạng thái <strong>"Đã giải quyết"</strong>. Khi <strong>tất cả các bước</strong> của hồ sơ đều được giải quyết, hồ sơ sẽ chuyển sang <strong>"Đã giải quyết"</strong> để Quản lý thẩm định và phê duyệt hoàn thành.
+                </p>
+              </div>
+            </div>
 
             <div className="flex gap-2 pt-2">
               <button

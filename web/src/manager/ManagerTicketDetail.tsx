@@ -63,6 +63,10 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
   useEffect(() => {
     if (initialTicket) {
       setTicket(initialTicket);
+      const initSteps = (initialTicket as any).steps;
+      if (initSteps && Array.isArray(initSteps) && initSteps.length > 0) {
+        setSteps(initSteps);
+      }
     }
     loadData();
   }, [actualTicketId, initialTicket]);
@@ -88,8 +92,11 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
 
   // Upload bằng chứng (POST /api/v1/ticket-steps/{stepId}/evidences?resolutionNote=...)
   async function handleSubmitEvidence() {
-    const stepId = evidenceStep?.stepId || evidenceStep?.id;
-    if (!stepId) return;
+    const stepId = evidenceStep?.id || (evidenceStep as any)?.ticketStepId;
+    if (!stepId) {
+      setFeedback({ type: 'error', message: 'Không tìm thấy ID của bước xử lý để gửi bằng chứng.' });
+      return;
+    }
     if (evidenceFiles.length === 0) {
       setFeedback({ type: 'error', message: 'Vui lòng chọn ít nhất 1 ảnh bằng chứng xử lý.' });
       return;
@@ -121,11 +128,37 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
     }
   }
 
-  // Cập nhật trạng thái bước (PATCH /api/v1/ticket-steps/{stepId}/status?status=...)
-  async function handleUpdateStatus(stepId: string, newStatus: string) {
+  // Cập nhật trạng thái bước (PUT /api/v1/manager/tickets/steps/{stepId}/status?status=COMPLETED|IN_PROGRESS)
+  async function handleUpdateStatus(stepInstanceId: string, newStatus: string) {
+    if (!stepInstanceId) {
+      setFeedback({ type: 'error', message: 'Không tìm thấy ID bước xử lý (cần id trong step trả về từ vé).' });
+      return;
+    }
     try {
-      await updateTicketStepStatus(stepId, newStatus);
-      setFeedback({ type: 'success', message: `Đã cập nhật trạng thái bước sang ${newStatus}.` });
+      await updateTicketStepStatus(stepInstanceId, newStatus);
+      setFeedback({
+        type: 'success',
+        message:
+          newStatus === 'COMPLETED'
+            ? 'Đã phê duyệt bước xử lý thành "Hoàn thành".'
+            : newStatus === 'IN_PROGRESS'
+            ? 'Đã chuyển bước xử lý về "Đang xử lý" (yêu cầu xử lý lại).'
+            : `Đã cập nhật trạng thái bước sang ${newStatus}.`,
+      });
+
+      // Cập nhật local state phản hồi tức thì
+      setSteps((prev) => {
+        const next = prev.map((s) => {
+          const sId = s.id || (s as any).ticketStepId;
+          return sId === stepInstanceId ? { ...s, status: newStatus } : s;
+        });
+        const allCompleted = next.length > 0 && next.every((s) => s.status === 'COMPLETED');
+        if (allCompleted) {
+          setTicket((t: any) => ({ ...t, status: 'COMPLETED' }));
+        }
+        return next;
+      });
+
       await loadData();
     } catch (err: any) {
       const msg = err instanceof ApiError ? err.message : 'Không thể cập nhật trạng thái bước.';
@@ -330,13 +363,14 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             ) : (
               <div className="space-y-4">
                 {steps.map((st, idx) => {
-                  const stepId = st.stepId || st.id || `step-${idx}`;
+                  // Theo Backend: API PUT /api/v1/manager/tickets/steps/{stepId}/status dùng st.id của bước trong ticket, KHÔNG dùng st.stepId
+                  const stepInstanceId = st.id || (st as any).ticketStepId || '';
                   const isResolved = st.status === 'RESOLVED';
                   const evidences = st.evidences || [];
 
                   return (
                     <div
-                      key={stepId}
+                      key={stepInstanceId || st.stepId || `step-${idx}`}
                       className={`border rounded-2xl p-4 transition-all shadow-2xs space-y-3 ${
                         isResolved
                           ? 'bg-emerald-50/30 border-emerald-200'
@@ -365,16 +399,18 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
 
                         {/* Thao tác Trạng thái & Xóa */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          {/* Dropdown đổi trạng thái bước */}
+                          {/* Dropdown đổi trạng thái bước: PUT /api/v1/manager/tickets/steps/{stepId}/status */}
                           <select
                             value={st.status || 'PENDING'}
-                            onChange={(e) => handleUpdateStatus(stepId, e.target.value)}
-                            className="bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-700 outline-none hover:border-orange-500 focus:border-orange-500 transition-colors shadow-2xs"
-                            title="Cập nhật trạng thái bước"
+                            onChange={(e) => handleUpdateStatus(stepInstanceId, e.target.value)}
+                            disabled={!stepInstanceId}
+                            className="bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-[11px] font-bold text-gray-700 outline-none hover:border-orange-500 focus:border-orange-500 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                            title="Quản lý phê duyệt bước (Hoàn thành) hoặc yêu cầu xử lý lại"
                           >
                             <option value="PENDING">Chờ xử lý</option>
-                            <option value="IN_PROGRESS">Đang xử lý</option>
-                            <option value="RESOLVED">Đã xử lý</option>
+                            <option value="IN_PROGRESS">Đang xử lý (Yêu cầu làm lại)</option>
+                            <option value="RESOLVED">Đã giải quyết (Chờ duyệt)</option>
+                            <option value="COMPLETED">Hoàn thành (Duyệt bước)</option>
                             <option value="TRANSFERRED">Chuyển tiếp</option>
                             <option value="CANCELLED">Hủy bước</option>
                           </select>
@@ -383,8 +419,9 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                           {currentUser.role === 'MANAGER' && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteStep(stepId)}
-                              className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
+                              onClick={() => handleDeleteStep(stepInstanceId)}
+                              disabled={!stepInstanceId}
+                              className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                               title="Xóa bước này"
                             >
                               Xóa

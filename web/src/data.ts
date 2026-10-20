@@ -268,10 +268,10 @@ export const STATUS_MAP: Record<string, { label: string; cls: string; dot: strin
 };
 
 export const SEV_MAP: Record<Severity, { label: string; cls: string }> = {
-  CRITICAL: { label: 'Nghiêm trọng', cls: 'text-red-300   bg-red-700/20     border-red-700/30'    },
-  HIGH:     { label: 'Cao',          cls: 'text-red-400   bg-red-500/12     border-red-500/25'    },
-  MEDIUM:   { label: 'Trung bình',   cls: 'text-orange-400 bg-orange-500/12 border-orange-500/20' },
-  LOW:      { label: 'Thấp',         cls: 'text-zinc-400  bg-zinc-700/30    border-zinc-600/30'   },
+  CRITICAL: { label: 'Nghiêm trọng', cls: 'text-red-700 bg-red-50 border-red-200' },
+  HIGH:     { label: 'Cao',          cls: 'text-rose-700 bg-rose-50 border-rose-200' },
+  MEDIUM:   { label: 'Trung bình',   cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+  LOW:      { label: 'Thấp',         cls: 'text-slate-600 bg-slate-100 border-slate-200' },
 };
 
 export const DANGER_MAP: Record<DangerLevel, { label: string; cls: string }> = {

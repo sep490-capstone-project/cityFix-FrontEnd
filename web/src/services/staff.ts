@@ -217,88 +217,94 @@ export async function rejectStaffTicket(
 }
 
 /**
- * 4. PUT /api/v1/staff/tickets/{id}/status
- * Cập nhật trạng thái Ticket (targetStatus query, note body)
- * targetStatus: INITIATED, OPEN, ASSIGNED, IN_PROGRESS, RESOLVED, COMPLETED, REJECTED, CANCELLED
+ * 4. PUT /api/v1/staff/tickets/{id}/status?targetStatus=...
+ * Cập nhật trạng thái Ticket.
+ * Path param {id}: ID của ticket (lấy từ ticket.id).
+ * Query param targetStatus: INITIATED, OPEN, ASSIGNED, IN_PROGRESS, RESOLVED, COMPLETED, REJECTED, CANCELLED.
+ * Body (JSON): { stepId?: string, note?: string }
+ * Lưu ý: trường "stepId" trong schema body là ID của bước xử lý trong vé (step.id).
  */
 export async function updateStaffTicketStatus(
   ticketId: string,
   targetStatus: string,
-  note?: string
+  note?: string,
+  stepId?: string
 ): Promise<StaffTicketItem> {
+  const bodyPayload: Record<string, any> = {
+    note: note || '',
+  };
+  if (stepId) {
+    bodyPayload.stepId = stepId;
+  }
+
   return staffRequest<StaffTicketItem>(
     `/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/status?targetStatus=${encodeURIComponent(targetStatus)}`,
     {
       method: 'PUT',
-      body: JSON.stringify({ note: note || '' }),
+      body: JSON.stringify(bodyPayload),
     }
   );
 }
 
 /**
- * 5. POST /api/v1/staff/tickets/{id}/evidences
- * Upload nhiều file (hình ảnh, video) kèm ghi chú kết quả xử lý
- * Hỗ trợ fallback sang POST /api/v1/ticket-steps/{stepId}/evidences nếu backend yêu cầu step
+ * 5. POST /api/v1/ticket-steps/{stepId}/evidences?resolutionNote=...
+ * Đính kèm bằng chứng xử lý cho bước.
+ * Upload nhiều files bằng chứng và kèm ghi chú cho một bước cụ thể.
+ * Bước sẽ tự động chuyển sang RESOLVED khi upload thành công.
  */
 export async function submitStaffEvidence(
-  ticketId: string,
+  stepId: string,
   files: File[],
-  resolutionNote?: string,
-  stepId?: string
+  resolutionNote?: string
 ): Promise<StaffTicketStepEvidence[]> {
   const formData = new FormData();
   files.forEach((file) => {
     formData.append('files', file);
   });
-  if (resolutionNote) {
-    formData.append('resolutionNote', resolutionNote);
-  }
-  if (stepId) {
-    formData.append('stepId', stepId);
-  }
 
-  const query = new URLSearchParams();
-  if (resolutionNote) query.append('resolutionNote', resolutionNote);
-  if (stepId) query.append('stepId', stepId);
+  const query = resolutionNote ? `?resolutionNote=${encodeURIComponent(resolutionNote)}` : '';
+  const res = await staffRequest<any>(
+    `/api/v1/ticket-steps/${encodeURIComponent(stepId)}/evidences${query}`,
+    {
+      method: 'POST',
+      body: formData,
+    }
+  );
 
-  const qs = query.toString() ? `?${query.toString()}` : '';
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.data)) return res.data;
+  return [];
+}
 
-  // 1. Thử gọi API chính: POST /api/v1/staff/tickets/{ticketId}/evidences?stepId=...
+/**
+ * Lấy danh sách các bước xử lý của một vé dành cho cán bộ
+ * GET /api/v1/ticket-steps/ticket/{ticketId}
+ */
+export async function getStaffTicketSteps(ticketId: string): Promise<StaffTicketStep[]> {
   try {
     const res = await staffRequest<any>(
-      `/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/evidences${qs}`,
-      {
-        method: 'POST',
-        body: formData,
-      }
+      `/api/v1/ticket-steps/ticket/${encodeURIComponent(ticketId)}`,
+      { method: 'GET' }
     );
-
     if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.content)) return res.content;
     if (Array.isArray(res?.data)) return res.data;
     return [];
   } catch (err: any) {
-    console.warn('[submitStaffEvidence] Thử endpoint chính gặp lỗi:', err);
-
-    // 2. Nếu có stepId, thử gọi POST /api/v1/ticket-steps/{stepId}/evidences (endpoint chuyên dụng cho bước)
-    if (stepId && stepId !== ticketId) {
+    if (err?.status === 404) {
       try {
-        const queryWithNote = resolutionNote ? `?resolutionNote=${encodeURIComponent(resolutionNote)}` : '';
-        const resStep = await staffRequest<any>(
-          `/api/v1/ticket-steps/${encodeURIComponent(stepId)}/evidences${queryWithNote}`,
-          {
-            method: 'POST',
-            body: formData,
-          }
+        const fallback = await staffRequest<any>(
+          `/api/v1/tickets/${encodeURIComponent(ticketId)}/steps`,
+          { method: 'GET' }
         );
-        if (Array.isArray(resStep)) return resStep;
-        if (Array.isArray(resStep?.data)) return resStep.data;
-        return [];
-      } catch (stepErr) {
-        console.warn('[submitStaffEvidence] Fallback /ticket-steps/{stepId}/evidences gặp lỗi:', stepErr);
+        if (Array.isArray(fallback)) return fallback;
+        if (Array.isArray(fallback?.content)) return fallback.content;
+        if (Array.isArray(fallback?.data)) return fallback.data;
+      } catch {
+        // Fallback failed
       }
     }
-
-    throw err;
+    return [];
   }
 }
 
