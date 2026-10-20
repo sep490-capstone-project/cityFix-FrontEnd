@@ -21,12 +21,41 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const res = await getStaffAssignedTickets({
-        status: statusF !== 'all' ? statusF : undefined,
-        page: 0,
-        size: 100,
-      });
-      setTickets(res.content || []);
+      if (statusF === 'all') {
+        const [activeRes, completedRes] = await Promise.allSettled([
+          getStaffAssignedTickets({ page: 0, size: 100 }),
+          getStaffAssignedTickets({ status: 'COMPLETED', page: 0, size: 100 }),
+        ]);
+
+        const activeList: StaffTicketItem[] =
+          activeRes.status === 'fulfilled'
+            ? (Array.isArray(activeRes.value) ? activeRes.value : activeRes.value?.content || (activeRes.value as any)?.data || [])
+            : [];
+        const completedList: StaffTicketItem[] =
+          completedRes.status === 'fulfilled'
+            ? (Array.isArray(completedRes.value) ? completedRes.value : completedRes.value?.content || (completedRes.value as any)?.data || [])
+            : [];
+
+        const map = new Map<string, StaffTicketItem>();
+        activeList.forEach((t) => {
+          const key = t.id || t.ticketId || '';
+          if (key) map.set(key, t);
+        });
+        completedList.forEach((t) => {
+          const key = t.id || t.ticketId || '';
+          if (key) map.set(key, t);
+        });
+
+        setTickets(Array.from(map.values()));
+      } else {
+        const res = await getStaffAssignedTickets({
+          status: statusF,
+          page: 0,
+          size: 100,
+        });
+        const list = Array.isArray(res) ? res : res?.content || (res as any)?.data || [];
+        setTickets(list);
+      }
     } catch (err: any) {
       const msg = err instanceof ApiError ? err.message : 'Không thể tải danh sách hồ sơ được phân công.';
       setErrorMessage(msg);

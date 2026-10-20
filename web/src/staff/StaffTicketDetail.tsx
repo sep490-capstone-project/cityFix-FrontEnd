@@ -135,14 +135,22 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
     setEvidencePreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function openEvidenceModal() {
-    const defaultStep =
-      ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING') ||
-      ticket.steps?.[0];
-    if (defaultStep) {
-      setSelectedStepId(defaultStep.id || defaultStep.stepId || '');
+  function openEvidenceModal(preselectedStepId?: string) {
+    if (typeof preselectedStepId === 'string' && preselectedStepId) {
+      setSelectedStepId(preselectedStepId);
+    } else {
+      const defaultStep =
+        ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING') ||
+        ticket.steps?.[0];
+      if (defaultStep) {
+        setSelectedStepId(defaultStep.id || (defaultStep as any).ticketStepId || defaultStep.stepId || '');
+      }
     }
     setModalType('evidence');
+  }
+
+  function openEvidenceForStep(stepId: string) {
+    openEvidenceModal(stepId);
   }
 
   // API 2: Chuyển giao vé (Forward)
@@ -206,20 +214,24 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
     }
   }
 
-  function openStatusModal(target?: string) {
+  function openStatusModal(target?: string, stepId?: string) {
     if (target) {
       setNewStatus(target);
     }
-    const activeStep =
-      ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING') ||
-      ticket.steps?.[0];
-    if (activeStep) {
-      setStatusStepId(activeStep.id || activeStep.stepId || '');
+    if (stepId) {
+      setStatusStepId(stepId);
+    } else {
+      const activeStep =
+        ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING') ||
+        ticket.steps?.[0];
+      if (activeStep) {
+        setStatusStepId(activeStep.id || (activeStep as any).ticketStepId || activeStep.stepId || '');
+      }
     }
     setModalType('status');
   }
 
-  // API 4: Cập nhật trạng thái
+  // API 4: Cập nhật trạng thái tổng thể vé
   async function handleStatusSubmit(target?: string) {
     const statusToSet = target || newStatus;
     setSubmitting(true);
@@ -228,7 +240,8 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
       const activeStepId =
         statusStepId ||
         ticket.steps?.find((s) => s.status === 'IN_PROGRESS' || s.status === 'ASSIGNED' || s.status === 'PENDING')?.id ||
-        ticket.steps?.[0]?.id ||
+        (ticket.steps?.[0] as any)?.id ||
+        (ticket.steps?.[0] as any)?.ticketStepId ||
         ticket.steps?.[0]?.stepId;
 
       const updated = await updateStaffTicketStatus(ticketId, statusToSet, statusNote, activeStepId);
@@ -242,6 +255,55 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
       setStatusNote('');
     } catch (err: any) {
       const msg = err instanceof ApiError ? err.message : 'Cập nhật trạng thái thất bại.';
+      setFeedback({ type: 'error', message: msg });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Cập nhật trạng thái cho từng bước cụ thể (Item 3)
+  async function handleStepStatusChange(stepInstanceId: string, targetStatus: string) {
+    if (!stepInstanceId) return;
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      const activeStep = ticket.steps?.find(
+        (s) => (s.id || (s as any).ticketStepId || s.stepId) === stepInstanceId
+      );
+      const note = `Cập nhật bước "${activeStep?.stepName || ''}" sang ${statusInfo(targetStatus).label}`;
+      const updated = await updateStaffTicketStatus(ticketId, targetStatus, note, stepInstanceId);
+
+      setTicket((prev) => {
+        const updatedSteps = (prev.steps || []).map((st) => {
+          const sId = st.id || (st as any).ticketStepId || st.stepId;
+          if (sId === stepInstanceId) {
+            return { ...st, status: targetStatus };
+          }
+          return st;
+        });
+
+        const allStepsResolved =
+          updatedSteps.length > 0 &&
+          updatedSteps.every((s) => s.status === 'RESOLVED' || s.status === 'COMPLETED');
+
+        return {
+          ...prev,
+          ...updated,
+          steps: updatedSteps,
+          status: allStepsResolved
+            ? 'RESOLVED'
+            : prev.status === 'ASSIGNED'
+            ? 'IN_PROGRESS'
+            : prev.status,
+        };
+      });
+
+      setFeedback({
+        type: 'success',
+        message: `Đã cập nhật trạng thái bước sang "${statusInfo(targetStatus).label}".`,
+      });
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : 'Cập nhật trạng thái bước thất bại.';
       setFeedback({ type: 'error', message: msg });
     } finally {
       setSubmitting(false);
@@ -381,7 +443,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
 
           <button
             type="button"
-            onClick={openEvidenceModal}
+            onClick={() => openEvidenceModal()}
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
           >
             <span>📸</span> Gửi bằng chứng
@@ -395,21 +457,26 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <span>⚙</span> Đổi trạng thái
           </button>
 
-          <button
-            type="button"
-            onClick={() => setModalType('forward')}
-            className="px-3.5 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
-          >
-            <span>↗</span> Chuyển giao
-          </button>
+          {/* Khi đã bấm nút thực hiện xử lý (hoặc hồ sơ đang/đã xử lý) thì ẩn nút chuyển giao và từ chối */}
+          {ticket.status !== 'IN_PROGRESS' && ticket.status !== 'RESOLVED' && ticket.status !== 'COMPLETED' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setModalType('forward')}
+                className="px-3.5 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <span>↗</span> Chuyển giao
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setModalType('reject')}
-            className="px-3.5 py-2 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
-          >
-            <span>✕</span> Từ chối
-          </button>
+              <button
+                type="button"
+                onClick={() => setModalType('reject')}
+                className="px-3.5 py-2 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <span>✕</span> Từ chối
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -522,21 +589,160 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           </div>
         </div>
 
-        {/* CỘT PHẢI (7/12): TIẾN ĐỘ & BẰNG CHỨNG XỬ LÝ (EVIDENCES) */}
+        {/* CỘT PHẢI (7/12): QUY TRÌNH TỪNG BƯỚC & BẰNG CHỨNG XỬ LÝ */}
         <div className="lg:col-span-7 space-y-4">
+          {/* 1. KHỐI QUY TRÌNH CÁC BƯỚC XỬ LÝ (TÍCH HỢP ĐỔI TRẠNG THÁI & TẢI BẰNG CHỨNG TỪNG BƯỚC) */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
               <div>
                 <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>📸</span> Bằng chứng xử lý hiện trường ({evidencesList.length})
+                  <span>📋</span> Quy trình xử lý theo từng bước ({ticket.steps?.length || 0})
                 </h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  Hình ảnh và kết quả nghiệm thu được cán bộ cập nhật
+                  Cập nhật trạng thái tiến độ và đính kèm bằng chứng nghiệm thu cho từng bước
+                </p>
+              </div>
+              {ticket.steps && ticket.steps.length > 0 && (
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                  {ticket.steps.filter((s) => s.status === 'RESOLVED' || s.status === 'COMPLETED').length}/{ticket.steps.length} bước xong
+                </span>
+              )}
+            </div>
+
+            {(!ticket.steps || ticket.steps.length === 0) ? (
+              <div className="p-6 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50 space-y-2">
+                <p className="text-[13px] font-bold text-gray-600">Hồ sơ chưa có danh sách quy trình các bước cụ thể</p>
+                <p className="text-[11px] text-gray-400">
+                  Cán bộ có thể sử dụng các nút "Bắt đầu xử lý", "Gửi bằng chứng" hoặc "Đổi trạng thái" ở thanh công cụ phía trên.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {ticket.steps.map((st, i) => {
+                  const stepInstanceId = st.id || (st as any).ticketStepId || st.stepId || '';
+                  const stInfo = statusInfo(st.status || 'PENDING');
+                  const isDone = st.status === 'RESOLVED' || st.status === 'COMPLETED';
+
+                  return (
+                    <div
+                      key={stepInstanceId || i}
+                      className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                        isDone
+                          ? 'bg-emerald-50/30 border-emerald-200/80'
+                          : st.status === 'IN_PROGRESS'
+                          ? 'bg-orange-50/20 border-orange-200'
+                          : 'bg-gray-50/70 border-gray-200'
+                      }`}
+                    >
+                      {/* Tiêu đề bước & Hành động */}
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="flex items-start gap-2.5 min-w-[200px] flex-1">
+                          <span
+                            className={`w-6 h-6 rounded-lg font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs ${
+                              isDone
+                                ? 'bg-emerald-600 text-white'
+                                : st.status === 'IN_PROGRESS'
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-gray-200 text-gray-700'
+                            }`}
+                          >
+                            {st.orderIndex !== undefined ? st.orderIndex + 1 : i + 1}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-[13px] font-bold text-gray-900 leading-tight">
+                                {st.stepName || `Bước ${i + 1}`}
+                              </h4>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${stInfo.cls}`}>
+                                {stInfo.label}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                              {st.notes || 'Thực hiện theo chỉ đạo của đơn vị quản lý chuyên trách.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Các thao tác trực tiếp trên bước */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Đổi trạng thái bước */}
+                          <div className="flex items-center gap-1.5 bg-white border border-gray-300 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                            <span className="text-[10px] font-bold text-gray-400">Trạng thái:</span>
+                            <select
+                              value={st.status || 'PENDING'}
+                              disabled={submitting || st.status === 'COMPLETED'}
+                              onChange={(e) => handleStepStatusChange(stepInstanceId, e.target.value)}
+                              className="text-[11px] font-bold text-gray-800 bg-transparent outline-none cursor-pointer"
+                              title="Chọn để cập nhật trạng thái bước này"
+                            >
+                              <option value="PENDING">Chờ xử lý (Pending)</option>
+                              <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
+                              <option value="RESOLVED">Đã giải quyết (Resolved)</option>
+                              {st.status === 'COMPLETED' && <option value="COMPLETED">Đã duyệt xong (Completed)</option>}
+                            </select>
+                          </div>
+
+                          {/* Tải bằng chứng cho bước */}
+                          <button
+                            type="button"
+                            onClick={() => openEvidenceForStep(stepInstanceId)}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                            title="Tải ảnh/video kết quả xử lý cho riêng bước này"
+                          >
+                            <span>📸</span>
+                            <span>Tải bằng chứng</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Danh sách ảnh bằng chứng đính kèm riêng cho bước này */}
+                      {st.evidences && st.evidences.length > 0 && (
+                        <div className="pt-2 border-t border-gray-200/60 space-y-1.5">
+                          <p className="text-[10px] font-bold text-gray-500 flex items-center gap-1">
+                            <span>📎</span> Minh chứng đã nộp cho bước ({st.evidences.length}):
+                          </p>
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                            {st.evidences.map((ev, evIdx) => (
+                              <div
+                                key={ev.evidenceId || evIdx}
+                                onClick={() => setZoomUrl(ev.imageUrl)}
+                                className="group relative aspect-video rounded-lg overflow-hidden border border-gray-200 bg-gray-100 cursor-pointer shadow-2xs hover:shadow-xs"
+                                title="Nhấn để phóng to ảnh minh chứng"
+                              >
+                                <img
+                                  src={ev.imageUrl}
+                                  alt="Bằng chứng bước"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                />
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold">
+                                  🔍 Xem
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 2. TỔNG HỢP TOÀN BỘ BẰNG CHỨNG HIỆN TRƯỜNG */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
+              <div>
+                <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>🖼️</span> Kho bằng chứng & hình ảnh tổng hợp ({evidencesList.length})
+                </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Toàn bộ hình ảnh, video nghiệm thu đã tải lên của hồ sơ
                 </p>
               </div>
               <button
                 type="button"
-                onClick={openEvidenceModal}
+                onClick={() => openEvidenceModal()}
                 className="px-3 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-[11px] transition-all shadow-xs cursor-pointer active:scale-95"
               >
                 + Tải thêm bằng chứng
@@ -547,7 +753,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               <div className="p-8 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/50 space-y-2">
                 <p className="text-[13px] font-bold text-gray-500">Chưa có minh chứng xử lý nào được tải lên</p>
                 <p className="text-[11px] text-gray-400">
-                  Nhấn "Gửi bằng chứng" để tải ảnh nghiệm thu hoàn tất sự cố lên hệ thống
+                  Tải bằng chứng tại từng bước ở trên hoặc nhấn "Tải thêm bằng chứng" để nộp kết quả nghiệm thu
                 </p>
               </div>
             ) : (
@@ -582,33 +788,6 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               </div>
             )}
           </div>
-
-          {/* Danh sách các bước (steps) nếu có */}
-          {ticket.steps && ticket.steps.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-xs">
-              <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <span>📋</span> Quy trình các bước ({ticket.steps.length})
-              </h3>
-              <div className="space-y-2">
-                {ticket.steps.map((st, i) => (
-                  <div key={st.id || st.stepId || i} className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between">
-                    <div>
-                      <p className="text-[12px] font-bold text-gray-800">{st.stepName || `Bước ${i + 1}`}</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">{st.notes || 'Không có ghi chú'}</p>
-                    </div>
-                    {(() => {
-                      const stInfo = statusInfo(st.status || 'PENDING');
-                      return (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${stInfo.cls}`}>
-                          {stInfo.label}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -725,7 +904,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-semibold outline-none focus:border-orange-500 cursor-pointer"
                 >
                   {ticket.steps.map((st, i) => (
-                    <option key={st.id || st.stepId || i} value={st.id || st.stepId || ''}>
+                    <option key={st.id || (st as any).ticketStepId || st.stepId || i} value={st.id || (st as any).ticketStepId || st.stepId || ''}>
                       {st.stepName || `Bước ${i + 1}`} ({statusInfo(st.status || 'PENDING').label})
                     </option>
                   ))}
@@ -797,7 +976,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-semibold outline-none focus:border-orange-500 cursor-pointer"
                 >
                   {ticket.steps.map((st, i) => (
-                    <option key={st.id || st.stepId || i} value={st.id || st.stepId || ''}>
+                    <option key={st.id || (st as any).ticketStepId || st.stepId || i} value={st.id || (st as any).ticketStepId || st.stepId || ''}>
                       {st.stepName || `Bước ${i + 1}`} ({statusInfo(st.status || 'PENDING').label})
                     </option>
                   ))}
