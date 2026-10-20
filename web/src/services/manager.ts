@@ -574,17 +574,18 @@ export async function getStepsBySubCategory(
 }
 
 /**
- * 14. Cập nhật trạng thái một bước xử lý
- * PATCH /api/v1/ticket-steps/{stepId}/status?status=...
+ * 14. Cập nhật trạng thái một bước xử lý (Manager duyệt hoặc yêu cầu xử lý lại)
+ * PUT /api/v1/manager/tickets/steps/{stepId}/status?status=COMPLETED|IN_PROGRESS
+ * Lưu ý: stepId trong path là id của bước trong ticket (st.id), KHÔNG dùng stepId (template)
  */
 export async function updateTicketStepStatus(
   stepId: string,
   status: string
 ): Promise<TicketStep> {
   return managerRequest<TicketStep>(
-    `/api/v1/ticket-steps/${encodeURIComponent(stepId)}/status?status=${encodeURIComponent(status)}`,
+    `/api/v1/manager/tickets/steps/${encodeURIComponent(stepId)}/status?status=${encodeURIComponent(status)}`,
     {
-      method: 'PATCH',
+      method: 'PUT',
     }
   );
 }

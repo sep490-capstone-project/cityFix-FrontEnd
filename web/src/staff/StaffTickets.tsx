@@ -16,7 +16,6 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
   const [statusF, setStatusF] = useState<string>('all');
   const [sevF, setSevF] = useState<string>('all');
   const [priorityF, setPriorityF] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'mine' | 'dept'>('mine');
 
   async function fetchAssignedTickets() {
     setLoading(true);
@@ -41,11 +40,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
     fetchAssignedTickets();
   }, [statusF]);
 
-  const base = viewMode === 'mine'
-    ? tickets.filter((t) => t.assigneeId === currentUser.userId)
-    : tickets;
-
-  const filtered = base.filter((t) => {
+  const filtered = tickets.filter((t) => {
     if (sevF !== 'all' && t.severity !== sevF) return false;
     if (priorityF !== 'all') {
       const p = (t.priority || t.subCategories?.[0]?.priority || '').toUpperCase();
@@ -62,8 +57,17 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
     return true;
   });
 
+  const isFiltered = search.trim() !== '' || statusF !== 'all' || sevF !== 'all' || priorityF !== 'all';
+
+  function handleResetFilters() {
+    setSearch('');
+    setStatusF('all');
+    setSevF('all');
+    setPriorityF('all');
+  }
+
   const STATUS_OPTS = [
-    { value: 'all', label: 'Mọi trạng thái' },
+    { value: 'all', label: 'Tất cả trạng thái' },
     { value: 'ASSIGNED', label: 'Đã phân công' },
     { value: 'IN_PROGRESS', label: 'Đang xử lý' },
     { value: 'RESOLVED', label: 'Đã giải quyết' },
@@ -73,88 +77,106 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
   ];
 
   return (
-    <div className="p-6 space-y-4 screen-enter">
-      {/* Header & Chuyển chế độ xem */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-2xl p-1 shadow-2xs">
-          <button
-            type="button"
-            onClick={() => setViewMode('mine')}
-            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-              viewMode === 'mine'
-                ? 'bg-orange-500/15 text-orange-600 border border-orange-500/25 shadow-xs'
-                : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            👤 Hồ sơ của tôi ({tickets.filter((t) => t.assigneeId === currentUser.userId).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('dept')}
-            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-              viewMode === 'dept'
-                ? 'bg-orange-500/15 text-orange-600 border border-orange-500/25 shadow-xs'
-                : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            🏢 Cơ quan tôi ({tickets.length})
-          </button>
+    <div className="p-6 space-y-5">
+      {/* 1. Header khu vực nội dung chính: Typography thuần túy, không có icon minh họa lớn */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Hồ sơ tiếp nhận & xử lý</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Danh sách các phản ánh và sự cố kỹ thuật hạ tầng được phân công cho đơn vị xử lý
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="font-mono-cf text-[12px] font-bold text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-xl shadow-2xs">
-            {filtered.length} hồ sơ
-          </span>
+        {/* Bộ đếm và nút làm mới trên cùng 1 hàng */}
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <div className="inline-flex items-center h-10 px-3 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 font-medium">
+            <span>Hiển thị:</span>
+            <span className="font-semibold text-slate-900 ml-1">{filtered.length}</span>
+            <span className="text-slate-400 mx-1">/</span>
+            <span>{tickets.length} hồ sơ</span>
+          </div>
 
           <button
             type="button"
             onClick={fetchAssignedTickets}
             disabled={loading}
-            className="p-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-all shadow-xs cursor-pointer active:scale-95"
-            title="Làm mới danh sách"
+            className="h-10 px-3.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shadow-2xs active:scale-[0.98]"
+            title="Làm mới danh sách hồ sơ"
           >
             <svg
-              className={`w-4 h-4 ${loading ? 'animate-spin text-orange-500' : ''}`}
+              className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin text-orange-600' : ''}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
+            <span>Làm mới</span>
           </button>
         </div>
       </div>
 
       {/* Thông báo lỗi nếu có */}
       {errorMessage && (
-        <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-[12px] text-red-700 flex items-center justify-between">
-          <span>⚠️ {errorMessage}</span>
-          <button onClick={() => setErrorMessage(null)} className="font-bold text-red-500 cursor-pointer ml-2">
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-4 h-4 text-red-500 flex-shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{errorMessage}</span>
+          </div>
+          <button
+            onClick={() => setErrorMessage(null)}
+            className="text-red-500 hover:text-red-700 font-bold px-2 py-1 cursor-pointer"
+          >
             ✕
           </button>
         </div>
       )}
 
-      {/* Bộ Lọc & Tìm Kiếm */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-3.5 flex flex-wrap items-center gap-3 shadow-xs">
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-64 shadow-2xs">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+      {/* 2. Thanh công cụ tìm kiếm và lọc dữ liệu (Toolbar gọn gàng, h-10 đồng nhất) */}
+      <div className="bg-white border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2.5">
+        {/* Input tìm kiếm */}
+        <div className="relative flex-1 min-w-[240px] sm:min-w-[280px]">
+          <svg
+            className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
+            type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo mã, nội dung, địa chỉ..."
-            className="bg-transparent text-[12px] text-gray-800 placeholder-gray-400 outline-none flex-1 font-medium"
+            placeholder="Tìm theo mã hồ sơ, danh mục, địa chỉ, mô tả..."
+            className="w-full h-10 pl-9 pr-3 text-xs bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/15 transition-all font-medium"
           />
         </div>
 
+        {/* Bộ lọc Trạng thái */}
         <select
           value={statusF}
           onChange={(e) => setStatusF(e.target.value)}
-          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold outline-none cursor-pointer hover:bg-gray-100 transition-colors shadow-2xs"
+          className="h-10 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg px-3 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/15 cursor-pointer transition-all"
         >
           {STATUS_OPTS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -163,59 +185,115 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
           ))}
         </select>
 
+        {/* Bộ lọc Mức độ nghiêm trọng */}
         <select
           value={sevF}
           onChange={(e) => setSevF(e.target.value)}
-          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold outline-none cursor-pointer hover:bg-gray-100 transition-colors shadow-2xs"
+          className="h-10 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg px-3 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/15 cursor-pointer transition-all"
         >
-          <option value="all">Mọi mức độ nghiêm trọng</option>
+          <option value="all">Tất cả mức độ</option>
           <option value="CRITICAL">Cực kỳ nghiêm trọng</option>
           <option value="HIGH">Cao</option>
           <option value="MEDIUM">Trung bình</option>
           <option value="LOW">Thấp</option>
         </select>
 
+        {/* Bộ lọc Độ ưu tiên */}
         <select
           value={priorityF}
           onChange={(e) => setPriorityF(e.target.value)}
-          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold outline-none cursor-pointer hover:bg-gray-100 transition-colors shadow-2xs"
+          className="h-10 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg px-3 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/15 cursor-pointer transition-all"
         >
-          <option value="all">Mọi độ ưu tiên</option>
+          <option value="all">Tất cả độ ưu tiên</option>
           <option value="CRITICAL">Khẩn cấp</option>
           <option value="HIGH">Ưu tiên cao</option>
           <option value="MEDIUM">Trung bình</option>
           <option value="LOW">Thấp</option>
         </select>
+
+        {/* Nút xóa nhanh bộ lọc nếu đang có filter */}
+        {isFiltered && (
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="h-10 px-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-orange-600 hover:bg-orange-50/80 rounded-lg transition-colors cursor-pointer"
+            title="Khôi phục bộ lọc mặc định"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+            <span>Xóa lọc</span>
+          </button>
+        )}
       </div>
 
-      {/* Bảng Danh Sách Hồ Sơ */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-        <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full text-left min-w-[850px]">
+      {/* 3. Bảng dữ liệu hồ sơ (Data Table Enterprise) */}
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[920px]">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/80">
-                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'MỨC ĐỘ', 'ĐỘ ƯU TIÊN', 'TRẠNG THÁI', 'NGƯỜI XỬ LÝ', 'NGÀY TẠO', 'THAO TÁC'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+              <tr className="border-b border-slate-200 bg-slate-50/80">
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Mã hồ sơ
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Danh mục
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Địa chỉ
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Mức độ
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Độ ưu tiên
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Trạng thái
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Người xử lý
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Ngày tạo
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-right">
+                  Thao tác
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-slate-100 text-xs">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-14 text-center">
                     {loading ? (
-                      <div className="flex items-center justify-center gap-2 text-orange-600 font-semibold">
-                        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <div className="inline-flex items-center gap-2 text-slate-600 font-medium">
+                        <svg
+                          className="w-4 h-4 animate-spin text-orange-600"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
                           <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeLinecap="round" />
                         </svg>
-                        Đang đồng bộ hồ sơ phân công...
+                        <span>Đang đồng bộ dữ liệu hồ sơ từ hệ thống...</span>
                       </div>
                     ) : (
                       <div className="space-y-1">
-                        <p className="font-display text-lg font-bold text-gray-400 uppercase">Không có hồ sơ nào</p>
-                        <p className="text-gray-400 text-xs">Thử chuyển tab hoặc điều chỉnh bộ lọc tìm kiếm</p>
+                        <p className="text-sm font-semibold text-slate-700">Không tìm thấy hồ sơ phù hợp</p>
+                        <p className="text-xs text-slate-400">
+                          Thử thay đổi từ khóa tìm kiếm hoặc làm mới lại các bộ lọc phía trên
+                        </p>
                       </div>
                     )}
                   </td>
@@ -227,71 +305,77 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
                 const si = statusInfo(t.status as any);
                 const sv = sevInfo(t.severity || 'LOW');
                 const pi = priorityInfo(t.priority || t.subCategories?.[0]?.priority);
-                const isAssignedToMe = t.assigneeId === currentUser.userId;
 
                 return (
                   <tr
                     key={ticketId}
                     onClick={() => onOpenTicket(t)}
-                    className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                    className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
                   >
-                    <td className="px-4 py-3.5">
+                    {/* Mã hồ sơ */}
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {t.isLifeThreatening && (
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" title="Khẩn cấp" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="Khẩn cấp" />
                         )}
-                        <span className="font-mono-cf text-[11px] font-extrabold text-gray-900 group-hover:text-orange-600 transition-colors">
+                        <span className="font-mono-cf text-xs font-semibold text-slate-700 group-hover:text-orange-600 transition-colors">
                           #{ticketId.slice(0, 8)}
                         </span>
                       </div>
                     </td>
 
-                    <td className="px-4 py-3.5 text-[12px] font-bold text-gray-800 max-w-[160px] truncate">
+                    {/* Danh mục */}
+                    <td className="px-4 py-3 font-medium text-slate-900 max-w-[160px] truncate">
                       {t.categoryName || 'Chưa phân loại'}
                     </td>
 
-                    <td className="px-4 py-3.5 text-[11px] text-gray-600 max-w-[200px] truncate">
+                    {/* Địa chỉ */}
+                    <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate" title={t.address || ''}>
                       {t.address || '—'}
                     </td>
 
-                    <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sv.cls}`}>
+                    {/* Mức độ */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded border ${sv.cls}`}>
                         {sv.label}
                       </span>
                     </td>
 
-                    <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${pi.cls}`}>
+                    {/* Độ ưu tiên */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded border ${pi.cls}`}>
                         {pi.label}
                       </span>
                     </td>
 
-                    <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1 ${si.cls}`}>
+                    {/* Trạng thái */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded border ${si.cls}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
                         {si.label}
                       </span>
                     </td>
 
-                    <td className="px-4 py-3.5 text-[11px]">
+                    {/* Người xử lý */}
+                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                       {t.assigneeName ? (
-                        <span className={`font-semibold ${isAssignedToMe ? 'text-orange-600' : 'text-gray-700'}`}>
-                          {t.assigneeName} {isAssignedToMe ? '(Tôi)' : ''}
-                        </span>
+                        <span className="font-medium text-slate-800">{t.assigneeName}</span>
                       ) : (
-                        <span className="text-gray-400 italic">Chưa giao</span>
+                        <span className="text-slate-400 italic">Cán bộ đơn vị</span>
                       )}
                     </td>
 
-                    <td className="px-4 py-3.5 font-mono-cf text-[10px] text-gray-400 whitespace-nowrap">
+                    {/* Ngày tạo */}
+                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-[11px]">
                       {t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—'}
                     </td>
 
-                    <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    {/* Thao tác */}
+                    <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => onOpenTicket(t)}
-                        className="px-3 py-1.5 rounded-xl border border-gray-300 hover:border-orange-500 hover:bg-orange-50 text-gray-700 hover:text-orange-600 font-bold text-[11px] transition-all cursor-pointer shadow-2xs"
+                        className="px-3 py-1 rounded-md border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 hover:text-orange-600 text-slate-700 text-xs font-medium transition-colors cursor-pointer shadow-2xs"
                       >
                         Chi tiết
                       </button>
