@@ -49,13 +49,13 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
 
   return (
     <div className="p-6 space-y-5 screen-enter">
-      {/* Cảnh báo đe dọa tính mạng */}
-      {critical.filter((t) => t.isLifeThreatening).length > 0 && (
+      {/* Cảnh báo đe dọa tính mạng (chỉ cảnh báo cho các hồ sơ chưa hoàn thành) */}
+      {critical.filter((t) => t.isLifeThreatening && t.status !== 'COMPLETED').length > 0 && (
         <div className="relative rounded-2xl overflow-hidden border border-red-300 bg-red-50/90 p-4 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
             <p className="text-[13px] font-bold text-red-900">
-              Có {critical.filter((t) => t.isLifeThreatening).length} hồ sơ trong cơ quan bạn có nguy cơ đe dọa an toàn / tính mạng người dân!
+              Có {critical.filter((t) => t.isLifeThreatening && t.status !== 'COMPLETED').length} hồ sơ trong cơ quan bạn có nguy cơ đe dọa an toàn / tính mạng người dân!
             </p>
           </div>
         </div>

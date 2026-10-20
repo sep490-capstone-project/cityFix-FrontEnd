@@ -301,6 +301,7 @@ export async function reviewManagerTicket(
     subCategoryIds: payload.subCategoryIds || [],
     steps: (payload.steps || []).map((s, idx) => ({
       stepId: s.stepId,
+      stepName: s.stepName?.trim() || undefined,
       assigneeId: s.assigneeId,
       orderIndex: typeof s.orderIndex === 'number' ? s.orderIndex : idx + 1,
       deadline: s.deadline ? s.deadline : null,

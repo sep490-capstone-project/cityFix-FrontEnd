@@ -536,10 +536,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       subCategoryIds: validSubCatIds,
       steps: reviewSteps.map((s, idx) => ({
         stepId: s.stepId.trim(),
+        stepName: s.stepName?.trim() || `Bước ${idx + 1}`,
         assigneeId: s.assigneeId.trim(),
         orderIndex: idx + 1,
         deadline: s.deadline?.trim() ? s.deadline.trim() : null,
-        notes: (s.notes?.trim() || s.stepName || 'Tiến hành xử lý theo quy trình'),
+        notes: (s.notes?.trim() || s.stepName?.trim() || 'Tiến hành xử lý theo quy trình'),
       })),
     };
 
@@ -1293,49 +1294,71 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </div>
                                 </div>
 
-                                {/* Lựa chọn bước từ danh sách quy trình chuẩn của hệ thống */}
-                                <div>
-                                  <div className="flex items-center justify-between mb-1">
-                                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                                      Chọn bước quy trình (stepId) <span className="text-red-500">*</span>
-                                    </label>
-                                    {!isValidUuid(st.stepId) && (
-                                      <span className="text-[10px] font-bold text-red-600">
-                                        ⚠️ Bắt buộc chọn bước
-                                      </span>
+                                {/* Lựa chọn bước quy trình mẫu & Tự điền / Tùy chỉnh tên bước */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {/* Cột 1: Bước mẫu quy trình (stepId) */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+                                        Bước quy trình chuẩn (stepId) <span className="text-red-500">*</span>
+                                      </label>
+                                      {!isValidUuid(st.stepId) && (
+                                        <span className="text-[10px] font-bold text-red-600">
+                                          ⚠️ Cần chọn bước
+                                        </span>
+                                      )}
+                                    </div>
+                                    <select
+                                      value={st.stepId || ''}
+                                      onChange={(e) => {
+                                        const chosen = allSystemSteps.find((s) => s.stepId === e.target.value);
+                                        if (chosen) {
+                                          handleReviewStepFieldChange(idx, 'stepId', chosen.stepId);
+                                          handleReviewStepFieldChange(idx, 'stepName', chosen.stepName);
+                                          handleReviewStepFieldChange(idx, 'duration', chosen.duration || 24);
+                                          handleReviewStepFieldChange(idx, 'notes', chosen.description || chosen.stepName);
+                                        } else {
+                                          handleReviewStepFieldChange(idx, 'stepId', e.target.value);
+                                        }
+                                      }}
+                                      className={`w-full bg-white border rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none transition-colors cursor-pointer ${
+                                        !isValidUuid(st.stepId)
+                                          ? 'border-red-400 bg-red-50/20 focus:border-red-500 ring-1 ring-red-200'
+                                          : 'border-slate-300 focus:border-orange-500'
+                                      }`}
+                                    >
+                                      <option value="">-- Chọn bước có sẵn trong quy trình (*) --</option>
+                                      {allSystemSteps.map((s) => (
+                                        <option key={s.stepId} value={s.stepId}>
+                                          {s.stepName} (⏱️ {s.duration || 24}h)
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {allSystemSteps.length === 0 && (
+                                      <p className="text-[10px] text-amber-600 mt-1">
+                                        ⚠️ Chưa có bước mẫu được tải từ hệ thống.
+                                      </p>
                                     )}
                                   </div>
-                                  <select
-                                    value={st.stepId || ''}
-                                    onChange={(e) => {
-                                      const chosen = allSystemSteps.find((s) => s.stepId === e.target.value);
-                                      if (chosen) {
-                                        handleReviewStepFieldChange(idx, 'stepId', chosen.stepId);
-                                        handleReviewStepFieldChange(idx, 'stepName', chosen.stepName);
-                                        handleReviewStepFieldChange(idx, 'duration', chosen.duration || 24);
-                                        handleReviewStepFieldChange(idx, 'notes', chosen.description || chosen.stepName);
-                                      } else {
-                                        handleReviewStepFieldChange(idx, 'stepId', e.target.value);
+
+                                  {/* Cột 2: Tự điền / Tùy chỉnh tên bước */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+                                        Tên bước quy trình (Tự điền / Sửa) <span className="text-red-500">*</span>
+                                      </label>
+                                      <span className="text-[10px] text-slate-400">Có thể chỉnh sửa</span>
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={st.stepName || ''}
+                                      onChange={(e) =>
+                                        handleReviewStepFieldChange(idx, 'stepName', e.target.value)
                                       }
-                                    }}
-                                    className={`w-full bg-white border rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none transition-colors cursor-pointer ${
-                                      !isValidUuid(st.stepId)
-                                        ? 'border-red-400 bg-red-50/20 focus:border-red-500 ring-1 ring-red-200'
-                                        : 'border-slate-300 focus:border-orange-500'
-                                    }`}
-                                  >
-                                    <option value="">-- Vui lòng chọn bước có sẵn trong quy trình (*) --</option>
-                                    {allSystemSteps.map((s) => (
-                                      <option key={s.stepId} value={s.stepId}>
-                                        {s.stepName} (⏱️ {s.duration || 24}h)
-                                      </option>
-                                    ))}
-                                  </select>
-                                  {allSystemSteps.length === 0 && (
-                                    <p className="text-[10px] text-amber-600 mt-1">
-                                      ⚠️ Chưa có bước mẫu được tải. Vui lòng đảm bảo danh mục sự cố đã được cấu hình quy trình.
-                                    </p>
-                                  )}
+                                      placeholder="Nhập tên bước xử lý thực tế..."
+                                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
+                                    />
+                                  </div>
                                 </div>
 
                                 {/* Form cấu hình bước: Cán bộ phụ trách (assigneeId) & Ghi chú (notes) */}
@@ -1518,7 +1541,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                   ) : (
                     <div className="space-y-2.5">
                       {steps.map((st, idx) => {
-                        const stepInstanceId = st.id || (st as any).ticketStepId || '';
+                        const stepInstanceId = st.id || (st as any).ticketStepId || (st as any).stepInstanceId || st.stepId || '';
                         const stepId = stepInstanceId || `step-${idx}`;
                         const isEditingDeadline = editingStepDeadline?.stepId === stepInstanceId;
                         return (

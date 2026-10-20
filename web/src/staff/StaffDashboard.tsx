@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, statusInfo, sevInfo, priorityInfo, DEPARTMENTS } from '../data';
-import { getStaffAssignedTickets, StaffTicketItem } from '../services';
+import { getStaffAssignedTickets, getStaffTicketSteps, StaffTicketItem, StaffTicketStep } from '../services';
 
 interface Props {
   currentUser: User;
@@ -11,13 +11,61 @@ interface Props {
 export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }: Props) {
   const [tickets, setTickets] = useState<StaffTicketItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterTab, setFilterTab] = useState<'urgent' | 'in_progress' | 'all'>('urgent');
+  const [filterTab, setFilterTab] = useState<'all' | 'in_progress' | 'completed' | 'urgent'>('all');
+  const [activeSteps, setActiveSteps] = useState<Array<{ ticket: StaffTicketItem; step: StaffTicketStep }>>([]);
+  const [recentCompleted, setRecentCompleted] = useState<StaffTicketItem[]>([]);
 
   async function loadDashboardTickets() {
     setLoading(true);
     try {
-      const res = await getStaffAssignedTickets({ page: 0, size: 100 });
-      setTickets(res.content || []);
+      // Backend /api/v1/staff/tickets/assigned khi không truyền status chỉ trả về các vé đang xử lý (không bao gồm COMPLETED).
+      // Để Dashboard hiển thị đầy đủ tổng số, tỷ lệ và danh sách đã hoàn thành, ta đồng thời tải thêm các vé COMPLETED.
+      const [activeRes, completedRes] = await Promise.allSettled([
+        getStaffAssignedTickets({ page: 0, size: 100 }),
+        getStaffAssignedTickets({ status: 'COMPLETED', page: 0, size: 100 }),
+      ]);
+
+      const activeList: StaffTicketItem[] =
+        activeRes.status === 'fulfilled'
+          ? (Array.isArray(activeRes.value) ? activeRes.value : activeRes.value?.content || (activeRes.value as any)?.data || [])
+          : [];
+      const completedList: StaffTicketItem[] =
+        completedRes.status === 'fulfilled'
+          ? (Array.isArray(completedRes.value) ? completedRes.value : completedRes.value?.content || (completedRes.value as any)?.data || [])
+          : [];
+
+      // Hợp nhất danh sách và loại bỏ trùng lặp theo ID
+      const map = new Map<string, StaffTicketItem>();
+      activeList.forEach((t) => {
+        const key = t.id || t.ticketId || '';
+        if (key) map.set(key, t);
+      });
+      completedList.forEach((t) => {
+        const key = t.id || t.ticketId || '';
+        if (key) map.set(key, t);
+      });
+
+      const list = Array.from(map.values());
+      setTickets(list);
+
+      // Lưu danh sách hồ sơ đã hoàn thành chính thức (COMPLETED) gần đây để cán bộ theo dõi kết quả
+      const finishedList = list.filter((t) => t.status === 'COMPLETED').slice(0, 5);
+      setRecentCompleted(finishedList);
+
+      // Gọi API tải bước cho các hồ sơ đang xử lý & đã giải quyết để cán bộ theo dõi trực tiếp tại Dashboard
+      const activeTickets = list.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED' || t.status === 'RESOLVED').slice(0, 6);
+      const stepsPromises = activeTickets.map(async (t) => {
+        try {
+          const tSteps = t.steps && t.steps.length > 0 ? t.steps : await getStaffTicketSteps(t.id || t.ticketId || '');
+          return (tSteps || [])
+            .filter((s) => s.status !== 'COMPLETED' && s.status !== 'CANCELLED')
+            .map((s) => ({ ticket: t, step: s }));
+        } catch {
+          return [];
+        }
+      });
+      const settled = await Promise.all(stepsPromises);
+      setActiveSteps(settled.flat().slice(0, 5));
     } catch (err) {
       console.warn('Lỗi tải dữ liệu dashboard cán bộ:', err);
     } finally {
@@ -40,15 +88,26 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
       t.isLifeThreatening ||
       (t.priority || t.subCategories?.[0]?.priority || '').toUpperCase() === 'CRITICAL'
   );
-  const resolvedTickets = tickets.filter(
-    (t) => t.status === 'RESOLVED' || t.status === 'COMPLETED'
-  );
 
-  const completionRate = totalCount > 0 ? Math.round((resolvedTickets.length / totalCount) * 100) : 0;
+  // Hồ sơ khẩn cấp cần giải quyết gấp (chưa hoàn thành) để cảnh báo hiện trường
+  const activeCriticalTickets = criticalTickets.filter((t) => t.status !== 'COMPLETED');
+
+  // Lấy chính xác các vé đã COMPLETED (Đã được Quản lý phê duyệt nghiệm thu)
+  const completedTickets = tickets.filter((t) => t.status === 'COMPLETED');
+  const resolvedPendingTickets = tickets.filter((t) => t.status === 'RESOLVED');
+
+  // Tỷ lệ hoàn tất tính toán chuẩn xác dựa trên các vé đã COMPLETED
+  const completionRate = totalCount > 0 ? Math.round((completedTickets.length / totalCount) * 100) : 0;
 
   // Lọc danh sách hiển thị trong bảng theo tab
   const displayedTickets = tickets
     .filter((t) => {
+      if (filterTab === 'in_progress') {
+        return t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED';
+      }
+      if (filterTab === 'completed') {
+        return t.status === 'COMPLETED';
+      }
       if (filterTab === 'urgent') {
         return (
           t.severity === 'CRITICAL' ||
@@ -57,12 +116,9 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
           t.status === 'IN_PROGRESS'
         );
       }
-      if (filterTab === 'in_progress') {
-        return t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED';
-      }
-      return true;
+      return true; // Tab 'all' hiển thị toàn bộ
     })
-    .slice(0, 8);
+    .slice(0, 10);
 
   const deptName =
     DEPARTMENTS.find((d) => d.departmentId === currentUser.departmentId)?.name ||
@@ -126,8 +182,8 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         </div>
       </div>
 
-      {/* 2. CẢNH BÁO KHẨN CẤP NẾU CÓ HỒ SƠ NGUY HIỂM */}
-      {criticalTickets.length > 0 && (
+      {/* 2. CẢNH BÁO KHẨN CẤP NẾU CÓ HỒ SƠ NGUY HIỂM CẦN GIẢI QUYẾT GẤP (CHƯA HOÀN THÀNH) */}
+      {activeCriticalTickets.length > 0 && (
         <div className="rounded-2xl border border-red-300 bg-red-50/90 p-4 shadow-2xs flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center text-base font-bold shadow-xs flex-shrink-0 animate-bounce">
@@ -135,7 +191,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
             </div>
             <div>
               <p className="text-xs font-bold text-red-900">
-                Có {criticalTickets.length} hồ sơ khẩn cấp hoặc đe dọa an toàn cần giải quyết gấp!
+                Có {activeCriticalTickets.length} hồ sơ khẩn cấp hoặc đe dọa an toàn cần giải quyết gấp!
               </p>
               <p className="text-[11px] text-red-700 mt-0.5">
                 Vui lòng ưu tiên tiếp cận hiện trường và cập nhật tiến độ khắc phục sự cố.
@@ -183,17 +239,19 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
           <p className="text-[11px] text-gray-400 mt-0.5 font-medium">Ưu tiên xử lý hàng đầu</p>
         </div>
 
-        {/* KPI 4: Đã giải quyết */}
+        {/* KPI 4: Đã hoàn thành (Dựa trên vé COMPLETED) */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Đã giải quyết</span>
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Đã hoàn thành</span>
             <span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">✅</span>
           </div>
-          <p className="text-2xl font-black text-emerald-600 mt-2">{resolvedTickets.length}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5 font-medium">Đã tải ảnh bằng chứng</p>
+          <p className="text-2xl font-black text-emerald-600 mt-2">{completedTickets.length}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5 font-medium">
+            {resolvedPendingTickets.length > 0 ? `+${resolvedPendingTickets.length} vé chờ Quản lý duyệt` : 'Đã nghiệm thu chính thức'}
+          </p>
         </div>
 
-        {/* KPI 5: Tỷ lệ hoàn thành */}
+        {/* KPI 5: Tỷ lệ hoàn tất (Dựa trên vé COMPLETED) */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tỷ lệ hoàn tất</span>
@@ -206,6 +264,9 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
               style={{ width: `${completionRate}%` }}
             />
           </div>
+          <p className="text-[10px] text-gray-400 mt-1 font-medium">
+            {completedTickets.length}/{totalCount} hồ sơ đã duyệt xong
+          </p>
         </div>
       </div>
 
@@ -222,16 +283,16 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
               </h2>
             </div>
 
-            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
               <button
-                onClick={() => setFilterTab('urgent')}
+                onClick={() => setFilterTab('all')}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  filterTab === 'urgent'
+                  filterTab === 'all'
                     ? 'bg-white text-orange-600 shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Cần xử lý gấp
+                Tất cả ({totalCount})
               </button>
               <button
                 onClick={() => setFilterTab('in_progress')}
@@ -241,17 +302,27 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Đang xử lý
+                Đang xử lý ({inProgressTickets.length})
               </button>
               <button
-                onClick={() => setFilterTab('all')}
+                onClick={() => setFilterTab('completed')}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  filterTab === 'all'
-                    ? 'bg-white text-orange-600 shadow-2xs'
+                  filterTab === 'completed'
+                    ? 'bg-white text-emerald-600 shadow-2xs'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Tất cả
+                Đã hoàn thành ({completedTickets.length})
+              </button>
+              <button
+                onClick={() => setFilterTab('urgent')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  filterTab === 'urgent'
+                    ? 'bg-white text-red-600 shadow-2xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Khẩn cấp ({criticalTickets.length})
               </button>
             </div>
           </div>
@@ -281,7 +352,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                         {loading ? 'Đang tải dữ liệu hồ sơ...' : 'Không có hồ sơ nào trong mục này'}
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
-                        Tất cả các hồ sơ đã được xử lý hoặc phân loại xong.
+                        Chuyển sang tab "Tất cả" hoặc "Đã giải quyết / Hoàn tất" để xem toàn bộ danh sách hồ sơ.
                       </p>
                     </td>
                   </tr>
@@ -382,9 +453,9 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                 title="Khẩn cấp"
               />
               <div
-                style={{ width: `${totalCount > 0 ? (resolvedTickets.length / totalCount) * 100 : 0}%` }}
+                style={{ width: `${totalCount > 0 ? (completedTickets.length / totalCount) * 100 : 0}%` }}
                 className="bg-emerald-500 h-full"
-                title="Đã giải quyết"
+                title="Đã hoàn thành"
               />
             </div>
 
@@ -406,53 +477,136 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-gray-600 font-medium">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  Đã giải quyết
+                  Đã hoàn thành (Completed)
                 </span>
-                <span className="font-bold text-emerald-600">{resolvedTickets.length} hồ sơ</span>
+                <span className="font-bold text-emerald-600">{completedTickets.length} hồ sơ</span>
               </div>
             </div>
           </div>
 
-          {/* Card 2: Quy trình xử lý hiện trường chuẩn (SOP) */}
-          <div className="bg-linear-to-br from-slate-900 to-gray-800 text-white rounded-3xl p-5 shadow-xs space-y-3.5">
-            <h3 className="text-xs font-extrabold text-orange-400 uppercase tracking-wider flex items-center gap-2">
-              <span>⚡</span> Quy trình xử lý hiện trường
-            </h3>
+          {/* Card 2: Quy trình xử lý hiện trường chuẩn (SOP) - Nền Trắng Doanh Nghiệp */}
+          <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+              <h3 className="text-xs font-extrabold text-orange-600 uppercase tracking-wider flex items-center gap-2">
+                <span>⚡</span> Quy trình xử lý hiện trường
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                Chuẩn SOP
+              </span>
+            </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+            <div className="space-y-2.5 text-xs">
+              <div className="p-2.5 rounded-2xl bg-gray-50/80 border border-gray-100 flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5 shadow-xs">
                   1
                 </span>
                 <div>
-                  <p className="font-bold text-gray-200">Tiếp nhận & Khảo sát</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Kiểm tra thông tin phản ánh và đến vị trí hiện trường thực tế.</p>
+                  <p className="font-bold text-gray-900">Tiếp nhận & Bắt đầu xử lý</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                    Xác nhận hồ sơ đúng chuyên môn, bấm "Bắt đầu xử lý" để chuyển trạng thái sang Đang xử lý.
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              <div className="p-2.5 rounded-2xl bg-gray-50/80 border border-gray-100 flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5 shadow-xs">
                   2
                 </span>
                 <div>
-                  <p className="font-bold text-gray-200">Khắc phục sự cố</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Thực hiện dặm vá, sửa chữa, thay thế vật tư kỹ thuật theo chuyên môn.</p>
+                  <p className="font-bold text-gray-900">Khắc phục sự cố theo từng bước</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                    Đến hiện trường khảo sát, dặm vá, sửa chữa hạ tầng kỹ thuật theo từng bước được giao.
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              <div className="p-2.5 rounded-2xl bg-emerald-50/70 border border-emerald-100 flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5 shadow-xs">
                   3
                 </span>
                 <div>
-                  <p className="font-bold text-emerald-400">Tải ảnh bằng chứng & Hoàn tất</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    Chụp ảnh/video kết quả. Bước xử lý sẽ tự động chuyển sang <strong className="text-emerald-300">Đã giải quyết</strong>.
+                  <p className="font-bold text-emerald-900">Tải ảnh bằng chứng & Hoàn tất</p>
+                  <p className="text-[11px] text-emerald-700 mt-0.5 leading-relaxed">
+                    Tải ảnh/video kết quả tại bước. Bước sẽ chuyển sang <strong className="text-emerald-800">Đã giải quyết</strong> để Quản lý duyệt hoàn tất.
                   </p>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Card Phụ: Các bước quy trình đang giao xử lý (API getStaffTicketSteps) */}
+          {activeSteps.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                  <span>📋</span> Bước cần xử lý ({activeSteps.length})
+                </h3>
+                <span className="text-[10px] font-bold text-orange-600">Đang giao</span>
+              </div>
+              <div className="space-y-2">
+                {activeSteps.map(({ ticket, step }, sIdx) => {
+                  const sInfo = statusInfo(step.status || 'PENDING');
+                  return (
+                    <div
+                      key={step.id || step.stepId || sIdx}
+                      onClick={() => onOpenTicket(ticket)}
+                      className="p-2.5 bg-gray-50/90 hover:bg-orange-50/60 border border-gray-200/80 rounded-xl transition-all cursor-pointer space-y-1 group"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[11px] font-extrabold text-gray-800 group-hover:text-orange-600 truncate">
+                          {step.stepName || `Bước ${sIdx + 1}`}
+                        </span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${sInfo.cls}`}>
+                          {sInfo.label}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 truncate">
+                        #{ticket.id?.slice(0, 8)} • {ticket.address || ticket.categoryName || 'Hiện trường'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Card Phụ 2: Hồ sơ đã giải quyết & Hoàn thành gần đây (kể cả khi đã COMPLETED) */}
+          {recentCompleted.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                  <span>🏆</span> Hồ sơ đã giải quyết xong ({recentCompleted.length})
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  Nghiệm thu
+                </span>
+              </div>
+              <div className="space-y-2">
+                {recentCompleted.map((t, rIdx) => {
+                  const sInfo = statusInfo(t.status as any);
+                  return (
+                    <div
+                      key={t.id || t.ticketId || rIdx}
+                      onClick={() => onOpenTicket(t)}
+                      className="p-2.5 bg-emerald-50/20 hover:bg-emerald-50/60 border border-emerald-200/70 rounded-xl transition-all cursor-pointer space-y-1 group"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[11px] font-extrabold text-gray-900 group-hover:text-emerald-700 truncate">
+                          #{t.id?.slice(0, 8)} • {t.categoryName || 'Sự cố hạ tầng'}
+                        </span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${sInfo.cls}`}>
+                          {sInfo.label}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 truncate">
+                        📍 {t.address || 'Hiện trường đã hoàn tất'}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Card 3: Thông tin cán bộ trực */}
           <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-2.5">
