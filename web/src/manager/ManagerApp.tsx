@@ -8,6 +8,7 @@ import ManagerStaff from './ManagerStaff';
 import ManagerProfile from './ManagerProfile';
 import cityfixLogo from '../assets/cityfix-logo.png';
 import { getProfile, getDepartments, getDepartmentById, DepartmentItem, UserProfile } from '../services';
+import { NotificationBell } from '../components';
 
 type ManagerPage = 'dashboard' | 'tickets' | 'ticket-detail' | 'dispatch' | 'staff' | 'profile';
 
@@ -218,7 +219,8 @@ export default function ManagerApp({ userId, onLogout }: Props) {
                page === 'staff' ? 'Cán bộ & Phòng ban' : 'Hồ sơ cá nhân'}
             </h1>
           </div>
-          <p className="font-mono-cf text-[11px] text-gray-400 tracking-wider">10/09/2026</p>
+          <div className="w-px h-6 bg-gray-100" />
+          <NotificationBell onOpenTicket={(ticketId) => openTicket(ticketId)} />
           <div className="w-px h-6 bg-gray-100" />
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center">

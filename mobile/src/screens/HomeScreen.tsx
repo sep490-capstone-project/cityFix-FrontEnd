@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from './LoginScreen';
-import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../api';
+import { getMyReportedTickets, ReportedTicket, mapBackendStatus, getUnreadNotificationCount } from '../api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -122,6 +122,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'my-reports' | 'profile'>('home');
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
   useEffect(() => {
     getMyReportedTickets(null, 0, 3)
@@ -131,6 +132,10 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         }
       })
       .catch((e) => console.log('HomeScreen tickets load note:', e?.message));
+
+    getUnreadNotificationCount()
+      .then((c) => setUnreadCount(c))
+      .catch((e) => console.log('HomeScreen unread count note:', e?.message));
   }, []);
 
   const initials = (authUser?.fullName?.trim() || '?')
@@ -160,9 +165,19 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigate('notifications')}
+            activeOpacity={0.7}
+          >
             <Ionicons name="notifications-outline" size={20} color="#475569" />
-            <View style={styles.notificationBadge} />
+            {unreadCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatarBtn} onPress={() => navigate('profile')}>
             <Text style={styles.avatarText}>{initials}</Text>
@@ -609,12 +624,22 @@ const styles = StyleSheet.create({
   },
   notificationBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#f97316',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  notificationBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
   },
   avatarBtn: {
     width: 40,

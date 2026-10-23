@@ -1,2 +1,2 @@
-// Reusable Web UI components
-export {};
+export { default as NotificationBell } from './NotificationBell';
+

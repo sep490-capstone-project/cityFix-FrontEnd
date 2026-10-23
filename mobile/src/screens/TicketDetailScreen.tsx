@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { ReportedTicket, mapBackendStatus, cancelTicket } from '../api';
+import { ReportedTicket, mapBackendStatus, cancelTicket, getTicketById } from '../api';
 
 interface Props {
   ticketId: string | null;
@@ -139,12 +139,38 @@ export default function TicketDetailScreen({
 }: Props) {
   const [ticketData, setTicketData] = useState<ReportedTicket | null>(initialTicketData || null);
   const [cancelling, setCancelling] = useState(false);
+  const [loading, setLoading] = useState<boolean>(
+    !initialTicketData && Boolean(ticketId) && !ticketId?.startsWith('CF-')
+  );
 
   useEffect(() => {
     if (initialTicketData) {
       setTicketData(initialTicketData);
+      setLoading(false);
+      return;
     }
-  }, [initialTicketData]);
+
+    if (ticketId && !ticketId.startsWith('CF-')) {
+      let isMounted = true;
+      setLoading(true);
+      getTicketById(ticketId)
+        .then((fetched) => {
+          if (isMounted && fetched) {
+            setTicketData(fetched);
+          }
+        })
+        .catch((err) => {
+          console.warn('Lỗi tải chi tiết vé từ server:', err);
+        })
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [ticketId, initialTicketData]);
 
   let ticket: Ticket;
   if (ticketData) {
@@ -212,6 +238,16 @@ export default function TicketDetailScreen({
       ]
     );
   };
+
+  if (loading) {
+    return (
+      <View style={styles.notFoundContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <ActivityIndicator size="large" color="#f97316" />
+        <Text style={[styles.notFoundText, { marginTop: 16 }]}>Đang tải thông tin sự cố...</Text>
+      </View>
+    );
+  }
 
   if (!ticketId && !ticketData) {
     return (
