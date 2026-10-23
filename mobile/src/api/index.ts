@@ -869,6 +869,65 @@ export async function cancelTicket(
   return payload.data;
 }
 
+/* =========================================================
+   GET TICKET BY ID
+   GET /api/v1/tickets/{ticketId}
+   ========================================================= */
+
+export async function getTicketById(
+  ticketId: string,
+  accessToken?: string | null
+): Promise<ReportedTicket> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/tickets/${encodeURIComponent(ticketId)}`;
+  console.log('📋 GET TICKET BY ID URL:', url);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const text = await response.text();
+    let payload: any = null;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // not json
+    }
+
+    if (response.ok && payload?.success && payload?.data) {
+      return payload.data;
+    }
+  } catch (err) {
+    console.warn('Lỗi gọi GET /api/v1/tickets/{id}:', err);
+  }
+
+  // Fallback: Tìm trong danh sách vé đã báo cáo của người dùng
+  try {
+    const page = await getMyReportedTickets(token, 0, 50);
+    const found = page.content?.find(
+      (t) => (t.id || (t as any).ticketId) === ticketId
+    );
+    if (found) return found;
+  } catch (e) {
+    console.warn('Fallback tìm vé trong my-reports thất bại:', e);
+  }
+
+  throw new ApiError('Không tìm thấy thông tin sự cố.', 404);
+}
+
 export function mapBackendStatus(status?: string): {
   statusText: string;
   statusKey: 'received' | 'processing' | 'done' | 'rejected' | 'cancelled';
@@ -930,4 +989,161 @@ export function mapBackendStatus(status?: string): {
         borderColor: '#e2e8f0',
       };
   }
+}
+
+/* =========================================================
+   NOTIFICATIONS
+   ========================================================= */
+
+export interface NotificationItem {
+  notificationId: string;
+  userId?: string;
+  ticketId?: string;
+  title: string;
+  content: string;
+  readAt?: string | null;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface PageNotificationResponse {
+  totalPages: number;
+  totalElements: number;
+  size: number;
+  number: number;
+  numberOfElements: number;
+  first: boolean;
+  last: boolean;
+  empty: boolean;
+  content: NotificationItem[];
+}
+
+export async function getNotifications(
+  isRead?: boolean,
+  page: number = 0,
+  size: number = 20,
+  sort: string = 'createdAt,desc'
+): Promise<PageNotificationResponse> {
+  const token = await AsyncStorage.getItem('accessToken');
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+    sort,
+  });
+
+  if (isRead !== undefined) {
+    queryParams.append('isRead', String(isRead));
+  }
+
+  const url = `${API_BASE_URL}/api/v1/notifications?${queryParams.toString()}`;
+  console.log('🔔 GET NOTIFICATIONS URL:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    // not json
+  }
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể tải thông báo (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const token = await AsyncStorage.getItem('accessToken');
+  if (!token) return 0;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/notifications/unread-count`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (payload?.success && typeof payload.data === 'number') {
+      return payload.data;
+    }
+    if (typeof payload?.data?.count === 'number') {
+      return payload.data.count;
+    }
+    return 0;
+  } catch (err) {
+    console.warn('Lỗi lấy số thông báo chưa đọc:', err);
+    return 0;
+  }
+}
+
+export async function markNotificationAsRead(id: string): Promise<NotificationItem> {
+  const token = await AsyncStorage.getItem('accessToken');
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/notifications/${encodeURIComponent(id)}/read`,
+    {
+      method: 'PATCH',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể đánh dấu đã đọc (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+export async function markAllNotificationsAsRead(): Promise<any> {
+  const token = await AsyncStorage.getItem('accessToken');
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/notifications/read-all`, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể đánh dấu tất cả đã đọc (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
 }

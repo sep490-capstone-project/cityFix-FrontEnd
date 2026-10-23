@@ -11,3 +11,4 @@ export { default as AIAnalysisScreen } from './AIAnalysisScreen';
 export { default as ReviewDraftScreen } from './ReviewDraftScreen';
 export { default as DuplicateScreen } from './DuplicateScreen';
 export { default as SuccessScreen } from './SuccessScreen';
+export { default as NotificationScreen } from './NotificationScreen';

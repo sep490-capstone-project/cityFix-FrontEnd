@@ -7,4 +7,5 @@ export * from './routingRules';
 export * from './tickets';
 export * from './manager';
 export * from './adminService';
-export * from './staff';
+export * from './staff';
+export * from './notifications';

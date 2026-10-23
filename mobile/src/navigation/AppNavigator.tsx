@@ -14,6 +14,8 @@ import AIAnalysisScreen from '../screens/AIAnalysisScreen';
 import ReviewDraftScreen from '../screens/ReviewDraftScreen';
 import DuplicateScreen from '../screens/DuplicateScreen';
 import SuccessScreen from '../screens/SuccessScreen';
+import NotificationScreen from '../screens/NotificationScreen';
+
 import { ReportDraft } from '../types';
 import { ReportedTicket } from '../api';
 
@@ -239,6 +241,16 @@ export default function AppNavigator() {
         authUser={user}
         onLogout={handleLogout}
         onUpdateUser={handleUpdateUser}
+        openTicket={handleOpenTicket}
+      />
+    );
+  }
+
+  if (currentScreen === 'notifications') {
+    return (
+      <NotificationScreen
+        navigate={handleNavigate}
+        goBack={() => setCurrentScreen('home')}
         openTicket={handleOpenTicket}
       />
     );
