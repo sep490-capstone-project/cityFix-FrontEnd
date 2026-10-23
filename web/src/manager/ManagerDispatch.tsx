@@ -13,7 +13,7 @@ import {
   deleteTicketStep,
   getTicketSteps,
   getTicketById,
-  reorderTicketSteps,
+  updateStepDependencies,
   ManagerTicketItem,
   SuggestedDepartment,
   TicketStep,
@@ -79,6 +79,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   // 5. Steps management
   const [steps, setSteps] = useState<TicketStep[]>([]);
   const [editingStepDeadline, setEditingStepDeadline] = useState<{ stepId: string; deadline: string } | null>(null);
+  const [editingStepDeps, setEditingStepDeps] = useState<{
+    stepId: string;
+    stepName: string;
+    dependsOnStepIds: string[];
+  } | null>(null);
 
   // 6. Kết quả routing sau khi duyệt thành công
   const [routingResult, setRoutingResult] = useState<{
@@ -244,17 +249,22 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   }, []);
 
   // Helper tải các bước của SubCategory cho modal Review
-  async function loadStepsForReview(subCatId: string, ticket?: ManagerTicketItem) {
+  async function loadStepsForReview(subCatIdsInput: string[] | string, ticket?: ManagerTicketItem) {
+    const ids = Array.isArray(subCatIdsInput) ? subCatIdsInput : [subCatIdsInput];
+    const validIds = ids.filter((id) => isValidUuid(id));
     setLoadingSteps(true);
     try {
       let stepsFromApi: any[] = [];
-      if (subCatId && isValidUuid(subCatId)) {
-        stepsFromApi = await getStepsBySubCategory(subCatId);
+      if (validIds.length > 0) {
+        const stepResults = await Promise.all(
+          validIds.map((id) => getStepsBySubCategory(id).catch(() => []))
+        );
+        stepsFromApi = stepResults.flat();
       }
 
-      // Nếu API subcategory chưa có bước, thử lọc từ allSystemSteps theo subCategoryId
-      if (stepsFromApi.length === 0 && subCatId) {
-        stepsFromApi = allSystemSteps.filter((st) => st.subCategoryId === subCatId);
+      // Nếu API subcategory chưa có bước, thử lọc từ allSystemSteps theo subCategoryIds
+      if (stepsFromApi.length === 0 && validIds.length > 0) {
+        stepsFromApi = allSystemSteps.filter((st) => validIds.includes(st.subCategoryId || ''));
       }
 
       // Đồng bộ các bước này vào allSystemSteps để Manager có thể chọn khi thêm bước
@@ -271,8 +281,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           stepId: st.stepId,
           stepName: st.stepName,
           duration: st.duration || 24,
-          orderIndex: idx + 1,
           assigneeId: staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
+          dependsOnStepIds: idx === 0 ? [] : (stepsFromApi[idx - 1]?.stepId ? [stepsFromApi[idx - 1].stepId] : []),
           deadline: null,
           notes: st.description || st.stepName || '',
         }));
@@ -295,13 +305,14 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           return Array.from(map.values());
         });
 
+        const tSteps = ticket.steps;
         setReviewSteps(
-          ticket.steps.map((st, idx) => ({
+          tSteps.map((st, idx) => ({
             stepId: st.stepId || st.id || '',
             stepName: st.stepName || `Bước ${idx + 1}`,
             duration: 24,
-            orderIndex: idx + 1,
             assigneeId: st.assigneeId || staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
+            dependsOnStepIds: st.dependsOnStepIds || (idx === 0 ? [] : [tSteps[idx - 1]?.stepId || tSteps[idx - 1]?.id || '']),
             deadline: st.deadline || null,
             notes: st.notes || '',
           }))
@@ -315,6 +326,33 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     } finally {
       setLoadingSteps(false);
     }
+  }
+
+  // Thêm một SubCategory phối hợp hỗ trợ giải quyết từ phòng ban khác
+  async function handleAddSupportingSubCategory(subCatId: string) {
+    if (!subCatId || !isValidUuid(subCatId)) return;
+    if (selectedSubCategoryIds.includes(subCatId)) return;
+    const newSelected = [...selectedSubCategoryIds, subCatId];
+    setSelectedSubCategoryIds(newSelected);
+    try {
+      const extraSteps = await getStepsBySubCategory(subCatId);
+      if (extraSteps && extraSteps.length > 0) {
+        setAllSystemSteps((prev) => {
+          const map = new Map(prev.map((s) => [s.stepId, s]));
+          extraSteps.forEach((s) => {
+            if (s && s.stepId) map.set(s.stepId, s);
+          });
+          return Array.from(map.values());
+        });
+      }
+    } catch (e) {
+      console.warn('Lỗi khi nạp bước cho danh mục phối hợp:', e);
+    }
+  }
+
+  // Xóa bớt một SubCategory phối hợp
+  function handleRemoveSupportingSubCategory(subCatId: string) {
+    setSelectedSubCategoryIds((prev) => prev.filter((id) => id !== subCatId));
   }
 
   // Khi chọn một vé để điều phối / duyệt
@@ -372,9 +410,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
     setSelectedSubCategoryIds(foundSubCatIds);
 
-    // 3. Tải quy trình các bước của SubCategory
-    const primarySubCat = foundSubCatIds[0] || '';
-    await loadStepsForReview(primarySubCat, ticket);
+    // 3. Tải quy trình các bước của SubCategory (cả primary và secondary nếu có)
+    await loadStepsForReview(foundSubCatIds.length > 0 ? foundSubCatIds : [''], ticket);
 
     // 4. Tải gợi ý phòng ban tự động
     await loadSuggestedDepartments(ticket.id || ticket.ticketId || '', currentCatId);
@@ -424,6 +461,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     const unusedCandidate = allSystemSteps.find((s) => s.stepId && !usedStepIds.has(s.stepId));
     const candidate = unusedCandidate || allSystemSteps[nextIndex % Math.max(allSystemSteps.length, 1)] || allSystemSteps[0];
 
+    // Mặc định phụ thuộc vào bước liền trước (nếu có)
+    const prevStep = reviewSteps.length > 0 ? reviewSteps[reviewSteps.length - 1] : null;
+    const defaultDependsOn = prevStep && prevStep.stepId && isValidUuid(prevStep.stepId) ? [prevStep.stepId] : [];
+
     if (!candidate || !candidate.stepId) {
       setFeedback({
         type: 'error',
@@ -437,8 +478,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         stepId: candidate?.stepId || '',
         stepName: candidate?.stepName || `Bước ${nextIndex}: Xử lý sự cố`,
         duration: candidate?.duration || 24,
-        orderIndex: nextIndex,
         assigneeId: staffList[0]?.userId || '',
+        dependsOnStepIds: defaultDependsOn,
         deadline: null,
         notes: candidate?.description || candidate?.stepName || '',
       },
@@ -446,19 +487,47 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   }
 
   function handleRemoveReviewStep(index: number) {
+    const removedStep = reviewSteps[index];
+    setReviewSteps((prev) => {
+      const remaining = prev.filter((_, i) => i !== index);
+      if (removedStep?.stepId) {
+        return remaining.map((s) => ({
+          ...s,
+          dependsOnStepIds: (s.dependsOnStepIds || []).filter((id) => id !== removedStep.stepId),
+        }));
+      }
+      return remaining;
+    });
+  }
+
+  function handleToggleReviewStepDependency(stepIndex: number, dependsOnStepId: string) {
     setReviewSteps((prev) =>
-      prev.filter((_, i) => i !== index).map((s, idx) => ({ ...s, orderIndex: idx + 1 }))
+      prev.map((s, i) => {
+        if (i !== stepIndex) return s;
+        const currentDeps = s.dependsOnStepIds || [];
+        const exists = currentDeps.includes(dependsOnStepId);
+        const newDeps = exists
+          ? currentDeps.filter((id) => id !== dependsOnStepId)
+          : [...currentDeps, dependsOnStepId];
+        return { ...s, dependsOnStepIds: newDeps };
+      })
     );
   }
 
-  function handleMoveReviewStep(index: number, direction: 'up' | 'down') {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= reviewSteps.length) return;
-    const newSteps = [...reviewSteps];
-    const temp = newSteps[index];
-    newSteps[index] = newSteps[targetIndex];
-    newSteps[targetIndex] = temp;
-    setReviewSteps(newSteps.map((s, idx) => ({ ...s, orderIndex: idx + 1 })));
+  function handleSetReviewStepDependencyMode(stepIndex: number, mode: 'parallel' | 'sequential') {
+    setReviewSteps((prev) =>
+      prev.map((s, i) => {
+        if (i !== stepIndex) return s;
+        if (mode === 'parallel') {
+          return { ...s, dependsOnStepIds: [] };
+        } else {
+          // Tuần tự: phụ thuộc vào bước liền trước
+          const prevStep = i > 0 ? prev[i - 1] : null;
+          const prevId = prevStep?.stepId || '';
+          return { ...s, dependsOnStepIds: prevId && isValidUuid(prevId) ? [prevId] : [] };
+        }
+      })
+    );
   }
 
   function handleReviewStepFieldChange(
@@ -491,7 +560,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       } else {
         setFeedback({
           type: 'error',
-          message: 'Vui lòng chọn một Danh mục sự cố (SubCategory) hợp lệ từ hệ thống.',
+          message: 'Vui lòng chọn lĩnh vực xử lý sự cố hợp lệ từ danh mục.',
         });
         return;
       }
@@ -501,7 +570,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     if (reviewSteps.length === 0) {
       setFeedback({
         type: 'error',
-        message: 'Vui lòng thiết lập ít nhất 1 bước xử lý hợp lệ (stepId) cho hồ sơ.',
+        message: 'Vui lòng thiết lập ít nhất 1 bước xử lý cho hồ sơ.',
       });
       return;
     }
@@ -511,14 +580,14 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       if (!st.stepId || !isValidUuid(st.stepId)) {
         setFeedback({
           type: 'error',
-          message: `Bước ${i + 1} (${st.stepName || ''}) chưa có mã stepId hợp lệ (phải là UUID từ hệ thống các bước). Vui lòng chọn bước xử lý chuẩn.`,
+          message: `Bước ${i + 1} (${st.stepName || ''}) chưa được chọn từ quy trình mẫu. Vui lòng chọn bước xử lý chuẩn.`,
         });
         return;
       }
       if (!st.assigneeId || !isValidUuid(st.assigneeId)) {
         setFeedback({
           type: 'error',
-          message: `Vui lòng chỉ định Cán bộ phụ trách (assigneeId) hợp lệ cho Bước ${i + 1} (${st.stepName || 'Xử lý'}).`,
+          message: `Vui lòng chỉ định Cán bộ phụ trách cho Bước ${i + 1} (${st.stepName || 'Xử lý'}).`,
         });
         return;
       }
@@ -530,7 +599,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     //   "reviewNote": "Đã tiếp nhận và giao các cán bộ phụ trách xử lý khẩn cấp",
     //   "subCategoryIds": [ "<subCategoryId>" ],
     //   "steps": [
-    //     { "stepId": "...", "assigneeId": "...", "orderIndex": 1, "notes": "..." }
+    //     { "stepId": "...", "assigneeId": "...", "dependsOnStepIds": [...], "notes": "..." }
     //   ]
     // }
     const payload: ReviewTicketPayload = {
@@ -546,7 +615,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           title: sName,
           stepTitle: sName,
           assigneeId: s.assigneeId.trim(),
-          orderIndex: idx + 1,
+          dependsOnStepIds: Array.isArray(s.dependsOnStepIds)
+            ? s.dependsOnStepIds.filter((id) => isValidUuid(id))
+            : [],
           deadline: s.deadline?.trim() ? s.deadline.trim() : null,
           notes: (s.notes?.trim() || sName || 'Tiến hành xử lý theo quy trình'),
         };
@@ -660,23 +731,31 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     }
   }
 
-  // 3.1. Cập nhật trạng thái cho bước (PATCH /api/v1/ticket-steps/{stepId}/status?status=...)
+  // 3.1. Cập nhật trạng thái cho bước
   async function handleUpdateStepStatus(stepId: string, newStatus: string) {
     if (!selectedTicket || !stepId) return;
     const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
+    const statusLabels: Record<string, string> = {
+      PENDING: 'Chờ xử lý',
+      IN_PROGRESS: 'Đang xử lý',
+      RESOLVED: 'Đã giải quyết',
+      COMPLETED: 'Hoàn thành',
+      TRANSFERRED: 'Chuyển tiếp',
+      CANCELLED: 'Đã hủy',
+    };
     try {
       await updateTicketStepStatus(stepId, newStatus);
-      setFeedback({ type: 'success', message: `Đã cập nhật trạng thái bước xử lý thành ${newStatus}.` });
+      setFeedback({ type: 'success', message: `Đã cập nhật trạng thái bước xử lý thành "${statusLabels[newStatus] || newStatus}".` });
       await refreshTicketAndSteps(ticketId);
     } catch (err: any) {
       setFeedback({ type: 'error', message: err?.message || 'Cập nhật trạng thái bước thất bại.' });
     }
   }
 
-  // 3.2. Xóa mềm bước (DELETE /api/v1/ticket-steps/{id})
+  // 3.2. Xóa mềm bước
   async function handleDeleteStep(stepId: string) {
     if (!selectedTicket || !stepId) return;
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bước xử lý này? Backend sẽ tự động tính lại hạn chót tổng.')) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bước xử lý này? Hệ thống sẽ tự động cập nhật lại thời hạn toàn bộ hồ sơ.')) return;
     const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
     try {
       await deleteTicketStep(stepId);
@@ -687,31 +766,17 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     }
   }
 
-  // 4. Đổi thứ tự bước xử lý
-  async function handleMoveStep(index: number, direction: 'up' | 'down') {
-    if (!selectedTicket || steps.length < 2) return;
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= steps.length) return;
-
-    const newSteps = [...steps];
-    const temp = newSteps[index];
-    newSteps[index] = newSteps[targetIndex];
-    newSteps[targetIndex] = temp;
-
-    const reordered = newSteps.map((s, idx) => ({ ...s, orderIndex: idx }));
-    setSteps(reordered);
-
+  // 4. Cập nhật thứ tự thực hiện các bước cho hồ sơ đã điều phối
+  async function handleSaveStepDependencies(stepId: string, dependsOnStepIds: string[]) {
+    if (!selectedTicket || !stepId) return;
     const ticketId = selectedTicket.id || selectedTicket.ticketId || '';
-    const stepOrders = reordered.map((s, idx) => ({
-      ticketStepId: s.id || s.stepId || '',
-      orderIndex: idx,
-    }));
-
     try {
-      await reorderTicketSteps(ticketId, { stepOrders });
-      setFeedback({ type: 'success', message: 'Đã cập nhật thứ tự các bước xử lý.' });
+      await updateStepDependencies(stepId, { dependsOnStepIds });
+      setEditingStepDeps(null);
+      setFeedback({ type: 'success', message: 'Đã cập nhật thứ tự thực hiện các bước thành công.' });
+      await refreshTicketAndSteps(ticketId);
     } catch (err: any) {
-      console.warn('Lỗi lưu thứ tự bước:', err);
+      setFeedback({ type: 'error', message: err?.message || 'Cập nhật thứ tự bước thất bại.' });
     }
   }
 
@@ -1076,34 +1141,16 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                           </span>
                         </div>
                       </div>
-
-                      {/* Danh mục ban đầu từ phản ánh */}
-                      {selectedTicket.subCategories && selectedTicket.subCategories.length > 0 && (
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 block mb-1">Phân loại ghi nhận ban đầu:</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedTicket.subCategories.map((sc, i) => (
-                              <span
-                                key={sc.id || sc.subCategoryId || i}
-                                className="px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800"
-                              >
-                                {sc.name || sc.subCategoryName || 'Danh mục con'}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
 
-                  {/* CỘT PHẢI (7/12): BIỂU MẪU ĐIỀU PHỐI VÀ PHÂN CÔNG QUY TRÌNH BƯỚC */}
+                  {/* CỘT PHẢI (7/12): THIẾT LẬP ĐIỀU PHỐI VÀ QUY TRÌNH THỰC HIỆN */}
                   <div className="lg:col-span-7 space-y-4">
-
-                    {/* 1. Lựa chọn Phân loại / SubCategory */}
+                    {/* 1. Lựa chọn Phân loại danh mục sự cố & Đơn vị phụ trách */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-4.5 space-y-3 shadow-xs">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="text-orange-500">🏷️</span> Phân loại sự cố (SubCategory) <span className="text-red-500">*</span>
+                          <span className="text-orange-500">🏷️</span> Phân loại sự cố & Đơn vị phụ trách <span className="text-red-500">*</span>
                         </label>
                         {loadingSteps && (
                           <span className="text-[11px] text-orange-600 font-semibold animate-pulse flex items-center gap-1">
@@ -1113,48 +1160,129 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         )}
                       </div>
 
-                      {/* Dropdown chọn SubCategory gọn gàng, liền mạch giao diện */}
-                      <div className="relative">
-                        <select
-                          value={selectedSubCategoryIds[0] || ''}
-                          onChange={(e) => {
-                            const scId = e.target.value;
-                            if (scId) {
-                              setSelectedSubCategoryIds([scId]);
-                              loadStepsForReview(scId, selectedTicket);
-                            }
-                          }}
-                          className="w-full bg-slate-50 hover:bg-slate-50/80 border border-slate-300 focus:border-orange-500 focus:bg-white rounded-xl px-3.5 py-2.5 text-[12px] font-bold text-slate-800 outline-none transition-all cursor-pointer appearance-none pr-10 shadow-2xs"
-                        >
-                          <option value="">-- Chọn danh mục xử lý sự cố chuẩn --</option>
-                          {allSubCategories.map((sc) => (
-                            <option key={sc.subCategoryId} value={sc.subCategoryId}>
-                              {sc.name}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
-                          ▼
+                      {/* 1.1. Đơn vị chủ trì xử lý (Danh mục chính) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                            Đơn vị chủ trì xử lý (Danh mục chính) <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400">Phòng ban chịu trách nhiệm chính</span>
+                        </div>
+                        <div className="relative">
+                          <select
+                            value={selectedSubCategoryIds[0] || ''}
+                            onChange={(e) => {
+                              const scId = e.target.value;
+                              if (scId) {
+                                const remaining = selectedSubCategoryIds.slice(1).filter((id) => id !== scId);
+                                const newIds = [scId, ...remaining];
+                                setSelectedSubCategoryIds(newIds);
+                                loadStepsForReview(newIds, selectedTicket);
+                              }
+                            }}
+                            className="w-full bg-slate-50 hover:bg-slate-50/80 border border-slate-300 focus:border-orange-500 focus:bg-white rounded-xl px-3.5 py-2.5 text-[12px] font-bold text-slate-800 outline-none transition-all cursor-pointer appearance-none pr-10 shadow-2xs"
+                          >
+                            <option value="">-- Chọn danh mục xử lý sự cố chuẩn --</option>
+                            {allSubCategories.map((sc) => {
+                              const catName = categories.find((c) => (c.id || c.categoryId) === sc.categoryId)?.name;
+                              return (
+                                <option key={sc.subCategoryId} value={sc.subCategoryId}>
+                                  {sc.name} {catName ? `(${catName})` : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-[10px]">
+                            ▼
+                          </div>
                         </div>
                       </div>
 
-                      {/* Hiển thị SubCategory đang chọn & mã gửi BE */}
+                      {/* 1.2. Đơn vị phối hợp hỗ trợ (Danh mục bổ sung) */}
+                      <div className="pt-2 border-t border-slate-100 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wide flex items-center gap-1">
+                            <span>🤝</span> Đơn vị phối hợp hỗ trợ ({selectedSubCategoryIds.length > 1 ? selectedSubCategoryIds.length - 1 : 0})
+                          </label>
+                          <span className="text-[10px] text-slate-400">Điều phối liên phòng ban</span>
+                        </div>
+
+                        {/* Danh sách danh mục phối hợp đã thêm */}
+                        {selectedSubCategoryIds.slice(1).map((subId) => {
+                          const scInfo = allSubCategories.find((s) => s.subCategoryId === subId);
+                          const catName = scInfo ? categories.find((c) => (c.id || c.categoryId) === scInfo.categoryId)?.name : '';
+                          return (
+                            <div
+                              key={subId}
+                              className="flex items-center justify-between bg-blue-50/70 border border-blue-200 rounded-xl px-3 py-1.5 text-xs text-blue-900"
+                            >
+                              <div className="flex items-center gap-1.5 font-bold truncate pr-2">
+                                <span className="text-blue-600">✓</span>
+                                <span className="truncate">{scInfo?.name || subId}</span>
+                                {catName && (
+                                  <span className="text-[10px] bg-blue-100 text-blue-700 font-normal px-1.5 py-0.5 rounded">
+                                    {catName}
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSupportingSubCategory(subId)}
+                                className="text-red-500 hover:text-red-700 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-red-50 cursor-pointer flex-shrink-0"
+                                title="Bỏ đơn vị phối hợp này"
+                              >
+                                ✕ Bỏ chọn
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Select thêm danh mục phối hợp mới */}
+                        <div className="relative">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAddSupportingSubCategory(e.target.value);
+                              }
+                            }}
+                            className="w-full bg-white hover:bg-blue-50/30 border border-dashed border-blue-300 focus:border-blue-500 rounded-xl px-3 py-2 text-[11px] font-semibold text-blue-700 outline-none transition-all cursor-pointer appearance-none pr-8"
+                          >
+                            <option value="">+ Thêm danh mục phối hợp (Chọn để phòng ban khác cùng tham gia giải quyết)...</option>
+                            {allSubCategories
+                              .filter((sc) => !selectedSubCategoryIds.includes(sc.subCategoryId))
+                              .map((sc) => {
+                                const catName = categories.find((c) => (c.id || c.categoryId) === sc.categoryId)?.name;
+                                return (
+                                  <option key={sc.subCategoryId} value={sc.subCategoryId}>
+                                    + {sc.name} {catName ? `(${catName})` : ''}
+                                  </option>
+                                );
+                              })}
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-blue-400 text-[10px]">
+                            ▼
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Hiển thị tổng kết các danh mục đang chọn */}
                       {selectedSubCategoryIds.length > 0 && (
                         <div className="flex items-center justify-between text-[11px] bg-orange-50/60 border border-orange-200/80 rounded-xl px-3 py-2 text-orange-900">
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <span className="text-orange-600">✓ Đang chọn:</span>
-                            <span>
-                              {allSubCategories.find((s) => s.subCategoryId === selectedSubCategoryIds[0])?.name || selectedSubCategoryIds[0]}
+                          <div className="flex items-center gap-1.5 font-bold truncate pr-2">
+                            <span className="text-orange-600">✓ Tổng {selectedSubCategoryIds.length} lĩnh vực:</span>
+                            <span className="truncate">
+                              {selectedSubCategoryIds.map((id) => allSubCategories.find((s) => s.subCategoryId === id)?.name || id.slice(0, 8)).join(', ')}
                             </span>
                           </div>
-                          <span className="font-mono text-[10px] text-orange-700 bg-orange-100 px-2 py-0.5 rounded-md font-semibold">
-                            {selectedSubCategoryIds[0].slice(0, 12)}...
+                          <span className="text-[10px] text-orange-700 bg-orange-100 px-2 py-0.5 rounded-md font-semibold flex-shrink-0">
+                            {selectedSubCategoryIds.length} phòng ban cùng xử lý
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* 2. Đánh dấu tình huống khẩn cấp (isLifeThreatening) - Toggle Card liền mạch */}
+                    {/* 2. Đánh dấu tình huống khẩn cấp - Thẻ chọn trực quan */}
                     <div
                       onClick={() => setIsLifeThreatening(!isLifeThreatening)}
                       className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between select-none ${isLifeThreatening
@@ -1169,7 +1297,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         </div>
                         <div>
                           <span className={`text-[12px] font-bold block ${isLifeThreatening ? 'text-red-900' : 'text-slate-800'}`}>
-                            Xác nhận tình huống khẩn cấp (isLifeThreatening)
+                            Xác nhận tình huống khẩn cấp (Nguy hiểm đến an toàn / Tính mạng)
                           </span>
                           <span className="text-[11px] text-slate-500 block mt-0.5">
                             Ưu tiên phân công khẩn cấp, điều động lực lượng xử lý trong thời gian ngắn nhất
@@ -1182,10 +1310,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       </div>
                     </div>
 
-                    {/* 3. Ý kiến chỉ đạo / Ghi chú phê duyệt (reviewNote) */}
+                    {/* 3. Ý kiến chỉ đạo & Ghi chú tiếp nhận */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-4.5 space-y-2 shadow-xs">
                       <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide block">
-                        Ý kiến chỉ đạo & Ghi chú phê duyệt (reviewNote)
+                        Ý kiến chỉ đạo & Ghi chú tiếp nhận
                       </label>
                       <textarea
                         rows={2}
@@ -1196,7 +1324,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       />
                     </div>
 
-                    {/* 4. Quy trình thực hiện & Phân công cán bộ (steps & assigneeId) */}
+                    {/* 4. Quy trình xử lý & Phân công cán bộ */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-4.5 space-y-3.5 shadow-xs">
                       <div className="flex items-center justify-between">
                         <div>
@@ -1204,7 +1332,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             <span>📋</span> Quy trình xử lý & Phân công cán bộ ({reviewSteps.length} bước)
                           </h4>
                           <p className="text-[11px] text-slate-500 mt-0.5">
-                            Hạn chót từng bước có thể nhập hoặc bỏ trống. Khi bỏ trống, Backend sẽ tự động tính dây chuyền theo thứ tự và thời lượng quy định.
+                            Mỗi bước có thể bắt đầu ngay từ đầu (chạy song song) hoặc chờ bước khác làm xong trước.
                           </p>
                         </div>
 
@@ -1213,18 +1341,67 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                           onClick={handleAddReviewStep}
                           className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl text-[11px] font-extrabold text-orange-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs active:scale-95"
                         >
-                          <span>+</span> Thêm bước
+                          <span>+</span> Thêm bước mới
                         </button>
                       </div>
+
+                      {/* SƠ ĐỒ TRỰC QUAN TÓM TẮT TRÌNH TỰ CÁC BƯỚC */}
+                      {reviewSteps.length > 1 && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1">
+                              <span>🗺️</span> Sơ đồ trình tự thực hiện:
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {reviewSteps.filter((s) => !s.dependsOnStepIds || s.dependsOnStepIds.length === 0).length} bước khởi đầu ngay
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                            {reviewSteps.map((st, i) => {
+                              const isParallel = !st.dependsOnStepIds || st.dependsOnStepIds.length === 0;
+                              return (
+                                <div key={st.stepId || i} className="flex items-center gap-1.5 flex-shrink-0">
+                                  {i > 0 && (
+                                    <span className="text-slate-400 font-bold text-[11px]">
+                                      {isParallel ? '||' : '➔'}
+                                    </span>
+                                  )}
+                                  <div
+                                    className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 shadow-2xs ${
+                                      isParallel
+                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                                        : 'bg-purple-50 border-purple-300 text-purple-900'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`w-4 h-4 rounded-full text-white text-[10px] font-bold flex items-center justify-center ${
+                                        isParallel ? 'bg-emerald-600' : 'bg-purple-600'
+                                      }`}
+                                    >
+                                      {i + 1}
+                                    </span>
+                                    <span className="max-w-[110px] truncate">{st.stepName || `Bước ${i + 1}`}</span>
+                                    <span className="text-[9px] px-1 py-0.5 rounded bg-white/80 font-normal">
+                                      {isParallel ? 'Chạy ngay' : 'Chờ bước trước'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Danh sách các bước */}
                       {reviewSteps.length === 0 ? (
                         <div className="py-8 text-center text-slate-400 text-xs border border-dashed border-slate-300 rounded-xl bg-slate-50/50">
-                          Chưa có bước xử lý nào. Hãy bấm "+ Thêm bước" để thiết lập quy trình.
+                          Chưa có bước xử lý nào. Hãy bấm "+ Thêm bước mới" để thiết lập quy trình.
                         </div>
                       ) : (
                         <div className="space-y-3">
                           {reviewSteps.map((st, idx) => {
+                            const isParallel = !st.dependsOnStepIds || st.dependsOnStepIds.length === 0;
                             return (
                               <div
                                 key={st.stepId || idx}
@@ -1241,38 +1418,20 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     </span>
                                     {st.duration && (
                                       <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                                        ⏱️ {st.duration} giờ
+                                        ⏱️ Dự kiến: {st.duration} giờ
                                       </span>
                                     )}
                                   </div>
 
                                   <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      disabled={idx === 0}
-                                      onClick={() => handleMoveReviewStep(idx, 'up')}
-                                      className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer text-xs"
-                                      title="Đưa lên trước"
-                                    >
-                                      ▲
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={idx === reviewSteps.length - 1}
-                                      onClick={() => handleMoveReviewStep(idx, 'down')}
-                                      className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer text-xs"
-                                      title="Hạ xuống sau"
-                                    >
-                                      ▼
-                                    </button>
                                     {reviewSteps.length > 1 && (
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveReviewStep(idx)}
-                                        className="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600 cursor-pointer text-xs ml-1"
-                                        title="Xóa bước này"
+                                        className="p-1 px-2 rounded-lg hover:bg-red-50 text-red-500 hover:text-red-700 cursor-pointer text-xs font-bold transition-colors"
+                                        title="Xóa bước này khỏi quy trình"
                                       >
-                                        ✕
+                                        ✕ Xóa bước
                                       </button>
                                     )}
                                   </div>
@@ -1280,11 +1439,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
                                 {/* Lựa chọn bước quy trình mẫu & Tự điền / Tùy chỉnh tên bước */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {/* Cột 1: Bước mẫu quy trình (stepId) */}
+                                  {/* Cột 1: Mẫu bước quy trình chuẩn */}
                                   <div>
                                     <div className="flex items-center justify-between mb-1">
                                       <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                                        Bước quy trình chuẩn (stepId) <span className="text-red-500">*</span>
+                                        Chọn mẫu quy trình chuẩn <span className="text-red-500">*</span>
                                       </label>
                                       {!isValidUuid(st.stepId) && (
                                         <span className="text-[10px] font-bold text-red-600">
@@ -1314,7 +1473,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       <option value="">-- Chọn bước có sẵn trong quy trình (*) --</option>
                                       {allSystemSteps.map((s) => (
                                         <option key={s.stepId} value={s.stepId}>
-                                          {s.stepName} (⏱️ {s.duration || 24}h)
+                                          {s.stepName} (⏱️ {s.duration || 24} giờ)
                                         </option>
                                       ))}
                                     </select>
@@ -1325,11 +1484,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     )}
                                   </div>
 
-                                  {/* Cột 2: Tự điền / Tùy chỉnh tên bước */}
+                                  {/* Cột 2: Tên bước xử lý thực tế */}
                                   <div>
                                     <div className="flex items-center justify-between mb-1">
                                       <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                                        Tên bước quy trình (Tự điền / Sửa) <span className="text-red-500">*</span>
+                                        Tên bước thực tế (Tự sửa nếu cần) <span className="text-red-500">*</span>
                                       </label>
                                       <span className="text-[10px] text-slate-400">Có thể chỉnh sửa</span>
                                     </div>
@@ -1359,12 +1518,12 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </div>
                                 </div>
 
-                                {/* Form cấu hình bước: Cán bộ phụ trách (assigneeId) & Ghi chú (notes) */}
+                                {/* Form cấu hình bước: Cán bộ phụ trách & Nội dung chi tiết */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {/* Dropdown chọn cán bộ phụ trách */}
                                   <div>
                                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide block mb-1">
-                                      Cán bộ phụ trách (assigneeId) <span className="text-red-500">*</span>
+                                      Cán bộ phụ trách thực hiện <span className="text-red-500">*</span>
                                     </label>
                                     <select
                                       value={st.assigneeId}
@@ -1373,7 +1532,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       }
                                       className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-[11px] font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
                                     >
-                                      <option value="">-- Chọn cán bộ tiếp nhận --</option>
+                                      <option value="">-- Chọn cán bộ tiếp nhận công việc --</option>
                                       {staffList.map((staff) => (
                                         <option key={staff.userId || staff.email} value={staff.userId}>
                                           {staff.fullName} ({staff.departmentName || 'Cán bộ'})
@@ -1382,10 +1541,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     </select>
                                   </div>
 
-                                  {/* Ghi chú bước */}
+                                  {/* Ghi chú nội dung công việc */}
                                   <div>
                                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide block mb-1">
-                                      Ghi chú công việc (notes)
+                                      Nội dung yêu cầu công việc
                                     </label>
                                     <input
                                       type="text"
@@ -1393,19 +1552,19 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       onChange={(e) =>
                                         handleReviewStepFieldChange(idx, 'notes', e.target.value)
                                       }
-                                      placeholder="Ví dụ: Tiến hành khảo sát hiện trường"
+                                      placeholder="Ví dụ: Tiến hành kiểm tra và khảo sát hiện trường..."
                                       className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-[11px] font-medium text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
                                     />
                                   </div>
 
-                                  {/* Hạn chót bước tùy chọn (Backend tự tính nếu để trống) */}
+                                  {/* Hạn chót bước tùy chọn (Hệ thống tự tính nếu để trống) */}
                                   <div className="col-span-1 md:col-span-2">
                                     <div className="flex items-center justify-between mb-1">
                                       <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                                        Hạn chót bước (Tùy chọn)
+                                        Thời hạn hoàn thành riêng cho bước này (Tùy chọn)
                                       </label>
                                       <span className="text-[10px] text-slate-400">
-                                        Để trống: Backend tự tính theo thời lượng ({st.duration || 24}h)
+                                        Để trống: Hệ thống tự động tính theo thời lượng ({st.duration || 24} giờ)
                                       </span>
                                     </div>
                                     <input
@@ -1419,12 +1578,137 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </div>
                                 </div>
 
-                                {/* Step ID preview */}
-                                <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                                  <span className={`truncate max-w-[340px] ${isValidUuid(st.stepId) ? 'text-slate-400' : 'text-red-600 font-bold'}`}>
-                                    {isValidUuid(st.stepId) ? `stepId: ${st.stepId}` : `⚠️ Chưa chọn bước quy trình (chọn ở menu phía trên)`}
+                                {/* LOGIC ĐIỀU PHỐI BƯỚC: BẮT ĐẦU KHI NÀO? (CỰC KỲ DỄ HIỂU, 100% TIẾNG VIỆT) */}
+                                <div className="p-3 bg-white border border-slate-200/90 rounded-xl space-y-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                                      <span>⚡</span> Thời điểm kích hoạt bước này:
+                                    </label>
+                                    <span className="text-[10px] text-slate-400">
+                                      {isParallel ? 'Chạy song song ngay' : `Chờ hoàn tất ${st.dependsOnStepIds?.length || 0} bước`}
+                                    </span>
+                                  </div>
+
+                                  {/* 2 Thẻ chọn chế độ thực hiện to, rõ */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {/* Lựa chọn 1: Bắt đầu ngay từ đầu */}
+                                    <div
+                                      onClick={() => handleSetReviewStepDependencyMode(idx, 'parallel')}
+                                      className={`p-2.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-2.5 select-none ${
+                                        isParallel
+                                          ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-200 shadow-2xs'
+                                          : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`step-mode-${idx}`}
+                                        checked={isParallel}
+                                        onChange={() => handleSetReviewStepDependencyMode(idx, 'parallel')}
+                                        className="mt-0.5 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                      />
+                                      <div>
+                                        <span className="text-[11px] font-bold text-slate-900 block">
+                                          🟢 Bắt đầu ngay từ đầu
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block mt-0.5 leading-snug">
+                                          Chạy song song, cán bộ có thể bắt đầu làm việc ngay khi hồ sơ được tiếp nhận.
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Lựa chọn 2: Chờ bước khác hoàn thành trước */}
+                                    <div
+                                      onClick={() => {
+                                        if (isParallel) {
+                                          handleSetReviewStepDependencyMode(idx, 'sequential');
+                                        }
+                                      }}
+                                      className={`p-2.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-2.5 select-none ${
+                                        !isParallel
+                                          ? 'border-purple-500 bg-purple-50/70 ring-2 ring-purple-200 shadow-2xs'
+                                          : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`step-mode-${idx}`}
+                                        checked={!isParallel}
+                                        onChange={() => {
+                                          if (isParallel) {
+                                            handleSetReviewStepDependencyMode(idx, 'sequential');
+                                          }
+                                        }}
+                                        className="mt-0.5 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                      />
+                                      <div>
+                                        <span className="text-[11px] font-bold text-slate-900 block">
+                                          🟡 Chờ bước khác làm xong trước
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 block mt-0.5 leading-snug">
+                                          Chỉ bắt đầu khi các bước được chỉ định dưới đây đã hoàn thành xong.
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Khi chọn Chờ bước khác: Cho tích chọn các bước tiên quyết */}
+                                  {!isParallel && (
+                                    <div className="pt-2 border-t border-purple-100 bg-purple-50/40 -mx-3 -mb-3 p-3 rounded-b-xl space-y-1.5">
+                                      <span className="text-[10px] font-bold text-purple-900 block">
+                                        Tích chọn các bước bắt buộc phải hoàn thành xong trước khi bắt đầu bước này:
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {reviewSteps.map((otherStep, otherIdx) => {
+                                          if (otherIdx === idx) return null;
+                                          const otherId = otherStep.stepId;
+                                          const isChecked = Boolean(otherId && st.dependsOnStepIds?.includes(otherId));
+                                          return (
+                                            <label
+                                              key={otherId || otherIdx}
+                                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                                                isChecked
+                                                  ? 'bg-purple-100 border-purple-400 text-purple-950 font-bold shadow-2xs'
+                                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                              }`}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                disabled={!otherId || !isValidUuid(otherId)}
+                                                onChange={() => {
+                                                  if (otherId && isValidUuid(otherId)) {
+                                                    handleToggleReviewStepDependency(idx, otherId);
+                                                  }
+                                                }}
+                                                className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                              />
+                                              <span>Bước {otherIdx + 1}: {otherStep.stepName || 'Xử lý'}</span>
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Tóm tắt trạng thái bước bằng tiếng Việt thân thiện */}
+                                <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                  <span className="text-slate-500 font-medium">
+                                    Thứ tự hiển thị: Bước {idx + 1}
                                   </span>
-                                  <span className="text-slate-400">Thứ tự: {st.orderIndex || idx + 1}</span>
+                                  <span className={`font-bold px-2 py-0.5 rounded-md text-[10px] ${
+                                    isParallel
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  }`}>
+                                    {isParallel
+                                      ? '🟢 Bắt đầu ngay từ đầu'
+                                      : `🟡 Chờ hoàn tất: ${st.dependsOnStepIds?.map(dId => {
+                                          const foundIdx = reviewSteps.findIndex(r => r.stepId === dId);
+                                          return foundIdx >= 0 ? `Bước ${foundIdx + 1}` : 'Bước trước';
+                                        }).join(', ')}`}
+                                  </span>
                                 </div>
                               </div>
                             );
@@ -1444,7 +1728,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     <div>
                       <p className="font-bold">Lưu ý khi từ chối hồ sơ phản ánh:</p>
                       <p className="text-[12px] text-red-700 mt-0.5">
-                        Hồ sơ sẽ chuyển sang trạng thái <strong>TỪ CHỐI (REJECTED)</strong>. Hệ thống sẽ tự động gửi thông báo kèm lý do từ chối cụ thể đến ứng dụng của người dân.
+                        Hồ sơ sẽ chuyển sang trạng thái <strong>TỪ CHỐI TIẾP NHẬN</strong>. Hệ thống sẽ tự động gửi thông báo kèm lý do từ chối cụ thể đến ứng dụng của người dân.
                       </p>
                     </div>
                   </div>
@@ -1516,16 +1800,16 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     </div>
                   </div>
 
-                  {/* Hiển thị hạn chót tổng của Ticket */}
+                  {/* Hiển thị hạn chót hoàn thành toàn bộ hồ sơ */}
                   <div className="flex items-center justify-between p-3.5 bg-orange-50/80 border border-orange-200 rounded-xl text-xs">
                     <div>
-                      <span className="font-bold text-orange-950">Hạn chót tổng của Ticket: </span>
+                      <span className="font-bold text-orange-950">Thời hạn hoàn thành toàn bộ hồ sơ: </span>
                       <span className="font-mono-cf font-extrabold text-orange-700 ml-1">
                         {selectedTicket.deadline ? selectedTicket.deadline.replace('T', ' ').slice(0, 16) : 'Chưa thiết lập (tính theo các bước)'}
                       </span>
                     </div>
                     <span className="text-[11px] text-orange-600">
-                      Backend tự động tính lại hạn chót tổng khi các bước thay đổi hoặc bị hủy/xóa
+                      Hệ thống tự động cập nhật lại thời hạn khi các bước thay đổi hoặc được điều chỉnh
                     </span>
                   </div>
 
@@ -1548,38 +1832,29 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition-colors space-y-2.5"
                           >
                             <div className="flex flex-col md:flex-row md:items-center gap-3">
-                              <div className="flex items-center gap-2">
-                                <div className="flex flex-col items-center gap-0.5">
-                                  <button
-                                    type="button"
-                                    disabled={idx === 0}
-                                    onClick={() => handleMoveStep(idx, 'up')}
-                                    className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                    title="Đưa lên trên"
-                                  >
-                                    ▲
-                                  </button>
-                                  <span className="font-mono-cf text-[12px] font-bold text-slate-600 w-5 text-center">
-                                    {idx + 1}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={idx === steps.length - 1}
-                                    onClick={() => handleMoveStep(idx, 'down')}
-                                    className="text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                    title="Hạ xuống dưới"
-                                  >
-                                    ▼
-                                  </button>
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-6 h-6 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                  {idx + 1}
                                 </div>
 
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[13px] font-bold text-slate-900 truncate">
                                     {st.stepName || `Bước ${idx + 1}`}
                                   </p>
-                                  <p className="text-[11px] text-slate-500 mt-0.5">
-                                    Cán bộ: <span className="font-semibold text-slate-700">{st.assigneeName || 'Chưa phân công'}</span>
-                                  </p>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    <span className="text-[11px] text-slate-500">
+                                      Cán bộ: <span className="font-semibold text-slate-700">{st.assigneeName || 'Chưa phân công'}</span>
+                                    </span>
+                                    {st.dependsOnStepIds && st.dependsOnStepIds.length > 0 ? (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                                        🔗 Phụ thuộc ({st.dependsOnStepIds.length} bước)
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        ⚡ Chạy song song
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
@@ -1600,7 +1875,23 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   <option value="CANCELLED">Hủy bước</option>
                                 </select>
 
-                                {/* Chỉnh sửa deadline (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) */}
+                                {/* Cập nhật bước phụ thuộc DAG (PUT /api/v1/manager/tickets/steps/{stepId}/dependencies) */}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditingStepDeps({
+                                      stepId: stepInstanceId,
+                                      stepName: st.stepName || `Bước ${idx + 1}`,
+                                      dependsOnStepIds: st.dependsOnStepIds || [],
+                                    })
+                                  }
+                                  className="px-2.5 py-1 text-[11px] font-semibold border border-purple-200 bg-purple-50/70 hover:bg-purple-100 text-purple-700 rounded-lg cursor-pointer transition-colors"
+                                  title="Thiết lập thứ tự thực hiện"
+                                >
+                                  🔗 Thứ tự
+                                </button>
+
+                                {/* Chỉnh sửa deadline */}
                                 {isEditingDeadline && editingStepDeadline ? (
                                   <div className="flex items-center gap-1.5">
                                     <input
@@ -1649,18 +1940,98 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </div>
                                 )}
 
-                                {/* Xóa step (DELETE /api/v1/ticket-steps/{id}) */}
+                                {/* Xóa bước */}
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteStep(stepInstanceId)}
                                   disabled={!stepInstanceId}
                                   className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg cursor-pointer disabled:opacity-50"
-                                  title="Xóa bước này (Backend sẽ tính lại hạn chót tổng)"
+                                  title="Xóa bước này (Hệ thống sẽ tự động cập nhật lại thời hạn)"
                                 >
                                   Xóa
                                 </button>
                               </div>
                             </div>
+
+                            {/* Cửa sổ sửa thứ tự thực hiện cho bước này */}
+                            {editingStepDeps && editingStepDeps.stepId === stepInstanceId && (
+                              <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2 mt-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-purple-900">
+                                    Cập nhật bước tiên quyết cho: <span className="underline">{editingStepDeps.stepName}</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingStepDeps({
+                                        ...editingStepDeps,
+                                        dependsOnStepIds: [],
+                                      })
+                                    }
+                                    className="px-2 py-0.5 text-[10px] font-bold rounded bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer"
+                                  >
+                                    ⚡ Bắt đầu ngay (Không chờ bước nào)
+                                  </button>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <span className="text-[10px] text-slate-500 block">
+                                    Tích chọn các bước phải hoàn thành trước khi bước này có thể bắt đầu:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {steps
+                                      .filter((other) => (other.id || other.stepId) !== stepInstanceId)
+                                      .map((other, oIdx) => {
+                                        const otherId = other.id || other.stepId || '';
+                                        const isChecked = editingStepDeps.dependsOnStepIds.includes(otherId);
+                                        return (
+                                          <label
+                                            key={otherId || oIdx}
+                                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                                              isChecked
+                                                ? 'bg-purple-100 border-purple-400 text-purple-950 font-bold'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => {
+                                                const nextDeps = isChecked
+                                                  ? editingStepDeps.dependsOnStepIds.filter((id) => id !== otherId)
+                                                  : [...editingStepDeps.dependsOnStepIds, otherId];
+                                                setEditingStepDeps({
+                                                  ...editingStepDeps,
+                                                  dependsOnStepIds: nextDeps,
+                                                });
+                                              }}
+                                              className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                                            />
+                                            <span>{other.stepName || `Bước ${oIdx + 1}`}</span>
+                                          </label>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2 pt-1 border-t border-purple-200/60">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingStepDeps(null)}
+                                    className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold border border-slate-200 cursor-pointer"
+                                  >
+                                    Hủy
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveStepDependencies(stepInstanceId, editingStepDeps.dependsOnStepIds)}
+                                    className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold cursor-pointer shadow-xs"
+                                  >
+                                    Lưu thứ tự thực hiện
+                                  </button>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Bằng chứng đã có của bước */}
                             {st.evidences && st.evidences.length > 0 && (
