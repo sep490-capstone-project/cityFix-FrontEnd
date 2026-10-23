@@ -398,16 +398,26 @@ export async function uploadReportImage(
 
 export interface AIAnalysisResponse {
   analysisId?: string;
-  categoryId: string;
-  categoryName?: string | null;
-  subCategoryId?: string;
-  subCategoryName?: string | null;
-  severity: string;
-  priority?: string;
-  dangerLevel?: string;
+  subCategoryIds?: string[];
+  subCategoryNames?: string[];
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
   confidenceScore: number;
   description: string;
   isValidIssue?: boolean;
+  urgency?: number;
+  impact?: number;
+  severityScore?: number;
+  context?: number;
+  baseScore?: number;
+  finalPriorityScore?: number;
+  priorityReasoning?: string;
+  // Fallbacks / legacy
+  categoryId?: string;
+  categoryName?: string | null;
+  subCategoryId?: string;
+  subCategoryName?: string | null;
+  severity?: string;
+  dangerLevel?: string;
 }
 
 export async function analyzeReportImage(
@@ -435,6 +445,7 @@ export async function analyzeReportImage(
       },
       body: JSON.stringify({
         mediaUrl: imageUrl,
+        mediaUrls: [imageUrl],
       }),
     });
   } catch (error) {
@@ -490,17 +501,19 @@ export async function analyzeReportImage(
 export interface CreateTicketRequest {
   description: string;
   imageUrl: string;
-  categoryId: string;
-  // subCategoryId: string;
   subCategoryIds: string[];
-  severity: string;
   priority: string;
-  dangerLevel?: string;
+  priorityReasoning?: string;
   locationMethod: 'AUTO_GPS' | 'MANUAL_ENTRY' | string;
   address: string;
   latitude: number;
   longitude: number;
   confidenceScore?: number;
+  isAnonymous?: boolean;
+  // Optional / legacy fields (omitted from outgoing payload)
+  categoryId?: string;
+  severity?: string;
+  dangerLevel?: string;
   aiCategoryId?: string;
   aiSeverity?: string;
   aiDangerLevel?: string;
@@ -520,6 +533,7 @@ export interface DuplicateTicketItem {
   latitude?: number;
   longitude?: number;
   distance?: number | string;
+  distanceMeters?: number;
   upvotes?: number;
   status?: string;
   createdAt?: string;
@@ -538,20 +552,19 @@ export async function createTicket(
   const payloadBody = {
     description: data.description,
     imageUrl: data.imageUrl,
-    categoryId: data.categoryId,
     subCategoryIds: Array.isArray(data.subCategoryIds) && data.subCategoryIds.length > 0
       ? data.subCategoryIds
       : (data as any).subCategoryId
         ? [(data as any).subCategoryId]
         : [],
-    severity: data.severity,
-    priority: data.priority,
-    dangerLevel: data.dangerLevel,
-    locationMethod: data.locationMethod,
+    priority: (data.priority || data.severity || 'LOW').toUpperCase(),
+    priorityReasoning: data.priorityReasoning || '',
+    locationMethod: data.locationMethod || 'AUTO_GPS',
     address: data.address,
     latitude: data.latitude,
     longitude: data.longitude,
     confidenceScore: data.confidenceScore ?? data.aiConfidenceScore ?? 0,
+    isAnonymous: data.isAnonymous ?? false,
   };
 
   console.log('🎫 PAYLOAD SENT TO BACKEND:', JSON.stringify(payloadBody, null, 2));
@@ -714,9 +727,11 @@ export interface ReportedTicket {
   imageUrl?: string;
   categoryId?: string;
   categoryName?: string;
+  categories?: Array<{ categoryId: string; categoryName: string }>;
   subCategories?: SubCategoryItem[];
   severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
+  priorityReasoning?: string;
   locationMethod?: 'AUTO_GPS' | 'MANUAL_ENTRY' | string;
   address?: string;
   status: 'INITIATED' | 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | string;

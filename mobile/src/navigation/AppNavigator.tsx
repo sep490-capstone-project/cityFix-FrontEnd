@@ -36,6 +36,7 @@ export default function AppNavigator() {
   const [verificationEmail, setVerificationEmail] = useState('');
   const [draft, setDraft] = useState<ReportDraft>(INITIAL_DRAFT);
   const [duplicateTickets, setDuplicateTickets] = useState<any[]>([]);
+  const [createdTicket, setCreatedTicket] = useState<any | null>(null);
 
   const handleLoginSuccess = (authUser: AuthUser, token: string) => {
     setUser(authUser);
@@ -51,6 +52,7 @@ export default function AppNavigator() {
     setUser(null);
     setDraft(INITIAL_DRAFT);
     setDuplicateTickets([]);
+    setCreatedTicket(null);
     setCurrentScreen('login');
   };
 
@@ -59,7 +61,7 @@ export default function AppNavigator() {
   };
 
   const handleOpenTicket = (ticketId: string, ticketObj?: ReportedTicket) => {
-    setPreviousScreen(currentScreen); // Remember where user opened the ticket from
+    setPreviousScreen(currentScreen === 'success' || currentScreen === 'success-upvote' ? 'home' : currentScreen);
     setSelectedTicketId(ticketId);
     setSelectedTicket(ticketObj || null);
     setCurrentScreen('ticket-detail');
@@ -68,6 +70,7 @@ export default function AppNavigator() {
   const resetReport = () => {
     setDraft(INITIAL_DRAFT);
     setDuplicateTickets([]);
+    setCreatedTicket(null);
     setCurrentScreen('home');
   };
 
@@ -161,6 +164,10 @@ export default function AppNavigator() {
           setDuplicateTickets(dupes);
           setCurrentScreen('duplicate');
         }}
+        onTicketCreated={(ticket) => {
+          setCreatedTicket(ticket);
+          setCurrentScreen('success');
+        }}
       />
     );
   }
@@ -173,6 +180,10 @@ export default function AppNavigator() {
         draft={draft}
         duplicateTickets={duplicateTickets}
         resetReport={resetReport}
+        onUpvoteSuccess={(ticket) => {
+          setCreatedTicket(ticket);
+          setCurrentScreen('success-upvote');
+        }}
       />
     );
   }
@@ -180,8 +191,19 @@ export default function AppNavigator() {
   if (currentScreen === 'success' || currentScreen === 'success-upvote') {
     return (
       <SuccessScreen
+        ticket={createdTicket}
+        draft={draft}
         resetReport={resetReport}
         isUpvote={currentScreen === 'success-upvote'}
+        onViewDetail={(tId, tObj) => {
+          setDraft(INITIAL_DRAFT);
+          setDuplicateTickets([]);
+          setCreatedTicket(null);
+          setPreviousScreen('home');
+          setSelectedTicketId(tId);
+          setSelectedTicket(tObj || null);
+          setCurrentScreen('ticket-detail');
+        }}
       />
     );
   }

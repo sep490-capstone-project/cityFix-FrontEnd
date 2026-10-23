@@ -712,6 +712,7 @@ interface Props {
   draft: ReportDraft;
   duplicateTickets?: DuplicateTicketItem[];
   resetReport: () => void;
+  onUpvoteSuccess?: (ticket: any) => void;
 }
 
 export default function DuplicateScreen({
@@ -719,6 +720,7 @@ export default function DuplicateScreen({
   draft,
   duplicateTickets = [],
   resetReport,
+  onUpvoteSuccess,
 }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -811,8 +813,16 @@ export default function DuplicateScreen({
 
       setUpvoteState('done');
 
+      const upvotedItem = displayList.find(
+        (t) => (t.id || t.ticketId) === selectedId
+      );
+
       setTimeout(() => {
-        navigate('success-upvote');
+        if (onUpvoteSuccess && upvotedItem) {
+          onUpvoteSuccess(upvotedItem);
+        } else {
+          navigate('success-upvote');
+        }
       }, 1200);
     } catch (err: any) {
       console.error('Upvote error:', err);

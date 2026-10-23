@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ interface Props {
   setDraft: (d: ReportDraft) => void;
   authUser?: AuthUser | null;
   onDuplicatesFound?: (dupes: DuplicateTicketItem[]) => void;
+  onTicketCreated?: (ticket: any) => void;
 }
 
 export default function ReviewDraftScreen({
@@ -32,12 +33,19 @@ export default function ReviewDraftScreen({
   setDraft,
   authUser,
   onDuplicatesFound,
+  onTicketCreated,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCatPicker, setShowCatPicker] = useState(false);
 
   const ai = draft.aiAnalysis;
+
+  useEffect(() => {
+    if (!draft.userDescription && ai?.description) {
+      setDraft({ ...draft, userDescription: ai.description });
+    }
+  }, [ai?.description]);
   const currentCatId = draft.userCategoryId || (ai?.categoryId ?? 'cat-001');
   const matchedCat = CATEGORIES.find((c) => c.categoryId === currentCatId);
   const currentCatName =
@@ -73,26 +81,28 @@ export default function ReviewDraftScreen({
       }
 
       const effectiveCatId =
-        draft.userCategoryId || draft.aiAnalysis.categoryId;
+        draft.userCategoryId || draft.aiAnalysis.categoryId || '';
 
       // 3. Gọi API check-duplicates trước khi tạo
       try {
-        console.log('🔍 Checking duplicates before submit...');
-        const dupes = await checkDuplicates(
-          {
-            categoryId: effectiveCatId,
-            latitude: draft.location.lat,
-            longitude: draft.location.lng,
-            location: draft.address,
-          },
-          accessToken
-        );
+        if (effectiveCatId) {
+          console.log('🔍 Checking duplicates before submit...');
+          const dupes = await checkDuplicates(
+            {
+              categoryId: effectiveCatId,
+              latitude: draft.location.lat,
+              longitude: draft.location.lng,
+              location: draft.address,
+            },
+            accessToken
+          );
 
-        if (dupes && dupes.length > 0) {
-          console.log('⚠️ Duplicates found:', dupes.length);
-          if (onDuplicatesFound) {
-            onDuplicatesFound(dupes);
-            return;
+          if (dupes && dupes.length > 0) {
+            console.log('⚠️ Duplicates found:', dupes.length);
+            if (onDuplicatesFound) {
+              onDuplicatesFound(dupes);
+              return;
+            }
           }
         }
       } catch (dupErr) {
@@ -113,27 +123,24 @@ export default function ReviewDraftScreen({
       const effectivePriority =
         draft.aiAnalysis.priority ||
         (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
-        'MEDIUM';
+        'LOW';
 
       const requestBody = {
-  description:
-    draft.userDescription ||
-    draft.aiAnalysis.description ||
-    '',
-  imageUrl: draft.imageUrls[0],
-  categoryId: effectiveCatId,
-  subCategoryIds: effectiveSubCatId
-    ? [effectiveSubCatId]
-    : [],
-  severity: draft.aiAnalysis.severity,
-  priority: effectivePriority,
-  dangerLevel: draft.aiAnalysis.dangerLevel,
-  locationMethod: draft.locationMethod || 'AUTO_GPS',
-  address: draft.address || '',
-  latitude: draft.location.lat,
-  longitude: draft.location.lng,
-  confidenceScore: draft.aiAnalysis.confidenceScore || 0,
-};
+        description:
+          draft.userDescription ||
+          draft.aiAnalysis.description ||
+          '',
+        imageUrl: draft.imageUrls[0],
+        subCategoryIds: effectiveSubCatId ? [effectiveSubCatId] : [],
+        priority: effectivePriority.toUpperCase(),
+        priorityReasoning: draft.aiAnalysis.priorityReasoning || '',
+        locationMethod: draft.locationMethod || 'AUTO_GPS',
+        address: draft.address || '',
+        latitude: draft.location.lat,
+        longitude: draft.location.lng,
+        confidenceScore: draft.aiAnalysis.confidenceScore || 0,
+        isAnonymous: draft.isAnonymous ?? false,
+      };
 
       console.log('🎫 CREATE TICKET BODY:', JSON.stringify(requestBody, null, 2));
 
@@ -143,7 +150,33 @@ export default function ReviewDraftScreen({
       console.log('✅ TICKET CREATED:', result);
 
       // 6. Thành công
-      navigate('success');
+      const fullTicketData = {
+        ...result,
+        id: result?.id || result?.ticketId,
+        categoryName:
+          result?.categoryName ||
+          currentCatName ||
+          draft.aiAnalysis.categoryName,
+        subCategories:
+          result?.subCategories ||
+          (draft.aiAnalysis.subCategoryName
+            ? [{ name: draft.aiAnalysis.subCategoryName }]
+            : []),
+        address: result?.address || draft.address || '',
+        imageUrl: result?.imageUrl || draft.imageUrls[0],
+        priority: result?.priority || effectivePriority,
+        severity: result?.priority || (result as any)?.severity || draft.aiAnalysis.severity || 'LOW',
+        priorityReasoning: result?.priorityReasoning || draft.aiAnalysis.priorityReasoning,
+        createdAt: result?.createdAt || new Date().toISOString(),
+        locationMethod: draft.locationMethod || 'AUTO_GPS',
+        description: requestBody.description,
+      };
+
+      if (onTicketCreated) {
+        onTicketCreated(fullTicketData);
+      } else {
+        navigate('success');
+      }
     } catch (error) {
       console.error('❌ CREATE TICKET ERROR:', error);
 
@@ -212,7 +245,7 @@ export default function ReviewDraftScreen({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.userName}>
-                    {authUser?.fullName || authUser?.name || 'Người dân'}
+                    {authUser?.fullName || (authUser as any)?.name || 'Người dân'}
                   </Text>
                   <Text style={styles.userSub}>Tài khoản đã xác thực</Text>
                 </View>
@@ -225,7 +258,7 @@ export default function ReviewDraftScreen({
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Số điện thoại</Text>
                   <Text style={styles.infoValue}>
-                    {authUser?.phone || authUser?.phoneNumber || '—'}
+                    {authUser?.phone || (authUser as any)?.phoneNumber || '—'}
                   </Text>
                 </View>
                 <View style={styles.infoRow}>
@@ -326,33 +359,16 @@ export default function ReviewDraftScreen({
 
               <View style={styles.aiMetaRow}>
                 <View style={styles.aiMetaItem}>
-                  <Text style={styles.metaLabel}>Nghiêm trọng:</Text>
-                  {(() => {
-                    const sev = (ai?.severity || '').toUpperCase();
-                    const sevMap: Record<string, { label: string; color: string }> = {
-                      LOW: { label: 'Thấp', color: '#16a34a' },
-                      MEDIUM: { label: 'Trung bình', color: '#d97706' },
-                      HIGH: { label: 'Cao', color: '#dc2626' },
-                      CRITICAL: { label: 'Khẩn cấp', color: '#be185d' },
-                    };
-                    const item = sevMap[sev] || { label: ai?.severity || 'Chưa rõ', color: '#dc2626' };
-                    return (
-                      <Text style={[styles.metaValue, { color: item.color }]}>
-                        {item.label}
-                      </Text>
-                    );
-                  })()}
-                </View>
-                <View style={styles.aiMetaItem}>
                   <Text style={styles.metaLabel}>Ưu tiên:</Text>
                   {(() => {
-                    const prio = (ai?.priority || '').toUpperCase();
+                    const prio = (ai?.priority || ai?.severity || 'LOW').toUpperCase();
                     const prioMap: Record<string, { label: string; color: string }> = {
                       LOW: { label: 'Thấp', color: '#16a34a' },
                       MEDIUM: { label: 'Trung bình', color: '#2563eb' },
                       HIGH: { label: 'Cao', color: '#dc2626' },
+                      CRITICAL: { label: 'Khẩn cấp', color: '#be185d' },
                     };
-                    const item = prioMap[prio] || { label: ai?.priority || 'Trung bình', color: '#2563eb' };
+                    const item = prioMap[prio] || { label: prio || 'Trung bình', color: '#2563eb' };
                     return (
                       <Text style={[styles.metaValue, { color: item.color }]}>
                         {item.label}
@@ -367,6 +383,15 @@ export default function ReviewDraftScreen({
                   </Text>
                 </View>
               </View>
+
+              {ai?.priorityReasoning ? (
+                <View style={{ marginTop: 8, padding: 8, backgroundColor: '#f8fafc', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                  <Text style={[styles.metaLabel, { color: '#64748b' }]}>Lý do đánh giá ưu tiên:</Text>
+                  <Text style={{ fontSize: 12, color: '#334155', marginTop: 2, lineHeight: 17 }}>
+                    {ai.priorityReasoning}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
 
@@ -398,25 +423,35 @@ export default function ReviewDraftScreen({
 
           {/* Section 5: Mô tả sự cố */}
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.orangeIndicator} />
-              <Text style={styles.cardTitle}>MÔ TẢ SỰ CỐ</Text>
+            <View style={[styles.cardHeader, { justifyContent: 'space-between' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={styles.orangeIndicator} />
+                <Text style={styles.cardTitle}>MÔ TẢ SỰ CỐ</Text>
+              </View>
+              <View style={styles.editBadge}>
+                <Ionicons name="pencil" size={11} color="#ea580c" />
+                <Text style={styles.editBadgeText}>Có thể chỉnh sửa</Text>
+              </View>
             </View>
             <View style={styles.cardBody}>
-              {editing ? (
-                <TextInput
-                  style={styles.descInput}
-                  multiline
-                  numberOfLines={3}
-                  value={draft.userDescription}
-                  onChangeText={(text) => setDraft({ ...draft, userDescription: text })}
-                  placeholder={ai?.description || 'Thêm mô tả sự cố...'}
-                />
-              ) : (
-                <Text style={styles.descStaticText}>
-                  {draft.userDescription || ai?.description || 'Chưa có mô tả thêm.'}
-                </Text>
-              )}
+              <TextInput
+                style={styles.descInput}
+                multiline
+                numberOfLines={4}
+                value={
+                  draft.userDescription !== undefined && draft.userDescription !== ''
+                    ? draft.userDescription
+                    : (ai?.description || '')
+                }
+                onChangeText={(text) =>
+                  setDraft({ ...draft, userDescription: text })
+                }
+                placeholder="Nhập hoặc chỉnh sửa chi tiết sự cố..."
+                placeholderTextColor="#94a3b8"
+              />
+              <Text style={styles.descHintText}>
+                💡 Mô tả được AI gợi ý từ hình ảnh. Bạn có thể nhấn trực tiếp vào ô trên để chỉnh sửa hoặc bổ sung thêm thông tin.
+              </Text>
             </View>
           </View>
 
@@ -779,11 +814,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     borderRadius: 10,
-    padding: 10,
+    padding: 12,
     fontSize: 13,
     color: '#0f172a',
     textAlignVertical: 'top',
-    minHeight: 70,
+    minHeight: 85,
+    lineHeight: 19,
+  },
+  editBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  editBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  descHintText: {
+    fontSize: 11,
+    color: '#64748b',
+    lineHeight: 16,
+    marginTop: 4,
   },
   disclaimerCard: {
     flexDirection: 'row',

@@ -38,17 +38,26 @@ export interface LocationData {
 
 export interface AIAnalysis {
   analysisId?: string;
-  categoryId: string;
+  categoryId?: string;
   categoryName?: string | null;
   subCategoryId?: string;
   subCategoryName?: string | null;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  subCategoryIds?: string[];
+  subCategoryNames?: string[];
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
+  priorityReasoning?: string;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string;
+  severityScore?: number;
   dangerLevel?: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL' | string;
   confidenceScore: number;
   description: string;
   isAcceptedByHuman?: boolean;
   isValidIssue?: boolean;
+  urgency?: number;
+  impact?: number;
+  context?: number;
+  baseScore?: number;
+  finalPriorityScore?: number;
 }
 
 export interface ReportDraft {
@@ -60,6 +69,7 @@ export interface ReportDraft {
   userCategoryId: string | null;
   userSubCategoryId?: string | null;
   userDescription: string;
+  isAnonymous?: boolean;
 }
 
 export interface Category {
