@@ -21,6 +21,20 @@ interface Props {
   onBack: () => void;
 }
 
+function getStepTitle(st: any, i: number = 0): string {
+  if (!st) return `Bước ${i + 1}`;
+  return (
+    st.stepName ||
+    st.name ||
+    st.title ||
+    st.stepTitle ||
+    st.step?.stepName ||
+    st.step?.name ||
+    st.notes ||
+    `Bước ${i + 1}`
+  );
+}
+
 export default function StaffTicketDetail({ ticket: initialTicket, currentUser, onBack }: Props) {
   const [ticket, setTicket] = useState<StaffTicketItem>(initialTicket);
   const ticketId = ticket.id || ticket.ticketId || '';
@@ -84,10 +98,10 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
 
     loadAuxData();
 
-    // Fetch steps if missing, or extract any existing evidences from steps
+    // Fetch steps to ensure up-to-date step details and extract any existing evidences
     async function initStepsAndEvidences() {
       let currentSteps = ticket.steps;
-      if ((!currentSteps || currentSteps.length === 0) && ticketId) {
+      if (ticketId) {
         try {
           const fetched = await getStaffTicketSteps(ticketId);
           if (fetched && fetched.length > 0) {
@@ -270,7 +284,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
       const activeStep = ticket.steps?.find(
         (s) => (s.id || (s as any).ticketStepId || s.stepId) === stepInstanceId
       );
-      const note = `Cập nhật bước "${activeStep?.stepName || ''}" sang ${statusInfo(targetStatus).label}`;
+      const note = `Cập nhật bước "${getStepTitle(activeStep, 0)}" sang ${statusInfo(targetStatus).label}`;
       const updated = await updateStaffTicketStatus(ticketId, targetStatus, note, stepInstanceId);
 
       setTicket((prev) => {
@@ -651,7 +665,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="text-[13px] font-bold text-gray-900 leading-tight">
-                                {st.stepName || `Bước ${i + 1}`}
+                                {getStepTitle(st, i)}
                               </h4>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${stInfo.cls}`}>
                                 {stInfo.label}
@@ -905,7 +919,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                 >
                   {ticket.steps.map((st, i) => (
                     <option key={st.id || (st as any).ticketStepId || st.stepId || i} value={st.id || (st as any).ticketStepId || st.stepId || ''}>
-                      {st.stepName || `Bước ${i + 1}`} ({statusInfo(st.status || 'PENDING').label})
+                      {getStepTitle(st, i)} ({statusInfo(st.status || 'PENDING').label})
                     </option>
                   ))}
                 </select>
@@ -977,7 +991,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                 >
                   {ticket.steps.map((st, i) => (
                     <option key={st.id || (st as any).ticketStepId || st.stepId || i} value={st.id || (st as any).ticketStepId || st.stepId || ''}>
-                      {st.stepName || `Bước ${i + 1}`} ({statusInfo(st.status || 'PENDING').label})
+                      {getStepTitle(st, i)} ({statusInfo(st.status || 'PENDING').label})
                     </option>
                   ))}
                 </select>

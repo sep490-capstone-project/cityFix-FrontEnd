@@ -40,6 +40,9 @@ export interface ReviewStepItemPayload {
   orderIndex: number;
   notes?: string;
   stepName?: string;
+  name?: string;
+  title?: string;
+  stepTitle?: string;
   duration?: number;
   deadline?: string | null;
 }
@@ -299,14 +302,20 @@ export async function reviewManagerTicket(
     isLifeThreatening: Boolean(payload.isLifeThreatening),
     reviewNote: payload.reviewNote?.trim() || 'Đã tiếp nhận và giao các cán bộ phụ trách xử lý khẩn cấp',
     subCategoryIds: payload.subCategoryIds || [],
-    steps: (payload.steps || []).map((s, idx) => ({
-      stepId: s.stepId,
-      stepName: s.stepName?.trim() || undefined,
-      assigneeId: s.assigneeId,
-      orderIndex: typeof s.orderIndex === 'number' ? s.orderIndex : idx + 1,
-      deadline: s.deadline ? s.deadline : null,
-      notes: s.notes?.trim() || s.stepName || 'Tiến hành xử lý theo quy trình',
-    })),
+    steps: (payload.steps || []).map((s, idx) => {
+      const sName = s.stepName?.trim() || (s as any).name?.trim() || (s as any).title?.trim() || undefined;
+      return {
+        stepId: s.stepId,
+        stepName: sName,
+        name: sName,
+        title: sName,
+        stepTitle: sName,
+        assigneeId: s.assigneeId,
+        orderIndex: typeof s.orderIndex === 'number' ? s.orderIndex : idx + 1,
+        deadline: s.deadline ? s.deadline : null,
+        notes: s.notes?.trim() || sName || 'Tiến hành xử lý theo quy trình',
+      };
+    }),
   };
 
   console.log(`[reviewManagerTicket] PUT /api/v1/manager/tickets/${ticketId}/review:`, cleanBody);

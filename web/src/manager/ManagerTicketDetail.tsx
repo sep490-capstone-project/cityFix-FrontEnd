@@ -407,7 +407,9 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                           </span>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-[13px] font-extrabold text-gray-900">{st.stepName || `Bước ${idx + 1}`}</h4>
+                              <h4 className="text-[13px] font-extrabold text-gray-900">
+                                {st.stepName || (st as any).name || (st as any).title || (st as any).stepTitle || (st as any).step?.stepName || (st as any).step?.name || st.notes || `Bước ${idx + 1}`}
+                              </h4>
                               {isCompleted ? (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
                                   <span>✓</span> Đã hoàn thành (Duyệt xong)
@@ -584,7 +586,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                   Tải lên bằng chứng xử lý
                 </h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  Bước: <span className="font-semibold text-orange-600">{evidenceStep.stepName || 'Xử lý'}</span>
+                  Bước: <span className="font-semibold text-orange-600">{(evidenceStep as any).stepName || (evidenceStep as any).name || (evidenceStep as any).title || (evidenceStep as any).notes || 'Xử lý'}</span>
                 </p>
               </div>
               <button
