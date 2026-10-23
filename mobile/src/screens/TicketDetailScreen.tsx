@@ -166,7 +166,7 @@ export default function TicketDetailScreen({
           })
         : (ticketData.status === 'INITIATED' ? 'Chờ duyệt / Chưa có hạn chót' : 'Chưa có hạn chót'),
       upvotes: 0,
-      severity: ((ticketData.severity || 'MEDIUM').toUpperCase() as any),
+      severity: (((ticketData.priority || ticketData.severity || 'LOW')).toUpperCase() as any),
       status: stInfo.statusText,
       statusKey: stInfo.statusKey,
       description: ticketData.description || 'Không có mô tả chi tiết.',
@@ -555,7 +555,11 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.25)',
   },
   severityBadge: {

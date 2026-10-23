@@ -116,12 +116,24 @@ useEffect(() => {
 
       setCurrentStep(5);
 
+      const effectiveSubCatId = result.subCategoryId || result.subCategoryIds?.[0] || null;
+      const effectiveSubCatName = result.subCategoryName || result.subCategoryNames?.[0] || null;
+      const effectivePriority = (result.priority || (result as any).severity || 'LOW').toUpperCase();
+
       // Lưu kết quả AI vào draft
       setDraft({
         ...draft,
-        aiAnalysis: result,
-        userCategoryId: result.categoryId,
-        userSubCategoryId: result.subCategoryId || (result as any).subCategoryIds?.[0] || null,
+        aiAnalysis: {
+          ...result,
+          subCategoryId: effectiveSubCatId || undefined,
+          subCategoryName: effectiveSubCatName,
+          categoryName: result.categoryName || effectiveSubCatName || 'Sự cố hạ tầng',
+          priority: effectivePriority,
+          severity: effectivePriority,
+        },
+        userCategoryId: result.categoryId || effectiveSubCatId || null,
+        userSubCategoryId: effectiveSubCatId,
+        userDescription: draft.userDescription || result.description || '',
       });
 
       setDone(true);
@@ -260,19 +272,19 @@ useEffect(() => {
                   </View>
                 ) : null}
 
-                {/* 3. Mức độ nghiêm trọng (severity) */}
+                {/* 3. Mức độ ưu tiên (priority) */}
                 <View style={styles.resultRow}>
-                  <Text style={styles.rowLabel}>Nghiêm trọng</Text>
+                  <Text style={styles.rowLabel}>Ưu tiên xử lý</Text>
                   {(() => {
-                    const sev = (draft.aiAnalysis?.severity || '').toUpperCase();
-                    const sevMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
+                    const prio = (draft.aiAnalysis?.priority || draft.aiAnalysis?.severity || 'LOW').toUpperCase();
+                    const prioMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
                       LOW: { label: 'Thấp', bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
-                      MEDIUM: { label: 'Trung bình', bg: '#fffbeb', border: '#fde68a', text: '#d97706' },
+                      MEDIUM: { label: 'Trung bình', bg: '#eff6ff', border: '#bfdbfe', text: '#2563eb' },
                       HIGH: { label: 'Cao', bg: '#fef2f2', border: '#fca5a5', text: '#dc2626' },
                       CRITICAL: { label: 'Khẩn cấp', bg: '#fdf2f8', border: '#fbcfe8', text: '#be185d' },
                     };
-                    const badge = sevMap[sev] || {
-                      label: draft.aiAnalysis?.severity || 'Không xác định',
+                    const badge = prioMap[prio] || {
+                      label: prio || 'Không xác định',
                       bg: '#f8fafc',
                       border: '#e2e8f0',
                       text: '#475569',
@@ -287,31 +299,15 @@ useEffect(() => {
                   })()}
                 </View>
 
-                {/* 4. Mức độ ưu tiên (priority) */}
-                <View style={styles.resultRow}>
-                  <Text style={styles.rowLabel}>Ưu tiên xử lý</Text>
-                  {(() => {
-                    const prio = (draft.aiAnalysis?.priority || '').toUpperCase();
-                    const prioMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
-                      LOW: { label: 'Thấp', bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
-                      MEDIUM: { label: 'Trung bình', bg: '#eff6ff', border: '#bfdbfe', text: '#2563eb' },
-                      HIGH: { label: 'Cao', bg: '#fef2f2', border: '#fca5a5', text: '#dc2626' },
-                    };
-                    const badge = prioMap[prio] || {
-                      label: draft.aiAnalysis?.priority || 'Trung bình',
-                      bg: '#f8fafc',
-                      border: '#e2e8f0',
-                      text: '#475569',
-                    };
-                    return (
-                      <View style={{ backgroundColor: badge.bg, borderWidth: 1, borderColor: badge.border, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: badge.text }}>
-                          {badge.label}
-                        </Text>
-                      </View>
-                    );
-                  })()}
-                </View>
+                {/* 4. Lý do đánh giá ưu tiên (nếu có) */}
+                {draft.aiAnalysis?.priorityReasoning ? (
+                  <View style={styles.resultRow}>
+                    <Text style={styles.rowLabel}>Lý do ưu tiên</Text>
+                    <Text style={[styles.rowValue, { color: '#475569', flex: 1, textAlign: 'right' }]} numberOfLines={2}>
+                      {draft.aiAnalysis.priorityReasoning}
+                    </Text>
+                  </View>
+                ) : null}
 
                 {/* 5. Mô tả AI đề xuất */}
                 <View style={styles.descBlock}>
@@ -434,11 +430,19 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.3)',
   },
   scanningOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',

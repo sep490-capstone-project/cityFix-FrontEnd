@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import {
-  SEV_MAP,
-  sevInfo,
   priorityInfo,
 } from '../data';
 import {
@@ -91,7 +89,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
   // Search & Filter
   const [search, setSearch] = useState('');
-  const [sevFilter, setSevFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
 
   // Load danh mục, phòng ban, cán bộ, và danh sách vé chờ duyệt
@@ -708,7 +705,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
   // Lọc vé
   const filteredTickets = tickets.filter((t) => {
-    if (sevFilter !== 'all' && t.severity !== sevFilter) return false;
     if (priorityFilter !== 'all') {
       const p = (t.priority || t.subCategories?.[0]?.priority || '').toUpperCase();
       if (p !== priorityFilter.toUpperCase()) return false;
@@ -812,19 +808,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
         </div>
 
         <select
-          value={sevFilter}
-          onChange={(e) => setSevFilter(e.target.value)}
-          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-medium outline-none cursor-pointer hover:bg-gray-100 transition-colors"
-        >
-          <option value="all">Tất cả mức độ nghiêm trọng</option>
-          {Object.entries(SEV_MAP).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
-          ))}
-        </select>
-
-        <select
           value={priorityFilter}
           onChange={(e) => setPriorityFilter(e.target.value)}
           className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-medium outline-none cursor-pointer hover:bg-gray-100 transition-colors"
@@ -843,7 +826,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           <table className="w-full text-left min-w-[850px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
-                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ HIỆN TRƯỜNG', 'MỨC ĐỘ', 'ĐỘ ƯU TIÊN', 'THỜI GIAN TIẾP NHẬN', 'THAO TÁC'].map((h) => (
+                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ HIỆN TRƯỜNG', 'ĐỘ ƯU TIÊN', 'THỜI GIAN TIẾP NHẬN', 'THAO TÁC'].map((h) => (
                   <th key={h} className="px-4 py-3.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -853,7 +836,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             <tbody className="divide-y divide-gray-100">
               {filteredTickets.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-16 text-center text-gray-400">
                     {loading ? (
                       <div className="flex items-center justify-center gap-2 text-orange-600 font-medium">
                         <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -884,11 +867,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     </td>
                     <td className="px-4 py-3.5 text-[12px] text-gray-600 max-w-[220px] truncate">
                       {t.address || '—'}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${sevInfo(t.severity || 'LOW').cls}`}>
-                        {sevInfo(t.severity || 'LOW').label}
-                      </span>
                     </td>
                     <td className="px-4 py-3.5">
                       {(() => {
@@ -1077,14 +1055,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         </div>
                       </div>
 
-                      {/* Đánh giá mức độ */}
-                      <div className="grid grid-cols-2 gap-2 pt-0.5">
-                        <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
-                          <span className="text-[10px] font-bold text-slate-400 block mb-1">Mức nghiêm trọng</span>
-                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border inline-block ${sevInfo(selectedTicket.severity || 'LOW').cls}`}>
-                            {sevInfo(selectedTicket.severity || 'LOW').label}
-                          </span>
-                        </div>
+                      {/* Đánh giá độ ưu tiên */}
+                      <div className="pt-0.5">
                         <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
                           <span className="text-[10px] font-bold text-slate-400 block mb-1">Độ ưu tiên</span>
                           <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border inline-block ${priorityInfo(selectedTicket.priority || selectedTicket.subCategories?.[0]?.priority).cls}`}>
