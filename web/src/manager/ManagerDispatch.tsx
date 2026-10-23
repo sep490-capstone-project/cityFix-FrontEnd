@@ -467,7 +467,13 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     value: any
   ) {
     setReviewSteps((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+      prev.map((s, i) => {
+        if (i !== index) return s;
+        if (field === 'stepName') {
+          return { ...s, stepName: value, name: value, title: value, stepTitle: value };
+        }
+        return { ...s, [field]: value };
+      })
     );
   }
 
@@ -531,14 +537,20 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       isLifeThreatening: Boolean(isLifeThreatening),
       reviewNote: reviewNote.trim() || 'Đã tiếp nhận và giao các cán bộ phụ trách xử lý khẩn cấp',
       subCategoryIds: validSubCatIds,
-      steps: reviewSteps.map((s, idx) => ({
-        stepId: s.stepId.trim(),
-        stepName: s.stepName?.trim() || `Bước ${idx + 1}`,
-        assigneeId: s.assigneeId.trim(),
-        orderIndex: idx + 1,
-        deadline: s.deadline?.trim() ? s.deadline.trim() : null,
-        notes: (s.notes?.trim() || s.stepName?.trim() || 'Tiến hành xử lý theo quy trình'),
-      })),
+      steps: reviewSteps.map((s, idx) => {
+        const sName = s.stepName?.trim() || (s as any).name?.trim() || `Bước ${idx + 1}`;
+        return {
+          stepId: s.stepId.trim(),
+          stepName: sName,
+          name: sName,
+          title: sName,
+          stepTitle: sName,
+          assigneeId: s.assigneeId.trim(),
+          orderIndex: idx + 1,
+          deadline: s.deadline?.trim() ? s.deadline.trim() : null,
+          notes: (s.notes?.trim() || sName || 'Tiến hành xử lý theo quy trình'),
+        };
+      }),
     };
 
     setSubmitting(true);
@@ -1324,9 +1336,23 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     <input
                                       type="text"
                                       value={st.stepName || ''}
-                                      onChange={(e) =>
-                                        handleReviewStepFieldChange(idx, 'stepName', e.target.value)
-                                      }
+                                      onChange={(e) => {
+                                        const newName = e.target.value;
+                                        setReviewSteps((prev) =>
+                                          prev.map((s, i) => {
+                                            if (i !== idx) return s;
+                                            const shouldSyncNotes = !s.notes || s.notes === s.stepName;
+                                            return {
+                                              ...s,
+                                              stepName: newName,
+                                              name: newName,
+                                              title: newName,
+                                              stepTitle: newName,
+                                              ...(shouldSyncNotes ? { notes: newName } : {}),
+                                            };
+                                          })
+                                        );
+                                      }}
                                       placeholder="Nhập tên bước xử lý thực tế..."
                                       className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
                                     />

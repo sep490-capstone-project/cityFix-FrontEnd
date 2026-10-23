@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, statusInfo, sevInfo, dangerInfo } from '../data';
+import { User, statusInfo, priorityInfo, dangerInfo } from '../data';
 import { getManagerTickets, ManagerTicketItem } from '../services';
 
 interface Props {
@@ -90,7 +90,7 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
             <table className="w-full text-left min-w-[640px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50/80">
-                  {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'MỨC ĐỘ', 'NGUY HIỂM', 'TRẠNG THÁI', 'NGÀY TẠO'].map((h) => (
+                  {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'NGUY HIỂM', 'TRẠNG THÁI', 'NGÀY TẠO'].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -100,7 +100,7 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
               <tbody className="divide-y divide-gray-100">
                 {tickets.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400 text-xs">
+                    <td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-xs">
                       {loading ? 'Đang tải dữ liệu...' : 'Chưa có hồ sơ nào trong phòng ban'}
                     </td>
                   </tr>
@@ -108,7 +108,6 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
                 {tickets.slice(0, 6).map((t) => {
                   const ticketId = t.id || t.ticketId || '';
                   const si = statusInfo(t.status as any);
-                  const sv = sevInfo(t.severity || 'LOW');
                   const di = dangerInfo(t.dangerLevel || 'SAFE');
                   return (
                     <tr
@@ -128,9 +127,6 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
                         {t.categoryName || 'Chưa phân loại'}
                       </td>
                       <td className="px-4 py-3 text-[11px] text-gray-600 max-w-[160px] truncate">{t.address || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sv.cls}`}>{sv.label}</span>
-                      </td>
                       <td className="px-4 py-3">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${di.cls}`}>{di.label}</span>
                       </td>
@@ -166,7 +162,7 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
               <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto scrollbar-thin">
                 {deptQueue.slice(0, 6).map((t) => {
                   const ticketId = t.id || t.ticketId || '';
-                  const sv = sevInfo(t.severity || 'LOW');
+                  const pi = priorityInfo(t.priority || 'LOW');
                   return (
                     <button
                       key={ticketId}
@@ -177,8 +173,8 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
                         <p className="text-[12px] font-bold text-gray-800 truncate">{t.categoryName || 'Sự cố'}</p>
                         <p className="text-[11px] text-gray-500 truncate">{t.address || `#${ticketId.slice(0, 8)}`}</p>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex-shrink-0 ${sv.cls}`}>
-                        {sv.label}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex-shrink-0 ${pi.cls}`}>
+                        {pi.label}
                       </span>
                     </button>
                   );

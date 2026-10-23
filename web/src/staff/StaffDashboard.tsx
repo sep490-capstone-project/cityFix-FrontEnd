@@ -554,7 +554,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                     >
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[11px] font-extrabold text-gray-800 group-hover:text-orange-600 truncate">
-                          {step.stepName || `Bước ${sIdx + 1}`}
+                          {step.stepName || (step as any).name || (step as any).title || (step as any).stepTitle || (step as any).step?.stepName || (step as any).step?.name || step.notes || `Bước ${sIdx + 1}`}
                         </span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${sInfo.cls}`}>
                           {sInfo.label}
