@@ -20,6 +20,7 @@ export interface TicketStep {
   assigneeName?: string;
   status?: string;
   orderIndex?: number;
+  dependsOnStepIds?: string[];
   startedAt?: string;
   completedAt?: string;
   deadline?: string | null;
@@ -37,7 +38,7 @@ export interface ManagerTicketRoute {
 export interface ReviewStepItemPayload {
   stepId: string;
   assigneeId: string;
-  orderIndex: number;
+  dependsOnStepIds?: string[];
   notes?: string;
   stepName?: string;
   name?: string;
@@ -107,13 +108,8 @@ export interface UpdateStepDeadlinesPayload {
   stepDeadlines: StepDeadlineItem[];
 }
 
-export interface StepOrderItem {
-  ticketStepId: string;
-  orderIndex: number;
-}
-
-export interface ReorderStepsPayload {
-  stepOrders: StepOrderItem[];
+export interface UpdateStepDependenciesPayload {
+  dependsOnStepIds: string[];
 }
 
 export interface SuggestedDepartment {
@@ -244,18 +240,18 @@ export async function updateStepDeadline(
 }
 
 /**
- * 2. Cập nhật thứ tự cho một bước xử lý
- * PUT /api/v1/manager/tickets/steps/{stepId}/order-index
+ * 2. Cập nhật danh sách bước phụ thuộc (DAG dependencies) cho bước xử lý
+ * PUT /api/v1/manager/tickets/steps/{stepId}/dependencies
  */
-export async function updateStepOrderIndex(
+export async function updateStepDependencies(
   stepId: string,
-  orderIndex: number
+  payload: UpdateStepDependenciesPayload
 ): Promise<TicketStep> {
   return managerRequest<TicketStep>(
-    `/api/v1/manager/tickets/steps/${encodeURIComponent(stepId)}/order-index`,
+    `/api/v1/manager/tickets/steps/${encodeURIComponent(stepId)}/dependencies`,
     {
       method: 'PUT',
-      body: JSON.stringify({ orderIndex }),
+      body: JSON.stringify(payload),
     }
   );
 }
@@ -302,16 +298,12 @@ export async function reviewManagerTicket(
     isLifeThreatening: Boolean(payload.isLifeThreatening),
     reviewNote: payload.reviewNote?.trim() || 'Đã tiếp nhận và giao các cán bộ phụ trách xử lý khẩn cấp',
     subCategoryIds: payload.subCategoryIds || [],
-    steps: (payload.steps || []).map((s, idx) => {
+    steps: (payload.steps || []).map((s) => {
       const sName = s.stepName?.trim() || (s as any).name?.trim() || (s as any).title?.trim() || undefined;
       return {
         stepId: s.stepId,
-        stepName: sName,
-        name: sName,
-        title: sName,
-        stepTitle: sName,
         assigneeId: s.assigneeId,
-        orderIndex: typeof s.orderIndex === 'number' ? s.orderIndex : idx + 1,
+        dependsOnStepIds: Array.isArray(s.dependsOnStepIds) ? s.dependsOnStepIds : [],
         deadline: s.deadline ? s.deadline : null,
         notes: s.notes?.trim() || sName || 'Tiến hành xử lý theo quy trình',
       };
@@ -352,23 +344,6 @@ export async function updateTicketStepDeadlines(
 ): Promise<TicketStep[]> {
   return managerRequest<TicketStep[]>(
     `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/steps/deadlines`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    }
-  );
-}
-
-/**
- * 6. Sắp xếp lại toàn bộ bước xử lý của một vé
- * PUT /api/v1/manager/tickets/{ticketId}/steps/reorder
- */
-export async function reorderTicketSteps(
-  ticketId: string,
-  payload: ReorderStepsPayload
-): Promise<TicketStep[]> {
-  return managerRequest<TicketStep[]>(
-    `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}/steps/reorder`,
     {
       method: 'PUT',
       body: JSON.stringify(payload),
