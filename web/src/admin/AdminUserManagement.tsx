@@ -62,6 +62,24 @@ function extractUserRole(u: any): 'ADMIN' | 'MANAGER' | 'STAFF' | 'RESIDENT' {
   return 'RESIDENT';
 }
 
+function extractUserDepartmentIds(u: any): string[] {
+  if (!u) return [];
+  if (Array.isArray(u.departmentIds) && u.departmentIds.length > 0) {
+    return u.departmentIds
+      .map((d: any) => (typeof d === 'string' ? d : d?.departmentId || d?.id || ''))
+      .filter(Boolean);
+  }
+  if (Array.isArray(u.departments) && u.departments.length > 0) {
+    return u.departments
+      .map((d: any) => (typeof d === 'string' ? d : d?.departmentId || d?.id || ''))
+      .filter(Boolean);
+  }
+  if (u.departmentId && typeof u.departmentId === 'string' && u.departmentId.trim()) {
+    return [u.departmentId.trim()];
+  }
+  return [];
+}
+
 const EMPTY_FORM = {
   fullName: '',
   email: '',
@@ -74,6 +92,7 @@ const EMPTY_FORM = {
   roleId: '',
   status: 'ACTIVE',
   departmentId: '',
+  departmentIds: [] as string[],
 };
 
 export default function UserManagement() {
@@ -85,6 +104,7 @@ export default function UserManagement() {
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [search, setSearch] = useState('');
+  const [deptSearch, setDeptSearch] = useState('');
   const [roleF, setRoleF] = useState<string>('all');
   const [formError, setFormError] = useState('');
 
@@ -183,8 +203,24 @@ export default function UserManagement() {
     return true;
   });
 
+  function toggleDept(deptId: string) {
+    setForm((f) => {
+      const exists = f.departmentIds.includes(deptId);
+      const nextList = exists
+        ? f.departmentIds.filter((id) => id !== deptId)
+        : [...f.departmentIds, deptId];
+      return {
+        ...f,
+        departmentIds: nextList,
+        departmentId: nextList.length === 1 ? nextList[0] : (nextList[0] || ''),
+      };
+    });
+    setFormError('');
+  }
+
   function openCreate() {
-    setForm({ ...EMPTY_FORM });
+    setForm({ ...EMPTY_FORM, departmentIds: [] });
+    setDeptSearch('');
     setSelected(null);
     setFormError('');
     setModal('create');
@@ -192,6 +228,7 @@ export default function UserManagement() {
 
   function openEdit(u: AdminUser) {
     const userRole = extractUserRole(u).toUpperCase();
+    const deptIds = extractUserDepartmentIds(u);
     setForm({
       fullName: u.fullName || '',
       email: u.email || '',
@@ -203,8 +240,10 @@ export default function UserManagement() {
       role: userRole,
       roleId: u.roleId || '',
       status: u.status || 'ACTIVE',
-      departmentId: u.departmentId || '',
+      departmentId: deptIds[0] || u.departmentId || '',
+      departmentIds: deptIds,
     });
+    setDeptSearch('');
     setSelected(u);
     setFormError('');
     setModal('edit');
@@ -216,6 +255,8 @@ export default function UserManagement() {
   }
 
   // 2. Tạo mới & 3. Cập nhật người dùng (POST / PUT /api/v1/admin/users)
+  // Nếu quản lý 1 cơ quan: truyền id vào departmentId
+  // Nếu quản lý nhiều cơ quan: dùng departmentIds
   async function saveUser() {
     if (!form.fullName.trim()) {
       setFormError('Vui lòng nhập họ và tên');
@@ -234,6 +275,13 @@ export default function UserManagement() {
     setFormError('');
 
     try {
+      const selectedDeptIds = form.role === 'MANAGER'
+        ? form.departmentIds.filter(Boolean)
+        : (form.departmentId ? [form.departmentId] : []);
+
+      const payloadDepartmentId = selectedDeptIds.length === 1 ? selectedDeptIds[0] : undefined;
+      const payloadDepartmentIds = selectedDeptIds.length > 1 ? selectedDeptIds : undefined;
+
       if (modal === 'create') {
         const created = await createAdminUser({
           email: form.email,
@@ -245,7 +293,8 @@ export default function UserManagement() {
           address: form.address,
           roleId: form.roleId || undefined,
           role: form.role,
-          departmentId: form.departmentId || undefined,
+          departmentId: payloadDepartmentId,
+          departmentIds: payloadDepartmentIds,
           status: form.status,
         });
 
@@ -253,6 +302,8 @@ export default function UserManagement() {
           {
             ...created,
             role: form.role,
+            departmentId: payloadDepartmentId,
+            departmentIds: selectedDeptIds,
             createdAt: new Date().toLocaleDateString('vi-VN'),
           },
           ...prev,
@@ -268,7 +319,8 @@ export default function UserManagement() {
           address: form.address,
           roleId: form.roleId || undefined,
           role: form.role,
-          departmentId: form.departmentId || undefined,
+          departmentId: payloadDepartmentId,
+          departmentIds: payloadDepartmentIds,
           status: form.status,
         });
 
@@ -279,6 +331,8 @@ export default function UserManagement() {
                   ...x,
                   ...updated,
                   ...form,
+                  departmentId: payloadDepartmentId,
+                  departmentIds: selectedDeptIds,
                   updatedAt: new Date().toLocaleDateString('vi-VN'),
                 }
               : x
@@ -304,6 +358,7 @@ export default function UserManagement() {
 
     const nextStatus = u.status === 'ACTIVE' ? 'BLOCKED' : 'ACTIVE';
     try {
+      const userDeptIds = extractUserDepartmentIds(u);
       await updateAdminUser(targetId, {
         fullName: u.fullName,
         phoneNumber: u.phoneNumber || u.phone || '',
@@ -312,7 +367,9 @@ export default function UserManagement() {
         address: u.address || '',
         status: nextStatus,
         roleId: u.roleId,
-        departmentId: u.departmentId,
+        role: extractUserRole(u),
+        departmentId: userDeptIds.length === 1 ? userDeptIds[0] : undefined,
+        departmentIds: userDeptIds.length > 1 ? userDeptIds : undefined,
         isDispatcher: u.isDispatcher,
       });
 
@@ -455,9 +512,11 @@ export default function UserManagement() {
             <tbody className="divide-y divide-gray-100">
               {filtered.map((u) => {
                 const uid = u.id || u.userId || u.email;
-                const dept = departments.find(
-                  (d) => d.departmentId === u.departmentId
-                );
+                const deptIds = extractUserDepartmentIds(u);
+                const userDeptNames = deptIds
+                  .map((id) => departments.find((d) => d.departmentId === id)?.name)
+                  .filter(Boolean);
+
                 const roleKey = extractUserRole(u).toUpperCase();
                 const roleBadge = ROLE_MAP[roleKey] || {
                   label: roleKey,
@@ -491,22 +550,28 @@ export default function UserManagement() {
                     <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-600">
                       {u.phoneNumber || u.phone || '—'}
                     </td>
-                    {/* <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${roleBadge.cls}`}
+                        className={`inline-flex whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-lg border ${roleBadge.cls}`}
                       >
                         {roleBadge.label}
                       </span>
-                    </td> */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-  <span
-    className={`inline-flex whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-lg border ${roleBadge.cls}`}
-  >
-    {roleBadge.label}
-  </span>
-</td>
-                    <td className="px-4 py-3 text-[11px] text-gray-500 max-w-[140px] truncate">
-                      {dept?.name ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-[11px] text-gray-500 max-w-[160px]">
+                      {userDeptNames.length === 0 ? (
+                        '—'
+                      ) : userDeptNames.length === 1 ? (
+                        <span className="truncate block" title={userDeptNames[0]}>
+                          {userDeptNames[0]}
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-semibold cursor-help"
+                          title={userDeptNames.join(', ')}
+                        >
+                          🏢 {userDeptNames.length} cơ quan
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -582,72 +647,108 @@ export default function UserManagement() {
             )}
 
             {/* View Mode */}
-            {modal === 'view' && selected ? (
-              <div>
-                <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto bg-white">
-                  {[
-                    { label: 'Họ và tên', val: selected.fullName },
-                    { label: 'Email', val: selected.email, mono: true },
-                    {
-                      label: 'Số điện thoại',
-                      val: selected.phoneNumber || selected.phone || '—',
-                      mono: true,
-                    },
-                    { label: 'Tỉnh / Thành phố', val: selected.province || '—' },
-                    { label: 'Phường / Xã', val: selected.ward || '—' },
-                    { label: 'Địa chỉ', val: selected.address || '—' },
-                    {
-                      label: 'Vai trò',
-                      val:
-                        ROLE_MAP[extractUserRole(selected).toUpperCase()]
-                          ?.label || extractUserRole(selected),
-                    },
-                    {
-                      label: 'Cơ quan',
-                      val:
-                        departments.find(
-                          (d) => d.departmentId === selected.departmentId
-                        )?.name ?? '—',
-                    },
-                    {
-                      label: 'Trạng thái',
-                      val:
-                        selected.status === 'ACTIVE' ? 'Hoạt động' : 'Bị khóa',
-                    },
-                    {
-                      label: 'Ngày tạo',
-                      val: selected.createdAt || '—',
-                      mono: true,
-                    },
-                  ].map((r) => (
-                    <div
-                      key={r.label}
-                      className="flex items-center gap-4 px-5 py-3"
-                    >
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32 flex-shrink-0">
-                        {r.label}
-                      </p>
-                      <p
-                        className={`text-[13px] text-gray-800 font-medium ${
-                          r.mono ? 'font-mono-cf text-[12px]' : ''
-                        }`}
+            {modal === 'view' && selected ? (() => {
+              const selDeptIds = extractUserDepartmentIds(selected);
+              const selDeptList = selDeptIds
+                .map((id) => departments.find((d) => d.departmentId === id))
+                .filter(Boolean) as DepartmentItem[];
+
+              return (
+                <div>
+                  <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto bg-white">
+                    {[
+                      { label: 'Họ và tên', val: selected.fullName },
+                      { label: 'Email', val: selected.email, mono: true },
+                      {
+                        label: 'Số điện thoại',
+                        val: selected.phoneNumber || selected.phone || '—',
+                        mono: true,
+                      },
+                      { label: 'Tỉnh / Thành phố', val: selected.province || '—' },
+                      { label: 'Phường / Xã', val: selected.ward || '—' },
+                      { label: 'Địa chỉ', val: selected.address || '—' },
+                      {
+                        label: 'Vai trò',
+                        val:
+                          ROLE_MAP[extractUserRole(selected).toUpperCase()]
+                            ?.label || extractUserRole(selected),
+                      },
+                    ].map((r) => (
+                      <div
+                        key={r.label}
+                        className="flex items-center gap-4 px-5 py-3"
                       >
-                        {r.val || '—'}
+                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32 flex-shrink-0">
+                          {r.label}
+                        </p>
+                        <p
+                          className={`text-[13px] text-gray-800 font-medium ${
+                            r.mono ? 'font-mono-cf text-[12px]' : ''
+                          }`}
+                        >
+                          {r.val || '—'}
+                        </p>
+                      </div>
+                    ))}
+
+                    {/* Cơ quan phụ trách */}
+                    <div className="flex items-start gap-4 px-5 py-3">
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32 flex-shrink-0 pt-1">
+                        {selDeptList.length > 1 ? `Cơ quan (${selDeptList.length})` : 'Cơ quan'}
+                      </p>
+                      <div className="flex-1">
+                        {selDeptList.length === 0 ? (
+                          <p className="text-[13px] text-gray-500">—</p>
+                        ) : selDeptList.length === 1 ? (
+                          <p className="text-[13px] text-gray-800 font-medium">
+                            {selDeptList[0].name}{' '}
+                            {selDeptList[0].level ? `(${formatDepartmentLevel(selDeptList[0].level)})` : ''}
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {selDeptList.map((d) => (
+                              <span
+                                key={d.departmentId}
+                                className="px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-[11px] font-medium"
+                              >
+                                {d.name} {d.level ? `(${formatDepartmentLevel(d.level)})` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 px-5 py-3">
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32 flex-shrink-0">
+                        Trạng thái
+                      </p>
+                      <p className="text-[13px] text-gray-800 font-medium">
+                        {selected.status === 'ACTIVE' ? 'Hoạt động' : 'Bị khóa'}
                       </p>
                     </div>
-                  ))}
+
+                    <div className="flex items-center gap-4 px-5 py-3">
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32 flex-shrink-0">
+                        Ngày tạo
+                      </p>
+                      <p className="text-[13px] text-gray-800 font-medium font-mono-cf text-[12px]">
+                        {selected.createdAt || '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setModal(null)}
+                      className="px-5 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-800 text-[12px] font-semibold transition-colors cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                  </div>
                 </div>
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setModal(null)}
-                    className="px-5 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-800 text-[12px] font-semibold transition-colors cursor-pointer"
-                  >
-                    Đóng
-                  </button>
-                </div>
-              </div>
-            ) : (
+              );
+            })() : (
               /* Create / Edit Mode */
               <div className="px-5 py-5 grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto bg-white">
                 <div className="space-y-1.5 col-span-2">
@@ -741,31 +842,33 @@ export default function UserManagement() {
                   </label>
                   <select
                     value={form.role}
-                    onChange={(e) => setField('role', e.target.value)}
+                    onChange={(e) => {
+                      const newRole = e.target.value;
+                      setForm((prev) => {
+                        let nextDeptIds = [...prev.departmentIds];
+                        let nextDeptId = prev.departmentId;
+
+                        if (newRole === 'MANAGER' && nextDeptIds.length === 0 && nextDeptId) {
+                          nextDeptIds = [nextDeptId];
+                        } else if (newRole !== 'MANAGER' && nextDeptIds.length > 0 && !nextDeptId) {
+                          nextDeptId = nextDeptIds[0];
+                        }
+
+                        return {
+                          ...prev,
+                          role: newRole,
+                          departmentId: nextDeptId,
+                          departmentIds: nextDeptIds,
+                        };
+                      });
+                      setFormError('');
+                    }}
                     className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
                   >
                     <option value="ADMIN">Quản trị viên</option>
-                    <option value="MANAGER">Quản lý</option>
+                    <option value="MANAGER">Quản lý (Manager)</option>
                     <option value="STAFF">Nhân viên</option>
                     <option value="RESIDENT">Cư dân</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-                    Cơ quan / Phòng ban
-                  </label>
-                  <select
-                    value={form.departmentId}
-                    onChange={(e) => setField('departmentId', e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
-                  >
-                    <option value="">— Không có —</option>
-                    {departments.map((d) => (
-                      <option key={d.departmentId} value={d.departmentId}>
-                        {d.name} {d.level ? `(${formatDepartmentLevel(d.level)})` : ''}
-                      </option>
-                    ))}
                   </select>
                 </div>
 
@@ -782,6 +885,117 @@ export default function UserManagement() {
                     <option value="BLOCKED">Bị khóa (BLOCKED)</option>
                   </select>
                 </div>
+
+                {form.role === 'MANAGER' ? (
+                  <div className="space-y-2 col-span-2 bg-orange-50/40 border border-orange-200/80 rounded-2xl p-3.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] font-bold text-gray-700 uppercase tracking-[0.12em]">
+                          Cơ quan quản lý ({form.departmentIds.length} đã chọn)
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {form.departmentIds.length === 1 && (
+                          <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md font-semibold">
+                            1 cơ quan (gửi departmentId)
+                          </span>
+                        )}
+                        {form.departmentIds.length > 1 && (
+                          <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md font-semibold">
+                            {form.departmentIds.length} cơ quan (gửi departmentIds)
+                          </span>
+                        )}
+                        {form.departmentIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setField('departmentIds', [])}
+                            className="text-[10px] text-red-500 hover:text-red-700 font-semibold cursor-pointer underline"
+                          >
+                            Bỏ chọn tất cả
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-gray-500">
+                      Vai trò Quản lý có thể phụ trách một hoặc nhiều cơ quan. Nếu chọn 1 cơ quan hệ thống gửi <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">departmentId</code>, nếu chọn nhiều cơ quan hệ thống gửi <code className="text-purple-600 bg-purple-100/50 px-1 py-0.5 rounded font-mono text-[10px]">departmentIds</code>.
+                    </p>
+
+                    {/* Filter search */}
+                    <input
+                      type="text"
+                      placeholder="Tìm cơ quan..."
+                      value={deptSearch}
+                      onChange={(e) => setDeptSearch(e.target.value)}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-[11px] text-gray-700 outline-none focus:border-orange-500 transition-colors"
+                    />
+
+                    {/* Scrollable Checkbox list */}
+                    <div className="max-h-44 overflow-y-auto space-y-1 bg-white border border-gray-200 rounded-xl p-2 scrollbar-thin">
+                      {departments
+                        .filter((d) =>
+                          !deptSearch.trim() ||
+                          (d.name || '').toLowerCase().includes(deptSearch.toLowerCase().trim())
+                        )
+                        .map((d) => {
+                          const isChecked = form.departmentIds.includes(d.departmentId);
+                          return (
+                            <label
+                              key={d.departmentId}
+                              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-[12px] transition-all select-none ${
+                                isChecked
+                                  ? 'bg-orange-50 border border-orange-300 text-orange-950 font-medium shadow-xs'
+                                  : 'hover:bg-gray-50 border border-transparent text-gray-700'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleDept(d.departmentId)}
+                                className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500 border-gray-300 cursor-pointer"
+                              />
+                              <span className="flex-1 truncate">{d.name}</span>
+                              {d.level && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-normal">
+                                  {formatDepartmentLevel(d.level)}
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      {departments.length === 0 && (
+                        <p className="text-[11px] text-gray-400 text-center py-2">
+                          Không có cơ quan nào
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 col-span-2">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
+                      Cơ quan / Phòng ban
+                    </label>
+                    <select
+                      value={form.departmentId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          departmentId: val,
+                          departmentIds: val ? [val] : [],
+                        }));
+                      }}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
+                    >
+                      <option value="">— Không có —</option>
+                      {departments.map((d) => (
+                        <option key={d.departmentId} value={d.departmentId}>
+                          {d.name} {d.level ? `(${formatDepartmentLevel(d.level)})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="col-span-2 flex gap-3 pt-3 border-t border-gray-100">
                   <button

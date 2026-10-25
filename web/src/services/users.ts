@@ -23,6 +23,8 @@ export interface AdminUser {
   roleId?: string;
   role?: 'ADMIN' | 'MANAGER' | 'STAFF' | 'RESIDENT' | string;
   departmentId?: string;
+  departmentIds?: string[];
+  departments?: any[];
   status?: 'ACTIVE' | 'BLOCKED' | 'INACTIVE' | string;
   isDispatcher?: boolean;
   createdAt?: string;
@@ -40,6 +42,7 @@ export interface CreateAdminUserPayload {
   roleId?: string;
   role?: string;
   departmentId?: string;
+  departmentIds?: string[];
   status?: string;
   isDispatcher?: boolean;
 }
@@ -54,6 +57,7 @@ export interface UpdateAdminUserPayload {
   roleId?: string;
   role?: string;
   departmentId?: string;
+  departmentIds?: string[];
   status?: string;
   isDispatcher?: boolean;
 }
@@ -109,26 +113,51 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
 /**
  * 2. Tạo mới người dùng
  * POST /api/v1/admin/users
+ * Nếu quản lý 1 cơ quan: truyền id vào departmentId
+ * Nếu quản lý nhiều cơ quan: dùng departmentIds
  */
 export async function createAdminUser(
   payload: CreateAdminUserPayload
 ): Promise<AdminUser> {
+  const rawDeptIds = payload.departmentIds && payload.departmentIds.length > 0
+    ? payload.departmentIds.filter(Boolean)
+    : (payload.departmentId ? [payload.departmentId] : []);
+
+  let departmentId: string | undefined = undefined;
+  let departmentIds: string[] | undefined = undefined;
+
+  if (rawDeptIds.length === 1) {
+    departmentId = rawDeptIds[0];
+  } else if (rawDeptIds.length > 1) {
+    departmentIds = rawDeptIds;
+  }
+
+  const reqBody: Record<string, any> = {
+    email: payload.email.trim(),
+    password: payload.password || 'password123',
+    fullName: payload.fullName.trim(),
+    phoneNumber: payload.phoneNumber.replace(/\s/g, ''),
+    province: payload.province.trim(),
+    ward: payload.ward.trim(),
+    address: payload.address.trim(),
+    roleId: payload.roleId || ROLE_ID_MAP[payload.role || 'STAFF'],
+    status: payload.status || 'ACTIVE',
+    isDispatcher: Boolean(payload.isDispatcher),
+  };
+
+  if (payload.role) {
+    reqBody.role = payload.role;
+  }
+  if (departmentId) {
+    reqBody.departmentId = departmentId;
+  }
+  if (departmentIds && departmentIds.length > 0) {
+    reqBody.departmentIds = departmentIds;
+  }
+
   const res = await adminUserRequest<AdminUser>('/api/v1/admin/users', {
     method: 'POST',
-    body: JSON.stringify({
-      email: payload.email.trim(),
-      password: payload.password || 'password123',
-      fullName: payload.fullName.trim(),
-      phoneNumber: payload.phoneNumber.replace(/\s/g, ''),
-      province: payload.province.trim(),
-      ward: payload.ward.trim(),
-      address: payload.address.trim(),
-      roleId: payload.roleId || ROLE_ID_MAP[payload.role || 'STAFF'],
-      ...(payload.role ? { role: payload.role } : {}),
-      departmentId: payload.departmentId || undefined,
-      status: payload.status || 'ACTIVE',
-      isDispatcher: Boolean(payload.isDispatcher),
-    }),
+    body: JSON.stringify(reqBody),
   });
 
   return res.data as AdminUser;
@@ -137,26 +166,51 @@ export async function createAdminUser(
 /**
  * 3. Cập nhật người dùng
  * PUT /api/v1/admin/users/{id}
+ * Nếu quản lý 1 cơ quan: truyền id vào departmentId
+ * Nếu quản lý nhiều cơ quan: dùng departmentIds
  */
 export async function updateAdminUser(
   id: string,
   payload: UpdateAdminUserPayload
 ): Promise<AdminUser> {
+  const rawDeptIds = payload.departmentIds && payload.departmentIds.length > 0
+    ? payload.departmentIds.filter(Boolean)
+    : (payload.departmentId ? [payload.departmentId] : []);
+
+  let departmentId: string | undefined = undefined;
+  let departmentIds: string[] | undefined = undefined;
+
+  if (rawDeptIds.length === 1) {
+    departmentId = rawDeptIds[0];
+  } else if (rawDeptIds.length > 1) {
+    departmentIds = rawDeptIds;
+  }
+
+  const reqBody: Record<string, any> = {
+    ...(payload.email ? { email: payload.email.trim() } : {}),
+    fullName: payload.fullName.trim(),
+    phoneNumber: payload.phoneNumber.replace(/\s/g, ''),
+    province: payload.province.trim(),
+    ward: payload.ward.trim(),
+    address: payload.address.trim(),
+    roleId: payload.roleId || undefined,
+    status: payload.status || 'ACTIVE',
+    isDispatcher: Boolean(payload.isDispatcher),
+  };
+
+  if (payload.role) {
+    reqBody.role = payload.role;
+  }
+  if (departmentId) {
+    reqBody.departmentId = departmentId;
+  }
+  if (departmentIds && departmentIds.length > 0) {
+    reqBody.departmentIds = departmentIds;
+  }
+
   const res = await adminUserRequest<AdminUser>(`/api/v1/admin/users/${encodeURIComponent(id)}`, {
     method: 'PUT',
-    body: JSON.stringify({
-      ...(payload.email ? { email: payload.email.trim() } : {}),
-      fullName: payload.fullName.trim(),
-      phoneNumber: payload.phoneNumber.replace(/\s/g, ''),
-      province: payload.province.trim(),
-      ward: payload.ward.trim(),
-      address: payload.address.trim(),
-      roleId: payload.roleId || undefined,
-      ...(payload.role ? { role: payload.role } : {}),
-      departmentId: payload.departmentId || undefined,
-      status: payload.status || 'ACTIVE',
-      isDispatcher: Boolean(payload.isDispatcher),
-    }),
+    body: JSON.stringify(reqBody),
   });
 
   return res.data as AdminUser;
