@@ -126,7 +126,7 @@ export default function ProfileScreen({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>

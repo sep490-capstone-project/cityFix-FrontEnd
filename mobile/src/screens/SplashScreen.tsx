@@ -81,7 +81,7 @@ export default function SplashScreen({ user, onFinish }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Background Decorative Elements */}
       <View style={styles.bgCircleTop} />

@@ -147,7 +147,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
       {/* Header */}

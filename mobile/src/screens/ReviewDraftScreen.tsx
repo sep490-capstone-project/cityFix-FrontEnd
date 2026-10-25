@@ -125,13 +125,18 @@ export default function ReviewDraftScreen({
         (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
         'LOW';
 
+      const finalCategoryId = effectiveCatId || effectiveSubCatId;
+
       const requestBody = {
         description:
           draft.userDescription ||
           draft.aiAnalysis.description ||
           '',
         imageUrl: draft.imageUrls[0],
+        categoryId: finalCategoryId,
         subCategoryIds: effectiveSubCatId ? [effectiveSubCatId] : [],
+        severity: (draft.aiAnalysis.severity || effectivePriority || 'LOW').toUpperCase(),
+        dangerLevel: (draft.aiAnalysis.dangerLevel || 'CAUTION').toUpperCase(),
         priority: effectivePriority.toUpperCase(),
         priorityReasoning: draft.aiAnalysis.priorityReasoning || '',
         locationMethod: draft.locationMethod || 'AUTO_GPS',
@@ -192,7 +197,7 @@ export default function ReviewDraftScreen({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
       {/* Top Bar */}

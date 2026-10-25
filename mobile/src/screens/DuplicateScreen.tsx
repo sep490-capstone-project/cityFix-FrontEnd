@@ -849,7 +849,6 @@ export default function DuplicateScreen({
     <View style={styles.container}>
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="#ffffff"
       />
 
       <View style={styles.topAccentBar} />
