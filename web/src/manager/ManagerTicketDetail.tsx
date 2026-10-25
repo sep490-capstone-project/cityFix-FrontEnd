@@ -6,6 +6,7 @@ import {
   updateTicketStepStatus,
   deleteTicketStep,
   uploadStepEvidence,
+  checkStepReadiness,
   TicketStep,
   TicketStepEvidence,
   ManagerTicketItem,
@@ -114,7 +115,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
       await uploadStepEvidence(stepId, evidenceFiles, resolutionNote.trim());
       setFeedback({
         type: 'success',
-        message: `Đã tải lên ${evidenceFiles.length} bằng chứng thành công! Bước đã được chuyển sang "Đã xử lý".`,
+        message: `Đã tải lên ${evidenceFiles.length} ảnh bằng chứng thành công! Bạn có thể chuyển đổi trạng thái bước sang "Đã giải quyết" khi đã hoàn tất.`,
       });
 
       // Dọn dẹp form
@@ -358,6 +359,66 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               </div>
             </div>
 
+            {/* Sơ đồ trực quan thứ tự thực hiện các bước */}
+            {steps.length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-[11px] flex-wrap gap-1">
+                  <span className="font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>🗺️</span> Tiến độ quy trình & Thứ tự phụ thuộc
+                  </span>
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      {steps.filter((s) => checkStepReadiness(s, steps).canDoNow).length} bước làm được ngay
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      {steps.filter((s) => !checkStepReadiness(s, steps).canDoNow).length} bước đang chờ
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-thin">
+                  {steps.map((st, i) => {
+                    const r = checkStepReadiness(st, steps);
+                    const isDone = st.status === 'COMPLETED' || st.status === 'RESOLVED';
+                    return (
+                      <div key={st.id || st.stepId || i} className="flex items-center gap-1.5 flex-shrink-0">
+                        {i > 0 && (
+                          <span className="text-slate-400 font-bold text-[10px]">
+                            {r.hasDependencies ? '➔' : '||'}
+                          </span>
+                        )}
+                        <div
+                          className={`px-2 py-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 shadow-2xs ${
+                            isDone
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                              : r.canDoNow
+                              ? 'bg-blue-50 border-blue-300 text-blue-900 ring-1 ring-blue-200'
+                              : 'bg-amber-50 border-amber-300 text-amber-900'
+                          }`}
+                        >
+                          <span
+                            className={`w-3.5 h-3.5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ${
+                              isDone ? 'bg-emerald-600' : r.canDoNow ? 'bg-blue-600' : 'bg-amber-600'
+                            }`}
+                          >
+                            {isDone ? '✓' : i + 1}
+                          </span>
+                          <span className="max-w-[100px] truncate">
+                            {st.stepName || (st as any).name || `Bước ${i + 1}`}
+                          </span>
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-white/80 font-normal">
+                            {isDone ? 'Xong' : r.canDoNow ? 'Làm ngay' : 'Chờ bước trước'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Danh sách các bước */}
             {steps.length === 0 ? (
               <div className="py-12 text-center bg-gray-50 border border-dashed border-gray-300 rounded-xl text-gray-400 text-xs space-y-1">
@@ -375,6 +436,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                   const isResolved = st.status === 'RESOLVED';
                   const isInProgress = st.status === 'IN_PROGRESS';
                   const evidences = st.evidences || [];
+                  const readiness = checkStepReadiness(st, steps);
 
                   return (
                     <div
@@ -391,9 +453,9 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                     >
                       {/* Tiêu đề bước */}
                       <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200/60">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-start gap-2.5 flex-1 min-w-[240px]">
                           <span
-                            className={`w-6 h-6 rounded-full font-mono text-[11px] font-bold flex items-center justify-center shadow-xs text-white ${
+                            className={`w-6 h-6 rounded-full font-mono text-[11px] font-bold flex items-center justify-center shadow-xs text-white flex-shrink-0 mt-0.5 ${
                               isCompleted
                                 ? 'bg-emerald-600'
                                 : isResolved
@@ -405,7 +467,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                           >
                             {isCompleted ? '✓' : (st.orderIndex || idx + 1)}
                           </span>
-                          <div>
+                          <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="text-[13px] font-extrabold text-gray-900">
                                 {st.stepName || (st as any).name || (st as any).title || (st as any).stepTitle || (st as any).step?.stepName || (st as any).step?.name || st.notes || `Bước ${idx + 1}`}
@@ -428,9 +490,55 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-500 mt-0.5">
-                              Cán bộ phụ trách: <span className="font-semibold text-gray-800">{st.assigneeName || 'Chưa phân công'}</span>
-                            </p>
+
+                            {/* Người giải quyết & Khả năng làm ngay tức thì / Chờ bước phụ thuộc */}
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-white border border-gray-200 text-[11px] shadow-2xs">
+                                <span className="text-gray-500 font-medium">👤 Người giải quyết:</span>
+                                <span className="font-extrabold text-gray-900">
+                                  {readiness.assigneeName}
+                                </span>
+                              </div>
+
+                              {/* Huy hiệu: Có thể làm ngay tức thì hay Phải chờ */}
+                              {!isCompleted && !isResolved && (
+                                readiness.canDoNow ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold shadow-2xs">
+                                    <span>⚡ Có thể làm ngay tức thì</span>
+                                    <span className="font-normal opacity-85">
+                                      ({readiness.hasDependencies ? 'Các bước tiền đề đã xong' : 'Bước độc lập'})
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-[10px] font-bold shadow-2xs">
+                                    <span>⏳ Phải chờ bước phụ thuộc</span>
+                                    <span className="font-normal opacity-85">
+                                      ({readiness.pendingDependencies.length} bước chưa xong)
+                                    </span>
+                                  </span>
+                                )
+                              )}
+                            </div>
+
+                            {/* Chi tiết các bước phụ thuộc cần chờ */}
+                            {!isCompleted && !isResolved && !readiness.canDoNow && readiness.pendingDependencies.length > 0 && (
+                              <div className="mt-2 p-2 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-amber-950 flex items-center gap-1">
+                                  <span>⚠️</span> Phải chờ hoàn tất bước:
+                                </span>
+                                {readiness.pendingDependencies.map((pd, pidx) => (
+                                  <span
+                                    key={pd.id || pidx}
+                                    className="px-2 py-0.5 rounded-md bg-white border border-amber-300 text-amber-900 text-[10px] font-semibold shadow-2xs inline-flex items-center gap-1"
+                                  >
+                                    <span>{pd.name}</span>
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-800 font-normal">
+                                      {pd.status === 'IN_PROGRESS' ? 'Đang xử lý' : 'Chưa xử lý'}
+                                    </span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
 

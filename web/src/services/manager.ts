@@ -30,6 +30,91 @@ export interface TicketStep {
   updatedAt?: string;
 }
 
+export interface StepReadiness {
+  assigneeName: string;
+  canDoNow: boolean;
+  hasDependencies: boolean;
+  isAllDependenciesDone: boolean;
+  pendingDependencies: Array<{
+    id: string;
+    name: string;
+    status: string;
+  }>;
+  totalDependenciesCount: number;
+}
+
+/**
+ * Kiểm tra xem bước có thể làm ngay tức thì hay phải chờ bước phụ thuộc
+ */
+export function checkStepReadiness(
+  st: TicketStep | any,
+  allSteps: any[] = []
+): StepReadiness {
+  const anySt = st as any;
+  const assigneeName =
+    st.assigneeName ||
+    anySt.assignee?.fullName ||
+    anySt.assignee?.name ||
+    anySt.staffName ||
+    anySt.staff?.fullName ||
+    anySt.user?.fullName ||
+    anySt.handlerName ||
+    'Chưa phân công';
+
+  const depIds: string[] = Array.isArray(st.dependsOnStepIds)
+    ? st.dependsOnStepIds.filter(Boolean)
+    : [];
+
+  if (depIds.length === 0) {
+    return {
+      assigneeName,
+      canDoNow: true,
+      hasDependencies: false,
+      isAllDependenciesDone: true,
+      pendingDependencies: [],
+      totalDependenciesCount: 0,
+    };
+  }
+
+  const pendingDependencies: Array<{ id: string; name: string; status: string }> = [];
+
+  for (const depId of depIds) {
+    const parent = allSteps.find(
+      (s) =>
+        (s.id && s.id === depId) ||
+        (s.stepId && s.stepId === depId) ||
+        ((s as any).ticketStepId && (s as any).ticketStepId === depId)
+    );
+
+    const isFinished = parent
+      ? parent.status === 'COMPLETED' || parent.status === 'RESOLVED'
+      : false;
+
+    if (!isFinished) {
+      pendingDependencies.push({
+        id: depId,
+        name:
+          parent?.stepName ||
+          (parent as any)?.name ||
+          (parent as any)?.title ||
+          `Bước [${depId.slice(0, 8)}]`,
+        status: parent?.status || 'PENDING',
+      });
+    }
+  }
+
+  const isAllDependenciesDone = pendingDependencies.length === 0;
+
+  return {
+    assigneeName,
+    canDoNow: isAllDependenciesDone,
+    hasDependencies: true,
+    isAllDependenciesDone,
+    pendingDependencies,
+    totalDependenciesCount: depIds.length,
+  };
+}
+
 export interface ManagerTicketRoute {
   subCategoryId: string;
   departmentId: string;
