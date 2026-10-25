@@ -552,12 +552,15 @@ export async function createTicket(
   const payloadBody = {
     description: data.description,
     imageUrl: data.imageUrl,
+    categoryId: data.categoryId || (Array.isArray(data.subCategoryIds) && data.subCategoryIds[0]) || '',
     subCategoryIds: Array.isArray(data.subCategoryIds) && data.subCategoryIds.length > 0
       ? data.subCategoryIds
       : (data as any).subCategoryId
         ? [(data as any).subCategoryId]
         : [],
+    severity: (data.severity || data.priority || 'LOW').toUpperCase(),
     priority: (data.priority || data.severity || 'LOW').toUpperCase(),
+    dangerLevel: (data.dangerLevel || 'CAUTION').toUpperCase(),
     priorityReasoning: data.priorityReasoning || '',
     locationMethod: data.locationMethod || 'AUTO_GPS',
     address: data.address,
@@ -747,6 +750,23 @@ export interface ReportedTicket {
   deadline: string | null;
   departmentId?: string;
   departmentName?: string;
+  steps?: Array<{
+    id?: string;
+    stepId?: string;
+    stepName?: string;
+    assigneeId?: string;
+    assigneeName?: string;
+    status?: string;
+    dependsOnStepIds?: string[];
+    deadline?: string;
+    evidences?: Array<{
+      evidenceId?: string;
+      imageUrl?: string;
+      resolutionNote?: string;
+      staffName?: string;
+      createdAt?: string;
+    }>;
+  }>;
 }
 
 export interface PageResponse<T> {
@@ -795,6 +815,7 @@ export async function getMyReportedTickets(
 
   const text = await response.text();
   console.log('📋 GET MY REPORTED TICKETS STATUS:', response.status);
+  console.log('📋 GET MY REPORTED TICKETS RESPONSE:', text);
 
   let payload: any = null;
   try {
@@ -804,8 +825,13 @@ export async function getMyReportedTickets(
   }
 
   if (!response.ok || !payload?.success) {
+    const defaultMsg = response.status >= 500
+      ? 'Máy chủ backend đang gặp sự cố tạm thời (500). Vui lòng thử lại sau.'
+      : `Không thể tải danh sách báo cáo (${response.status})`;
     throw new ApiError(
-      payload?.message || `Không thể tải danh sách báo cáo (${response.status})`,
+      payload?.message && payload?.message !== 'An unexpected error occurred'
+        ? payload.message
+        : defaultMsg,
       response.status
     );
   }
@@ -1141,6 +1167,330 @@ export async function markAllNotificationsAsRead(): Promise<any> {
   if (!response.ok || !payload?.success) {
     throw new ApiError(
       payload?.message || `Không thể đánh dấu tất cả đã đọc (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+/* =========================================================
+   MY UPVOTED TICKETS
+   GET /api/v1/tickets/my-upvoted
+   ========================================================= */
+
+export async function getMyUpvotedTickets(
+  accessToken?: string | null,
+  page: number = 0,
+  size: number = 20,
+  sort: string = 'createdAt,desc'
+): Promise<PageResponse<ReportedTicket>> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+    sort,
+  });
+
+  const url = `${API_BASE_URL}/api/v1/tickets/my-upvoted?${queryParams.toString()}`;
+  console.log('👍 GET MY UPVOTED TICKETS URL:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('👍 GET MY UPVOTED TICKETS STATUS:', response.status);
+  console.log('👍 GET MY UPVOTED TICKETS RESPONSE:', text);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    // Response không phải JSON
+  }
+
+  if (!response.ok || !payload?.success) {
+    const defaultMsg = response.status >= 500
+      ? 'Máy chủ backend đang gặp sự cố tạm thời (500). Vui lòng thử lại sau.'
+      : `Không thể tải danh sách vé đã upvote (${response.status})`;
+    throw new ApiError(
+      payload?.message && payload?.message !== 'An unexpected error occurred'
+        ? payload.message
+        : defaultMsg,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+/* =========================================================
+   RATING MANAGEMENT
+   /api/v1/user/tickets/...
+   ========================================================= */
+
+export interface TicketRating {
+  id: string;
+  ticketId: string;
+  userId: string;
+  userName?: string;
+  userAvatar?: string;
+  rate: number;
+  isAnonymous?: boolean;
+  feedback?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateRatingRequest {
+  rate: number;
+  feedback?: string;
+  isAnonymous?: boolean;
+}
+
+export interface UpdateRatingRequest {
+  rate: number;
+  feedback?: string;
+  isAnonymous?: boolean;
+}
+
+// 1. Tạo đánh giá cho vé
+// POST /api/v1/user/tickets/{ticketId}/ratings
+export async function createRating(
+  ticketId: string,
+  data: CreateRatingRequest,
+  accessToken?: string | null
+): Promise<TicketRating> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings`;
+  console.log('⭐ CREATE RATING URL:', url, 'DATA:', data);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const text = await response.text();
+  console.log('⭐ CREATE RATING STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Đánh giá vé thất bại (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+// 2. Chỉnh sửa đánh giá
+// PUT /api/v1/user/tickets/{ticketId}/ratings/{ratingId}
+export async function updateRating(
+  ticketId: string,
+  ratingId: string,
+  data: UpdateRatingRequest,
+  accessToken?: string | null
+): Promise<TicketRating> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/${ratingId}`;
+  console.log('⭐ UPDATE RATING URL:', url, 'DATA:', data);
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const text = await response.text();
+  console.log('⭐ UPDATE RATING STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Cập nhật đánh giá thất bại (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+// 3. Lấy đánh giá của người dùng hiện tại trên một vé
+// GET /api/v1/user/tickets/{ticketId}/ratings/my-rating
+export async function getMyRating(
+  ticketId: string,
+  accessToken?: string | null
+): Promise<TicketRating | null> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/my-rating`;
+  console.log('⭐ GET MY RATING URL:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('⭐ GET MY RATING STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    if (response.status === 404) return null;
+    throw new ApiError(
+      payload?.message || `Không thể tải đánh giá của bạn (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data || null;
+}
+
+// 4. Lấy danh sách đánh giá của một vé
+// GET /api/v1/user/tickets/{ticketId}/ratings
+export async function getTicketRatings(
+  ticketId: string,
+  page: number = 0,
+  size: number = 10,
+  accessToken?: string | null
+): Promise<PageResponse<TicketRating>> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings?${queryParams.toString()}`;
+  console.log('⭐ GET TICKET RATINGS URL:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('⭐ GET TICKET RATINGS STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể tải danh sách đánh giá (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
+}
+
+// 5. Xóa mềm đánh giá
+// DELETE /api/v1/user/tickets/{ticketId}/ratings/{ratingId}
+export async function deleteRating(
+  ticketId: string,
+  ratingId: string,
+  accessToken?: string | null
+): Promise<string> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/${ratingId}`;
+  console.log('⭐ DELETE RATING URL:', url);
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('⭐ DELETE RATING STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể xóa đánh giá (${response.status})`,
       response.status
     );
   }

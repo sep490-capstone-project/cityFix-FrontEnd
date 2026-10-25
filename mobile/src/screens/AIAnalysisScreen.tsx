@@ -167,7 +167,7 @@ useEffect(() => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
       {/* Top Bar */}

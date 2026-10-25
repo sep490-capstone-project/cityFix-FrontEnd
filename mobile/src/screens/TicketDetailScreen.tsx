@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,31 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Switch,
 } from 'react-native';
-import { Ionicons, Feather } from '@expo/vector-icons';
-import { ReportedTicket, mapBackendStatus, cancelTicket, getTicketById } from '../api';
+import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import {
+  ReportedTicket,
+  mapBackendStatus,
+  cancelTicket,
+  getTicketById,
+  TicketRating,
+  getMyRating,
+  getTicketRatings,
+  createRating,
+  updateRating,
+  deleteRating,
+} from '../api';
+
+const RATING_LABELS: Record<number, { text: string; color: string }> = {
+  1: { text: 'Rất tệ', color: '#ef4444' },
+  2: { text: 'Chưa đạt', color: '#f97316' },
+  3: { text: 'Bình thường', color: '#eab308' },
+  4: { text: 'Hài lòng', color: '#84cc16' },
+  5: { text: 'Rất hài lòng!', color: '#16a34a' },
+};
 
 interface Props {
   ticketId: string | null;
@@ -207,6 +229,152 @@ export default function TicketDetailScreen({
   }
 
   const isInitiated = (ticketData?.status || ticket.rawStatus || '').toUpperCase() === 'INITIATED';
+  const isCompleted =
+    ticket.statusKey === 'done' ||
+    ['RESOLVED', 'COMPLETED'].includes((ticketData?.status || ticket.rawStatus || '').toUpperCase());
+
+  // Rating states
+  const [myRating, setMyRating] = useState<TicketRating | null>(null);
+  const [loadingRating, setLoadingRating] = useState(false);
+  const [communityRatings, setCommunityRatings] = useState<TicketRating[]>([]);
+  const [loadingCommunityRatings, setLoadingCommunityRatings] = useState(false);
+
+  // Rating modal states
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [ratingScore, setRatingScore] = useState<number>(5);
+  const [ratingFeedback, setRatingFeedback] = useState<string>('');
+  const [isAnonymousRating, setIsAnonymousRating] = useState<boolean>(false);
+  const [submittingRating, setSubmittingRating] = useState(false);
+  const [editingRatingId, setEditingRatingId] = useState<string | null>(null);
+
+  // Evidences modal
+  const [showEvidencesModal, setShowEvidencesModal] = useState(false);
+
+  const fetchRatings = useCallback(async () => {
+    const targetId = ticketData?.id || ticket.id;
+    if (!targetId || targetId.startsWith('CF-')) return;
+
+    try {
+      setLoadingRating(true);
+      const my = await getMyRating(targetId);
+      setMyRating(my);
+    } catch (e: any) {
+      console.log('Fetch my rating note:', e?.message);
+    } finally {
+      setLoadingRating(false);
+    }
+
+    try {
+      setLoadingCommunityRatings(true);
+      const res = await getTicketRatings(targetId, 0, 10);
+      if (res && Array.isArray(res.content)) {
+        setCommunityRatings(res.content);
+      }
+    } catch (e: any) {
+      console.log('Fetch community ratings note:', e?.message);
+    } finally {
+      setLoadingCommunityRatings(false);
+    }
+  }, [ticketData?.id, ticket.id]);
+
+  useEffect(() => {
+    if (isCompleted) {
+      fetchRatings();
+    }
+  }, [isCompleted, fetchRatings]);
+
+  const openCreateRatingModal = () => {
+    setEditingRatingId(null);
+    setRatingScore(5);
+    setRatingFeedback('');
+    setIsAnonymousRating(false);
+    setRatingModalVisible(true);
+  };
+
+  const openEditRatingModal = () => {
+    if (!myRating) return;
+    setEditingRatingId(myRating.id);
+    setRatingScore(myRating.rate || 5);
+    setRatingFeedback(myRating.feedback || '');
+    setIsAnonymousRating(Boolean(myRating.isAnonymous));
+    setRatingModalVisible(true);
+  };
+
+  const handleSaveRating = async () => {
+    const targetId = ticketData?.id || ticket.id;
+    if (!targetId) return;
+
+    if (ratingScore < 1 || ratingScore > 5) {
+      Alert.alert('Lỗi', 'Vui lòng chọn số sao từ 1 đến 5.');
+      return;
+    }
+
+    try {
+      setSubmittingRating(true);
+      if (editingRatingId) {
+        const updated = await updateRating(targetId, editingRatingId, {
+          rate: ratingScore,
+          feedback: ratingFeedback.trim(),
+          isAnonymous: isAnonymousRating,
+        });
+        setMyRating(updated);
+        Alert.alert('Thành công', 'Đánh giá của bạn đã được cập nhật.');
+      } else {
+        const created = await createRating(targetId, {
+          rate: ratingScore,
+          feedback: ratingFeedback.trim(),
+          isAnonymous: isAnonymousRating,
+        });
+        setMyRating(created);
+        Alert.alert('Thành công', 'Cảm ơn bạn đã gửi đánh giá cho sự cố này!');
+      }
+      setRatingModalVisible(false);
+      fetchRatings();
+    } catch (err: any) {
+      console.error('Lỗi gửi đánh giá:', err);
+      Alert.alert('Không thể gửi đánh giá', err?.message || 'Có lỗi xảy ra khi lưu đánh giá.');
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
+
+  const handleDeleteRating = () => {
+    const targetId = ticketData?.id || ticket.id;
+    if (!targetId || !myRating?.id) return;
+
+    Alert.alert(
+      'Xóa đánh giá',
+      'Bạn có chắc chắn muốn xóa đánh giá của mình không? Sau khi xóa, bạn có thể gửi đánh giá mới bất kỳ lúc nào.',
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Xác nhận xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoadingRating(true);
+              await deleteRating(targetId, myRating.id);
+              setMyRating(null);
+              Alert.alert('Thành công', 'Đánh giá của bạn đã được xóa.');
+              fetchRatings();
+            } catch (err: any) {
+              console.error('Lỗi xóa đánh giá:', err);
+              Alert.alert('Không thể xóa', err?.message || 'Có lỗi xảy ra khi xóa đánh giá.');
+            } finally {
+              setLoadingRating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const allEvidences = (ticketData?.steps || []).flatMap((st: any) =>
+    (st?.evidences || []).map((ev: any) => ({
+      ...ev,
+      stepName: st?.stepName || 'Khắc phục sự cố',
+    }))
+  );
 
   const handleCancelTicket = () => {
     const targetId = ticketData?.id || ticket.id;
@@ -242,7 +410,7 @@ export default function TicketDetailScreen({
   if (loading) {
     return (
       <View style={styles.notFoundContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <StatusBar barStyle="dark-content" />
         <ActivityIndicator size="large" color="#f97316" />
         <Text style={[styles.notFoundText, { marginTop: 16 }]}>Đang tải thông tin sự cố...</Text>
       </View>
@@ -252,7 +420,7 @@ export default function TicketDetailScreen({
   if (!ticketId && !ticketData) {
     return (
       <View style={styles.notFoundContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <StatusBar barStyle="dark-content" />
         <Ionicons name="document-text-outline" size={48} color="#94a3b8" />
         <Text style={styles.notFoundText}>Không tìm thấy thông tin vé sự cố</Text>
         <TouchableOpacity style={styles.goBackBtn} onPress={goBack}>
@@ -268,7 +436,7 @@ export default function TicketDetailScreen({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
       {/* Top Header Bar */}
@@ -340,6 +508,181 @@ export default function TicketDetailScreen({
               ))}
             </View>
           </View>
+
+          {/* Action CTA for Resolved Tickets: Xem bằng chứng (Đưa lên đầu) */}
+          {isCompleted ? (
+            <TouchableOpacity
+              style={styles.resolutionBtn}
+              onPress={() => setShowEvidencesModal(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="images-outline" size={20} color="#ffffff" />
+              <Text style={styles.resolutionBtnText}>
+                XEM BẰNG CHỨNG XỬ LÝ ({allEvidences.length})
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {/* ĐÁNH GIÁ CHẤT LƯỢNG KHI VÉ HOÀN THÀNH (Đưa lên đầu ngay sau Thông tin chung) */}
+          {isCompleted ? (
+            <View style={styles.ratingSectionContainer}>
+              {loadingRating ? (
+                <View style={styles.ratingLoadingBox}>
+                  <ActivityIndicator size="small" color="#ea580c" />
+                  <Text style={styles.ratingLoadingText}>Đang tải đánh giá...</Text>
+                </View>
+              ) : myRating ? (
+                /* Card đánh giá của chính người dùng */
+                <View style={styles.myRatingCard}>
+                  <View style={styles.myRatingHeader}>
+                    <View style={styles.myRatingHeaderLeft}>
+                      <View style={styles.starBadgeIcon}>
+                        <Ionicons name="star" size={16} color="#ffffff" />
+                      </View>
+                      <View>
+                        <Text style={styles.myRatingTitle}>ĐÁNH GIÁ CỦA BẠN</Text>
+                        <Text style={styles.myRatingDate}>
+                          {new Date(myRating.updatedAt || myRating.createdAt).toLocaleDateString('vi-VN')}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.myRatingHeaderActions}>
+                      <TouchableOpacity
+                        style={styles.ratingActionBtn}
+                        onPress={openEditRatingModal}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="edit-2" size={14} color="#ea580c" />
+                        <Text style={styles.ratingActionBtnText}>Sửa</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ratingActionBtn, styles.ratingDeleteBtn]}
+                        onPress={handleDeleteRating}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="trash-2" size={14} color="#dc2626" />
+                        <Text style={[styles.ratingActionBtnText, { color: '#dc2626' }]}>Xóa</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.starsDisplayRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= myRating.rate ? 'star' : 'star-outline'}
+                        size={22}
+                        color={star <= myRating.rate ? '#f59e0b' : '#cbd5e1'}
+                        style={{ marginRight: 3 }}
+                      />
+                    ))}
+                    <Text style={styles.starsScoreText}>{myRating.rate}/5</Text>
+                    <View
+                      style={[
+                        styles.ratingLabelBadge,
+                        { backgroundColor: (RATING_LABELS[myRating.rate]?.color || '#16a34a') + '15' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.ratingLabelBadgeText,
+                          { color: RATING_LABELS[myRating.rate]?.color || '#16a34a' },
+                        ]}
+                      >
+                        {RATING_LABELS[myRating.rate]?.text || 'Hài lòng'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {myRating.feedback ? (
+                    <View style={styles.feedbackQuoteBox}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={15} color="#ea580c" style={{ marginRight: 6, marginTop: 1 }} />
+                      <Text style={styles.feedbackQuoteText}>{myRating.feedback}</Text>
+                    </View>
+                  ) : null}
+
+                  {myRating.isAnonymous ? (
+                    <View style={styles.anonymousBadge}>
+                      <Ionicons name="eye-off-outline" size={13} color="#64748b" />
+                      <Text style={styles.anonymousBadgeText}>Đánh giá ở chế độ ẩn danh</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                /* Card mời đánh giá khi chưa đánh giá */
+                <View style={styles.rateInviteCard}>
+                  <View style={styles.rateInviteIconBox}>
+                    <Ionicons name="star" size={26} color="#f59e0b" />
+                  </View>
+                  <View style={styles.rateInviteBody}>
+                    <Text style={styles.rateInviteTitle}>Đánh giá chất lượng xử lý</Text>
+                    <Text style={styles.rateInviteDesc}>
+                      Bạn là người báo cáo hoặc đã theo dõi vé này? Hãy chia sẻ đánh giá về kết quả giải quyết sự cố.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.openRateBtn}
+                      onPress={openCreateRatingModal}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="star-outline" size={18} color="#ffffff" />
+                      <Text style={styles.openRateBtnText}>ĐÁNH GIÁ NGAY</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Danh sách đánh giá cộng đồng */}
+              {communityRatings.length > 0 ? (
+                <View style={styles.communityCard}>
+                  <View style={styles.communityHeader}>
+                    <View style={styles.orangeIndicator} />
+                    <Text style={styles.communityTitle}>
+                      ĐÁNH GIÁ TỪ CỘNG ĐỒNG ({communityRatings.length})
+                    </Text>
+                  </View>
+
+                  {communityRatings.map((item) => (
+                    <View key={item.id} style={styles.reviewItem}>
+                      <View style={styles.reviewAvatar}>
+                        {item.userAvatar ? (
+                          <Image source={{ uri: item.userAvatar }} style={styles.reviewAvatarImg} />
+                        ) : (
+                          <Text style={styles.reviewAvatarText}>
+                            {item.isAnonymous ? '?' : (item.userName || 'U').charAt(0).toUpperCase()}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.reviewContent}>
+                        <View style={styles.reviewTopRow}>
+                          <Text style={styles.reviewerName}>
+                            {item.isAnonymous ? 'Người dân ẩn danh' : item.userName || 'Người dân'}
+                          </Text>
+                          <Text style={styles.reviewDate}>
+                            {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                          </Text>
+                        </View>
+                        <View style={styles.reviewStarsRow}>
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Ionicons
+                              key={s}
+                              name={s <= item.rate ? 'star' : 'star-outline'}
+                              size={14}
+                              color={s <= item.rate ? '#f59e0b' : '#cbd5e1'}
+                              style={{ marginRight: 2 }}
+                            />
+                          ))}
+                        </View>
+                        {item.feedback ? (
+                          <Text style={styles.reviewerFeedback}>{item.feedback}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           {/* Incident Description */}
           <View style={styles.card}>
@@ -431,18 +774,6 @@ export default function TicketDetailScreen({
             </Text>
           </View>
 
-          {/* Action CTA for Resolved Tickets */}
-          {ticket.statusKey === 'done' ? (
-            <TouchableOpacity
-              style={styles.resolutionBtn}
-              onPress={() => navigate('ticket-resolution')}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="checkmark-circle-outline" size={20} color="#ffffff" />
-              <Text style={styles.resolutionBtnText}>XEM BẰNG CHỨNG XỬ LÝ</Text>
-            </TouchableOpacity>
-          ) : null}
-
           {/* Action CTA for Initiated Tickets (Cancel) */}
           {isInitiated ? (
             <View style={styles.cancelActionCard}>
@@ -481,6 +812,194 @@ export default function TicketDetailScreen({
           ) : null}
         </View>
       </ScrollView>
+
+      {/* MODAL ĐÁNH GIÁ (CREATE / EDIT) */}
+      <Modal
+        visible={ratingModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRatingModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.ratingModalCard}>
+            <View style={styles.ratingModalHeader}>
+              <View style={styles.ratingModalHeaderLeft}>
+                <Ionicons name="star" size={20} color="#f59e0b" />
+                <Text style={styles.ratingModalTitle}>
+                  {editingRatingId ? 'Chỉnh sửa đánh giá' : 'Đánh giá xử lý sự cố'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setRatingModalVisible(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <Text style={styles.ratingPromptText}>
+                Bạn cảm thấy thế nào về kết quả và tốc độ giải quyết sự cố này?
+              </Text>
+
+              {/* Interactive Star Picker */}
+              <View style={styles.starPickerRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() => setRatingScore(star)}
+                    style={styles.starPickerTouch}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={star <= ratingScore ? 'star' : 'star-outline'}
+                      size={36}
+                      color={star <= ratingScore ? '#f59e0b' : '#cbd5e1'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Rating score badge label */}
+              <View style={styles.scoreLabelRow}>
+                <Text style={[styles.scoreLabelText, { color: RATING_LABELS[ratingScore]?.color || '#ea580c' }]}>
+                  {ratingScore} sao · {RATING_LABELS[ratingScore]?.text || ''}
+                </Text>
+              </View>
+
+              {/* Feedback Input */}
+              <Text style={styles.modalFieldLabel}>Ý kiến đóng góp (tùy chọn):</Text>
+              <TextInput
+                style={styles.feedbackInput}
+                placeholder="Nhập cảm nhận về chất lượng sửa chữa, thái độ nhân viên hoặc thời gian hoàn thành..."
+                placeholderTextColor="#94a3b8"
+                multiline
+                numberOfLines={4}
+                value={ratingFeedback}
+                onChangeText={setRatingFeedback}
+                textAlignVertical="top"
+              />
+
+              {/* Anonymous Toggle */}
+              <View style={styles.anonymousToggleRow}>
+                <View style={styles.anonymousToggleLeft}>
+                  <Ionicons name="eye-off-outline" size={18} color="#64748b" />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={styles.anonymousToggleTitle}>Đánh giá ẩn danh</Text>
+                    <Text style={styles.anonymousToggleSub}>Ẩn họ tên và ảnh đại diện của bạn</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={isAnonymousRating}
+                  onValueChange={setIsAnonymousRating}
+                  trackColor={{ false: '#cbd5e1', true: '#fdba74' }}
+                  thumbColor={isAnonymousRating ? '#ea580c' : '#f8fafc'}
+                />
+              </View>
+            </ScrollView>
+
+            {/* Modal Actions */}
+            <View style={styles.modalActionsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setRatingModalVisible(false)}
+                disabled={submittingRating}
+              >
+                <Text style={styles.modalCancelBtnText}>HỦY</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSaveRating}
+                disabled={submittingRating}
+                activeOpacity={0.85}
+              >
+                {submittingRating ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={18} color="#ffffff" />
+                    <Text style={styles.modalSubmitBtnText}>
+                      {editingRatingId ? 'CẬP NHẬT' : 'GỬI ĐÁNH GIÁ'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL XEM BẰNG CHỨNG XỬ LÝ */}
+      <Modal
+        visible={showEvidencesModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEvidencesModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.evidencesModalCard}>
+            <View style={styles.ratingModalHeader}>
+              <View style={styles.ratingModalHeaderLeft}>
+                <Ionicons name="checkmark-done-circle" size={22} color="#16a34a" />
+                <Text style={styles.ratingModalTitle}>Bằng chứng hoàn thành</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowEvidencesModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+              {allEvidences.length > 0 ? (
+                allEvidences.map((ev: any, idx: number) => (
+                  <View key={idx} style={styles.evidenceItemCard}>
+                    <Text style={styles.evidenceStepName}>
+                      Bước: {ev.stepName || `Khắc phục #${idx + 1}`}
+                    </Text>
+                    {ev.imageUrl ? (
+                      <Image source={{ uri: ev.imageUrl }} style={styles.evidenceImg} resizeMode="cover" />
+                    ) : null}
+                    {ev.resolutionNote ? (
+                      <View style={styles.evidenceNoteBox}>
+                        <Text style={styles.evidenceNoteLabel}>Ghi chú xử lý:</Text>
+                        <Text style={styles.evidenceNoteText}>{ev.resolutionNote}</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.evidenceMetaRow}>
+                      <Text style={styles.evidenceMetaStaff}>
+                        Nhân viên: {ev.staffName || 'Đội công ích đô thị'}
+                      </Text>
+                      {ev.createdAt ? (
+                        <Text style={styles.evidenceMetaDate}>
+                          {new Date(ev.createdAt).toLocaleString('vi-VN')}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.noEvidenceBox}>
+                  <Ionicons name="images-outline" size={40} color="#94a3b8" />
+                  <Text style={styles.noEvidenceTitle}>Chưa có hình ảnh bằng chứng</Text>
+                  <Text style={styles.noEvidenceDesc}>
+                    Cơ quan xử lý đã xác nhận hoàn tất giải quyết sự cố này trên hệ thống.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.evidenceCloseBtn}
+              onPress={() => setShowEvidencesModal(false)}
+            >
+              <Text style={styles.evidenceCloseBtnText}>ĐÓNG</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -861,5 +1380,520 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 2,
+  },
+
+  /* Rating Section */
+  ratingSectionContainer: {
+    gap: 12,
+  },
+  ratingLoadingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 8,
+  },
+  ratingLoadingText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+
+  /* My Rating Card */
+  myRatingCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    padding: 16,
+    gap: 12,
+    shadowColor: '#ea580c',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  myRatingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  myRatingHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  starBadgeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#f59e0b',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  myRatingTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: 0.5,
+  },
+  myRatingDate: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 1,
+  },
+  myRatingHeaderActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  ratingActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  ratingDeleteBtn: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  ratingActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  starsDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  starsScoreText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginLeft: 6,
+    marginRight: 8,
+  },
+  ratingLabelBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  ratingLabelBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  feedbackQuoteBox: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+  },
+  feedbackQuoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+    fontStyle: 'italic',
+  },
+  anonymousBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  anonymousBadgeText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+
+  /* Rate Invite Card */
+  rateInviteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1.5,
+    borderColor: '#fdba74',
+    borderRadius: 18,
+    padding: 16,
+    gap: 14,
+  },
+  rateInviteIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#ffedd5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rateInviteBody: {
+    flex: 1,
+    gap: 4,
+  },
+  rateInviteTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#c2410c',
+  },
+  rateInviteDesc: {
+    fontSize: 12,
+    color: '#7c2d12',
+    lineHeight: 16,
+    marginBottom: 6,
+  },
+  openRateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#ea580c',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    shadowColor: '#ea580c',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  openRateBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  /* Community Reviews Card */
+  communityCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 16,
+    gap: 12,
+  },
+  communityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  communityTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: 0.5,
+  },
+  reviewItem: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8fafc',
+  },
+  reviewAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#f97316',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  reviewAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  reviewAvatarText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  reviewContent: {
+    flex: 1,
+  },
+  reviewTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reviewerName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  reviewDate: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  reviewStarsRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  reviewerFeedback: {
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 18,
+  },
+
+  /* Modal Generic */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  ratingModalCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 20,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  ratingModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  ratingModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ratingModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ratingPromptText: {
+    fontSize: 13,
+    color: '#475569',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  starPickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+  },
+  starPickerTouch: {
+    padding: 4,
+  },
+  scoreLabelRow: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  scoreLabelText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modalFieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  feedbackInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    color: '#0f172a',
+    minHeight: 85,
+    marginBottom: 14,
+  },
+  anonymousToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  anonymousToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  anonymousToggleTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  anonymousToggleSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  modalSubmitBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#ea580c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    shadowColor: '#ea580c',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  modalSubmitBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+
+  /* Evidences Modal */
+  evidencesModalCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 20,
+    gap: 14,
+    maxHeight: '85%',
+  },
+  evidenceItemCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  evidenceStepName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
+  evidenceImg: {
+    width: '100%',
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: '#e2e8f0',
+  },
+  evidenceNoteBox: {
+    backgroundColor: '#ffffff',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  evidenceNoteLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  evidenceNoteText: {
+    fontSize: 12,
+    color: '#1e293b',
+    marginTop: 2,
+  },
+  evidenceMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  evidenceMetaStaff: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#16a34a',
+  },
+  evidenceMetaDate: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  noEvidenceBox: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    gap: 8,
+  },
+  noEvidenceTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  noEvidenceDesc: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  evidenceCloseBtn: {
+    paddingVertical: 12,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  evidenceCloseBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
   },
 });
