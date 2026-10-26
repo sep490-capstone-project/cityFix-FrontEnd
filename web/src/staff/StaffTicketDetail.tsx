@@ -3,8 +3,7 @@ import { User, getCat, getDept, statusInfo, sevInfo, priorityInfo } from '../dat
 import {
   StaffTicketItem,
   StaffTicketStepEvidence,
-  forwardStaffTicket,
-  rejectStaffTicket,
+  createStaffRequest,
   updateStaffTicketStatus,
   submitStaffEvidence,
   getStaffTicketSteps,
@@ -45,19 +44,14 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
   const [categories, setCategories] = useState<AdminCategory[]>([]);
 
   // Modals state
-  const [modalType, setModalType] = useState<'forward' | 'reject' | 'evidence' | 'status' | null>(null);
+  const [modalType, setModalType] = useState<'request' | 'evidence' | 'status' | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // 2. Forward Form
-  const [forwardDeptId, setForwardDeptId] = useState('');
-  const [forwardCatId, setForwardCatId] = useState(ticket.categoryId || '');
-  const [forwardReason, setForwardReason] = useState('');
-
-  // 3. Reject Form
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectDeptId, setRejectDeptId] = useState('');
-  const [rejectCatId, setRejectCatId] = useState('');
+  // Form tạo request gửi Manager (POST /api/v1/staff/requests)
+  const [requestTitle, setRequestTitle] = useState('');
+  const [requestContent, setRequestContent] = useState('');
+  const [requestStepId, setRequestStepId] = useState('');
 
   // 4. Status Form
   const [newStatus, setNewStatus] = useState<string>(ticket.status || 'IN_PROGRESS');
@@ -168,65 +162,52 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
     openEvidenceModal(stepId);
   }
 
-  // API 2: Chuyển giao vé (Forward)
-  async function handleForwardSubmit() {
-    if (!forwardReason.trim()) {
-      setFeedback({ type: 'error', message: 'Vui lòng nhập lý do chuyển giao.' });
+  // API: Staff tạo request gửi đến Manager (POST /api/v1/staff/requests)
+  // Thay thế cho quyền forward/reject trực tiếp, gửi yêu cầu để Manager xem xét & điều chỉnh
+  async function handleRequestSubmit() {
+    if (!requestTitle.trim()) {
+      setFeedback({ type: 'error', message: 'Vui lòng nhập tiêu đề yêu cầu.' });
+      return;
+    }
+    if (!requestContent.trim()) {
+      setFeedback({ type: 'error', message: 'Vui lòng nhập nội dung chi tiết của yêu cầu.' });
       return;
     }
     setSubmitting(true);
     setFeedback(null);
     try {
-      const payload = {
-        reason: forwardReason.trim(),
-        suggestedDepartmentId: forwardDeptId || undefined,
-        suggestedCategoryId: forwardCatId || undefined,
-      };
-      const updated = await forwardStaffTicket(ticketId, payload);
-      setTicket((prev) => ({
-        ...prev,
-        ...updated,
-        departmentId: forwardDeptId || prev.departmentId,
-        departmentName: departments.find((d) => d.departmentId === forwardDeptId)?.name || prev.departmentName,
-      }));
-      setFeedback({ type: 'success', message: 'Đã chuyển giao hồ sơ sang cơ quan khác!' });
+      const res = await createStaffRequest({
+        ticketId: ticketId || undefined,
+        stepId: requestStepId || undefined,
+        title: requestTitle.trim(),
+        content: requestContent.trim(),
+      });
+      const mgrNames = res.recipientManagerNames?.length
+        ? ` (${res.recipientManagerNames.join(', ')})`
+        : '';
+      setFeedback({
+        type: 'success',
+        message: `Đã gửi yêu cầu tới Quản lý${mgrNames} thành công! Quản lý sẽ nhận được thông báo thời gian thực.`,
+      });
       setModalType(null);
+      setRequestTitle('');
+      setRequestContent('');
+      setRequestStepId('');
     } catch (err: any) {
-      const msg = err instanceof ApiError ? err.message : 'Chuyển giao thất bại.';
+      const msg = err instanceof ApiError ? err.message : 'Gửi yêu cầu tới Quản lý thất bại.';
       setFeedback({ type: 'error', message: msg });
     } finally {
       setSubmitting(false);
     }
   }
 
-  // API 3: Từ chối hồ sơ
-  async function handleRejectSubmit() {
-    if (!rejectReason.trim()) {
-      setFeedback({ type: 'error', message: 'Vui lòng nhập lý do từ chối hồ sơ.' });
-      return;
-    }
-    setSubmitting(true);
-    setFeedback(null);
-    try {
-      const payload = {
-        reason: rejectReason.trim(),
-        suggestedDepartmentId: rejectDeptId || undefined,
-        suggestedCategoryId: rejectCatId || undefined,
-      };
-      const updated = await rejectStaffTicket(ticketId, payload);
-      setTicket((prev) => ({
-        ...prev,
-        ...updated,
-        status: 'REJECTED',
-      }));
-      setFeedback({ type: 'success', message: 'Đã từ chối tiếp nhận hồ sơ.' });
-      setModalType(null);
-    } catch (err: any) {
-      const msg = err instanceof ApiError ? err.message : 'Từ chối hồ sơ thất bại.';
-      setFeedback({ type: 'error', message: msg });
-    } finally {
-      setSubmitting(false);
-    }
+  function openRequestModal(stepId?: string, defaultTitle?: string) {
+    if (stepId) setRequestStepId(stepId);
+    else setRequestStepId('');
+    if (defaultTitle) setRequestTitle(defaultTitle);
+    else setRequestTitle('');
+    setRequestContent('');
+    setModalType('request');
   }
 
   function openStatusModal(target?: string, stepId?: string) {
@@ -464,26 +445,15 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <span>⚙</span> Đổi trạng thái
           </button>
 
-          {/* Khi đã bấm nút thực hiện xử lý (hoặc hồ sơ đang/đã xử lý) thì ẩn nút chuyển giao và từ chối */}
-          {ticket.status !== 'IN_PROGRESS' && ticket.status !== 'RESOLVED' && ticket.status !== 'COMPLETED' && (
-            <>
-              <button
-                type="button"
-                onClick={() => setModalType('forward')}
-                className="px-3.5 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
-              >
-                <span>↗</span> Chuyển giao
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalType('reject')}
-                className="px-3.5 py-2 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
-              >
-                <span>✕</span> Từ chối
-              </button>
-            </>
-          )}
+          {/* Nút gửi yêu cầu tới Quản lý (thay thế chuyển giao & từ chối) */}
+          <button
+            type="button"
+            onClick={() => openRequestModal()}
+            className="px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
+            title="Nhân viên tạo yêu cầu gửi tới người quản lý phụ trách phòng ban"
+          >
+            <span>📨</span> Gửi yêu cầu tới Quản lý
+          </button>
         </div>
       </div>
 
@@ -750,6 +720,17 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                             <span>📸</span>
                             <span>Tải bằng chứng</span>
                           </button>
+
+                          {/* Báo cáo / Yêu cầu riêng cho bước */}
+                          <button
+                            type="button"
+                            onClick={() => openRequestModal(stepInstanceId, `Yêu cầu hỗ trợ bước: ${getStepTitle(st, i)}`)}
+                            className="px-2.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                            title="Gửi yêu cầu hoặc báo cáo vấn đề của bước này lên Quản lý"
+                          >
+                            <span>💬</span>
+                            <span>Báo cáo bước</span>
+                          </button>
                         </div>
                       </div>
 
@@ -849,81 +830,126 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
         </div>
       </div>
 
-      {/* ================= MODAL 2: CHUYỂN GIAO VÉ (API 2) ================= */}
-      {modalType === 'forward' && (
+      {/* ================= MODAL: GỬI YÊU CẦU TỚI QUẢN LÝ (POST /api/v1/staff/requests) ================= */}
+      {modalType === 'request' && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 max-w-md w-full p-6 space-y-4 shadow-xl">
+          <div className="bg-white rounded-2xl border border-gray-200 max-w-lg w-full p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-gray-900">↗ Chuyển giao cơ quan khác</h3>
-              <button onClick={() => setModalType(null)} className="text-gray-400 hover:text-gray-700 cursor-pointer">✕</button>
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Cơ quan chuyển đến:</label>
-              <select
-                value={forwardDeptId}
-                onChange={(e) => setForwardDeptId(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-semibold outline-none focus:border-orange-500"
-              >
-                <option value="">-- Chọn cơ quan chức năng đúng --</option>
-                {departments
-                  .filter((d) => d.departmentId !== ticket.departmentId)
-                  .map((d) => (
-                    <option key={d.departmentId} value={d.departmentId}>
-                      {d.name} ({d.level || 'Cơ quan'})
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Lý do chuyển giao <span className="text-red-500">*</span>:</label>
-              <textarea
-                value={forwardReason}
-                onChange={(e) => setForwardReason(e.target.value)}
-                rows={3}
-                placeholder="Ví dụ: Vấn đề không thuộc thẩm quyền của phòng ban chúng tôi..."
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 outline-none focus:border-orange-500 resize-none font-medium"
-              />
-            </div>
-            <div className="flex gap-2 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 text-sm">
+                  📨
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-bold text-gray-900">Gửi yêu cầu tới Quản lý phòng ban</h3>
+                  <p className="text-[11px] text-gray-500">
+                    Tạo thông báo thời gian thực gửi Quản lý để xem xét & điều chỉnh hồ sơ
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setModalType(null)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-xs hover:bg-gray-50 cursor-pointer"
+                className="text-gray-400 hover:text-gray-700 cursor-pointer p-1 rounded-lg hover:bg-gray-100"
               >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handleForwardSubmit}
-                disabled={submitting || !forwardReason.trim()}
-                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-50"
-              >
-                {submitting ? 'Đang chuyển giao...' : 'Xác nhận chuyển'}
+                ✕
               </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* ================= MODAL 3: TỪ CHỐI HỒ SƠ (API 3) ================= */}
-      {modalType === 'reject' && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 max-w-md w-full p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-red-600">✕ Từ chối tiếp nhận hồ sơ</h3>
-              <button onClick={() => setModalType(null)} className="text-gray-400 hover:text-gray-700 cursor-pointer">✕</button>
-            </div>
+            {/* Gợi ý mẫu yêu cầu nhanh */}
             <div>
-              <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Lý do từ chối <span className="text-red-500">*</span>:</label>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                rows={3}
-                placeholder="Nhập lý do không tiếp nhận hoặc phản ánh không hợp lệ..."
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 outline-none focus:border-red-500 resize-none font-medium"
+              <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Gợi ý yêu cầu nhanh:</label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  {
+                    label: '↗ Chuyển giao phòng ban',
+                    title: 'Đề xuất chuyển giao hồ sơ sang phòng ban khác',
+                    content: 'Kính gửi Quản lý: Hồ sơ này không thuộc chuyên môn xử lý của phòng ban hiện tại. Đề xuất xem xét chuyển giao sang phòng ban phụ trách phù hợp.',
+                  },
+                  {
+                    label: '✕ Đề xuất từ chối vé',
+                    title: 'Đề xuất từ chối tiếp nhận hồ sơ do không hợp lệ',
+                    content: 'Kính gửi Quản lý: Qua khảo sát thực tế, sự cố không tồn tại hoặc phản ánh không đúng sự thật. Đề xuất Quản lý xem xét từ chối hồ sơ.',
+                  },
+                  {
+                    label: '⏱️ Đề xuất gia hạn deadline',
+                    title: 'Đề xuất gia hạn thời gian xử lý sự cố',
+                    content: 'Kính gửi Quản lý: Do điều kiện khách quan (thời tiết / vật tư chưa về kịp), bước xử lý cần thêm thời gian để hoàn thành đúng tiêu chuẩn. Đề xuất gia hạn deadline.',
+                  },
+                  {
+                    label: '🛠️ Xin hỗ trợ nhân lực/vật tư',
+                    title: 'Đề xuất xin hỗ trợ thêm thiết bị và nhân lực',
+                    content: 'Kính gửi Quản lý: Quy mô sự cố phức tạp hơn dự kiến, kính đề nghị Quản lý điều phối thêm nhân lực và thiết bị hỗ trợ xử lý hiện trường.',
+                  },
+                ].map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setRequestTitle(preset.title);
+                      setRequestContent(preset.content);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-gray-50 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 border border-gray-200 text-gray-700 transition-colors cursor-pointer"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bước liên quan (tùy chọn) */}
+            {ticket.steps && ticket.steps.length > 0 && (
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                  Bước xử lý liên quan (tùy chọn):
+                </label>
+                <select
+                  value={requestStepId}
+                  onChange={(e) => setRequestStepId(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-medium outline-none focus:border-indigo-500"
+                >
+                  <option value="">-- Toàn bộ hồ sơ (Không gắn riêng bước cụ thể) --</option>
+                  {ticket.steps.map((st, i) => {
+                    const stId = st.id || (st as any).ticketStepId || st.stepId || '';
+                    return (
+                      <option key={stId || i} value={stId}>
+                        Bước {st.orderIndex !== undefined ? st.orderIndex + 1 : i + 1}: {getStepTitle(st, i)} ({st.status || 'PENDING'})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            {/* Tiêu đề yêu cầu */}
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                Tiêu đề yêu cầu <span className="text-red-500">*</span>:
+              </label>
+              <input
+                type="text"
+                value={requestTitle}
+                onChange={(e) => setRequestTitle(e.target.value)}
+                maxLength={255}
+                placeholder="Ví dụ: Đề xuất gia hạn thời gian / Chuyển giao phòng ban..."
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 outline-none focus:border-indigo-500 font-semibold"
               />
             </div>
-            <div className="flex gap-2 pt-2">
+
+            {/* Nội dung chi tiết */}
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                Nội dung chi tiết yêu cầu <span className="text-red-500">*</span>:
+              </label>
+              <textarea
+                value={requestContent}
+                onChange={(e) => setRequestContent(e.target.value)}
+                rows={4}
+                placeholder="Nhập chi tiết lý do, nguyên nhân thực tế tại hiện trường và đề xuất cụ thể..."
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 outline-none focus:border-indigo-500 resize-none font-medium"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => setModalType(null)}
@@ -933,11 +959,23 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               </button>
               <button
                 type="button"
-                onClick={handleRejectSubmit}
-                disabled={submitting || !rejectReason.trim()}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-50"
+                onClick={handleRequestSubmit}
+                disabled={submitting || !requestTitle.trim() || !requestContent.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                {submitting ? 'Đang xử lý...' : 'Xác nhận từ chối'}
+                {submitting ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeLinecap="round" />
+                    </svg>
+                    <span>Đang gửi yêu cầu...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>📨</span>
+                    <span>Gửi yêu cầu tới Quản lý</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

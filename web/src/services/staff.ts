@@ -94,16 +94,23 @@ export interface PageStaffTickets {
   empty?: boolean;
 }
 
-export interface RejectStaffTicketPayload {
-  reason: string;
-  suggestedCategoryId?: string;
-  suggestedDepartmentId?: string;
+export interface CreateStaffRequestPayload {
+  ticketId?: string;
+  stepId?: string;
+  title: string;
+  content: string;
 }
 
-export interface ForwardStaffTicketPayload {
-  reason: string;
-  suggestedCategoryId?: string;
-  suggestedDepartmentId?: string;
+export interface StaffRequestResponse {
+  notificationId: string;
+  ticketId?: string;
+  stepId?: string;
+  stepName?: string;
+  title: string;
+  content: string;
+  recipientManagerIds?: string[];
+  recipientManagerNames?: string[];
+  createdAt: string;
 }
 
 export interface AssignStaffTicketPayload {
@@ -183,34 +190,17 @@ export async function assignStaffTicket(
 }
 
 /**
- * 2. PUT /api/v1/staff/tickets/{id}/forward
- * Chuyển giao vé sang phòng ban khác nếu không thuộc thẩm quyền xử lý hiện tại
+ * 2. POST /api/v1/staff/requests
+ * Staff tạo request gửi đến Manager quản lý (thay thế chức năng forward và reject trực tiếp)
+ * Yêu cầu này trở thành thông báo hiển thị trong danh sách thông báo của Manager và đẩy qua WebSocket real-time.
  */
-export async function forwardStaffTicket(
-  ticketId: string,
-  payload: ForwardStaffTicketPayload
-): Promise<StaffTicketItem> {
-  return staffRequest<StaffTicketItem>(
-    `/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/forward`,
+export async function createStaffRequest(
+  payload: CreateStaffRequestPayload
+): Promise<StaffRequestResponse> {
+  return staffRequest<StaffRequestResponse>(
+    '/api/v1/staff/requests',
     {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    }
-  );
-}
-
-/**
- * 3. PUT /api/v1/staff/tickets/{id}/reject
- * Từ chối hồ sơ, chuyển trạng thái thành REJECTED kèm lý do
- */
-export async function rejectStaffTicket(
-  ticketId: string,
-  payload: RejectStaffTicketPayload
-): Promise<StaffTicketItem> {
-  return staffRequest<StaffTicketItem>(
-    `/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/reject`,
-    {
-      method: 'PUT',
+      method: 'POST',
       body: JSON.stringify(payload),
     }
   );

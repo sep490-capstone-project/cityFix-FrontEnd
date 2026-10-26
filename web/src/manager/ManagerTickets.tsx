@@ -341,13 +341,26 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                     </td>
 
                     <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => onOpenTicket(t)}
-                        className="px-3 py-1.5 rounded-xl border border-gray-300 hover:border-orange-500 hover:bg-orange-50 text-gray-700 hover:text-orange-600 font-bold text-[11px] transition-all cursor-pointer shadow-2xs"
-                      >
-                        Chi tiết
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onOpenTicket(t)}
+                          className="px-3 py-1.5 rounded-xl border border-gray-300 hover:border-orange-500 hover:bg-orange-50 text-gray-700 hover:text-orange-600 font-bold text-[11px] transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                        >
+                          Chi tiết
+                        </button>
+                        {t.status === 'IN_PROGRESS' && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenTicket(t)}
+                            className="px-2.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] transition-all cursor-pointer shadow-2xs flex items-center gap-1 whitespace-nowrap"
+                            title="Hồ sơ đang xử lý: Bấm để điều chỉnh hạn chót các bước"
+                          >
+                            <span>⏱️</span>
+                            <span>Đổi hạn</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
