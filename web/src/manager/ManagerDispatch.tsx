@@ -355,6 +355,93 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     setSelectedSubCategoryIds((prev) => prev.filter((id) => id !== subCatId));
   }
 
+  // Trích xuất danh sách subCategories đầy đủ (gồm ID và Name) từ vé
+  function getTicketSubCategories(t: ManagerTicketItem | null | undefined): Array<{ id: string; name: string }> {
+    if (!t) return [];
+    const result: Array<{ id: string; name: string }> = [];
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+
+    const add = (id: string | undefined | null, name: string | undefined | null) => {
+      const cleanId = (id || '').trim();
+      const cleanName = (name || '').trim();
+      if (!cleanId && !cleanName) return;
+
+      // Nếu có ID nhưng chưa có Name, tra cứu trong allSubCategories
+      let finalName = cleanName;
+      if (!finalName && cleanId) {
+        const found = allSubCategories.find((s) => s.subCategoryId === cleanId || (s as any).id === cleanId);
+        if (found?.name) finalName = found.name;
+      }
+      // Nếu có Name nhưng chưa có ID, tra cứu trong allSubCategories
+      let finalId = cleanId;
+      if (!finalId && cleanName) {
+        const found = allSubCategories.find((s) => s.name?.toLowerCase() === cleanName.toLowerCase());
+        if (found?.subCategoryId) finalId = found.subCategoryId;
+      }
+
+      if (finalId && seenIds.has(finalId)) return;
+      if (finalName && seenNames.has(finalName.toLowerCase())) return;
+
+      if (finalId) seenIds.add(finalId);
+      if (finalName) seenNames.add(finalName.toLowerCase());
+
+      result.push({
+        id: finalId || cleanId,
+        name: finalName || cleanName || finalId || 'Sự cố liên quan',
+      });
+    };
+
+    // 1. subCategories dạng array object
+    if (Array.isArray(t.subCategories)) {
+      t.subCategories.forEach((sc: any) => {
+        add(sc.subCategoryId || sc.id, sc.name || sc.subCategoryName);
+      });
+    }
+
+    // 2. subCategoryNames dạng array string
+    if (Array.isArray((t as any).subCategoryNames)) {
+      (t as any).subCategoryNames.forEach((n: string) => add('', n));
+    }
+
+    // 3. subCategoryIds dạng array string
+    if (Array.isArray((t as any).subCategoryIds)) {
+      (t as any).subCategoryIds.forEach((id: string) => add(id, ''));
+    }
+
+    // 4. subCategory đơn lẻ
+    if (t.subCategoryId || t.subCategoryName) {
+      add(t.subCategoryId, t.subCategoryName);
+    }
+    if ((t as any).subCategory) {
+      const sc = (t as any).subCategory;
+      add(sc.subCategoryId || sc.id, sc.name || sc.subCategoryName);
+    }
+
+    return result;
+  }
+
+  // Lấy tên danh mục chính (tự động suy luận từ subCategory nếu ticket.categoryName rỗng)
+  function getCategoryDisplayName(t: ManagerTicketItem | null | undefined): string {
+    if (!t) return '';
+    if (t.categoryName && t.categoryName.trim() && t.categoryName !== 'Chưa phân loại') {
+      return t.categoryName.trim();
+    }
+    if (t.categoryId) {
+      const foundCat = categories.find((c) => (c.id || c.categoryId) === t.categoryId);
+      if (foundCat?.name) return foundCat.name;
+    }
+    const subs = getTicketSubCategories(t);
+    for (const sc of subs) {
+      const foundSub = allSubCategories.find((s) => s.subCategoryId === sc.id || (s as any).id === sc.id);
+      if (foundSub?.categoryId) {
+        const foundCat = categories.find((c) => (c.id || c.categoryId) === foundSub.categoryId);
+        if (foundCat?.name) return foundCat.name;
+      }
+    }
+    return '';
+  }
+
   // Khi chọn một vé để điều phối / duyệt
   async function selectTicketForAction(ticket: ManagerTicketItem) {
     setSelectedTicket(ticket);
@@ -396,14 +483,32 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     setRejectDeptId('');
     setSteps(ticket.steps || []);
 
-    // 2. Trích xuất SubCategory ID từ vé
+    // 2. Trích xuất SubCategory ID từ vé (hỗ trợ cả 1 hoặc nhiều subcategories)
+    const ticketSubs = getTicketSubCategories(ticket);
     const foundSubCatIds: string[] = [];
-    if (ticket.subCategoryId) foundSubCatIds.push(ticket.subCategoryId);
-    if ((ticket as any).subCategory?.subCategoryId) foundSubCatIds.push((ticket as any).subCategory.subCategoryId);
-    if ((ticket as any).subCategory?.id) foundSubCatIds.push((ticket as any).subCategory.id);
+    ticketSubs.forEach((sc) => {
+      if (isValidUuid(sc.id) && !foundSubCatIds.includes(sc.id)) {
+        foundSubCatIds.push(sc.id);
+      }
+    });
+
+    if (ticket.subCategoryId && !foundSubCatIds.includes(ticket.subCategoryId)) {
+      foundSubCatIds.push(ticket.subCategoryId);
+    }
+    if ((ticket as any).subCategory?.subCategoryId && !foundSubCatIds.includes((ticket as any).subCategory.subCategoryId)) {
+      foundSubCatIds.push((ticket as any).subCategory.subCategoryId);
+    }
+    if ((ticket as any).subCategory?.id && !foundSubCatIds.includes((ticket as any).subCategory.id)) {
+      foundSubCatIds.push((ticket as any).subCategory.id);
+    }
     if (Array.isArray(ticket.subCategories)) {
       ticket.subCategories.forEach((sc: any) => {
         const id = sc.subCategoryId || sc.id;
+        if (id && !foundSubCatIds.includes(id)) foundSubCatIds.push(id);
+      });
+    }
+    if (Array.isArray((ticket as any).subCategoryIds)) {
+      (ticket as any).subCategoryIds.forEach((id: string) => {
         if (id && !foundSubCatIds.includes(id)) foundSubCatIds.push(id);
       });
     }
@@ -939,8 +1044,45 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         <span className="text-gray-900">#{ticketId.slice(0, 8)}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 text-[12px] text-gray-900 font-semibold max-w-[170px] truncate">
-                      {t.categoryName || 'Chưa phân loại'}
+                    <td className="px-4 py-3.5 max-w-[220px]">
+                      {(() => {
+                        const catName = getCategoryDisplayName(t);
+                        const subs = getTicketSubCategories(t);
+
+                        return (
+                          <div>
+                            {catName ? (
+                              <div className="text-[12px] text-gray-900 font-semibold truncate mb-1">
+                                {catName}
+                              </div>
+                            ) : null}
+
+                            {subs.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1">
+                                {subs.slice(0, 2).map((sc, idx) => (
+                                  <span
+                                    key={sc.id || idx}
+                                    className="inline-flex items-center text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md max-w-[170px] truncate"
+                                    title={sc.name}
+                                  >
+                                    🏷️ {sc.name}
+                                  </span>
+                                ))}
+                                {subs.length > 2 && (
+                                  <span
+                                    className="text-[9px] font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md"
+                                    title={subs.slice(2).map((s) => s.name).join(', ')}
+                                  >
+                                    +{subs.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            ) : !catName ? (
+                              <span className="text-gray-400 text-[11px]">—</span>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3.5 text-[12px] text-gray-600 max-w-[220px] truncate">
                       {t.address || '—'}
@@ -1132,6 +1274,57 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         </div>
                       </div>
 
+                      {/* Phân loại & Chi tiết sự cố từ phản ánh / AI */}
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-400 block mb-1">
+                          Phân loại & Chi tiết sự cố (Người dân báo / AI nhận diện):
+                        </span>
+                        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs space-y-2">
+                          {(() => {
+                            const catName = getCategoryDisplayName(selectedTicket);
+                            if (!catName) return null;
+                            return (
+                              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                <span className="text-[11px] text-slate-500 font-medium">Danh mục chính:</span>
+                                <span className="text-[12px] font-bold text-slate-900">
+                                  {catName}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                          {(() => {
+                            const subs = getTicketSubCategories(selectedTicket);
+                            if (subs.length === 0) return null;
+                            return (
+                              <div className="pt-2 border-t border-slate-100">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    Chi tiết sự cố ({subs.length}):
+                                  </span>
+                                  {subs.length > 1 && (
+                                    <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                                      ⚡ Đa sự cố ({subs.length})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {subs.map((sc, idx) => (
+                                    <span
+                                      key={sc.id || idx}
+                                      className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-800 bg-orange-50 border border-orange-200 px-2 py-1 rounded-lg"
+                                      title={sc.name}
+                                    >
+                                      <span className="text-orange-500">🏷️</span>
+                                      {sc.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
                       {/* Đánh giá độ ưu tiên */}
                       <div className="pt-0.5">
                         <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
@@ -1159,6 +1352,24 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                           </span>
                         )}
                       </div>
+
+                      {/* Thông báo nếu hồ sơ gồm nhiều sự cố đồng thời */}
+                      {(() => {
+                        const subs = getTicketSubCategories(selectedTicket);
+                        if (subs.length <= 1) return null;
+                        return (
+                          <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-3 flex items-start gap-2.5 text-blue-900 shadow-2xs">
+                            <span className="text-base flex-shrink-0">ℹ️</span>
+                            <div className="text-[11px] leading-relaxed">
+                              <span className="font-bold">Hồ sơ phản ánh gồm {subs.length} loại sự cố đồng thời:</span>{' '}
+                              <span className="font-semibold text-blue-800">{subs.map((s) => s.name).join(', ')}</span>.
+                              <p className="text-[10px] text-blue-600 mt-0.5">
+                                Các danh mục đã được tự động thêm vào Danh mục chủ trì và Danh mục phối hợp liên phòng ban bên dưới.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* 1.1. Đơn vị chủ trì xử lý (Danh mục chính) */}
                       <div>
@@ -1209,7 +1420,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
                         {/* Danh sách danh mục phối hợp đã thêm */}
                         {selectedSubCategoryIds.slice(1).map((subId) => {
-                          const scInfo = allSubCategories.find((s) => s.subCategoryId === subId);
+                          const scInfo = allSubCategories.find((s) => s.subCategoryId === subId || (s as any).id === subId);
+                          const ticketSub = getTicketSubCategories(selectedTicket).find((s) => s.id === subId);
+                          const displayName = scInfo?.name || ticketSub?.name || subId;
                           const catName = scInfo ? categories.find((c) => (c.id || c.categoryId) === scInfo.categoryId)?.name : '';
                           return (
                             <div
@@ -1218,7 +1431,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             >
                               <div className="flex items-center gap-1.5 font-bold truncate pr-2">
                                 <span className="text-blue-600">✓</span>
-                                <span className="truncate">{scInfo?.name || subId}</span>
+                                <span className="truncate">{displayName}</span>
                                 {catName && (
                                   <span className="text-[10px] bg-blue-100 text-blue-700 font-normal px-1.5 py-0.5 rounded">
                                     {catName}
@@ -1272,7 +1485,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                           <div className="flex items-center gap-1.5 font-bold truncate pr-2">
                             <span className="text-orange-600">✓ Tổng {selectedSubCategoryIds.length} lĩnh vực:</span>
                             <span className="truncate">
-                              {selectedSubCategoryIds.map((id) => allSubCategories.find((s) => s.subCategoryId === id)?.name || id.slice(0, 8)).join(', ')}
+                              {selectedSubCategoryIds.map((id) => {
+                                const found = allSubCategories.find((s) => s.subCategoryId === id || (s as any).id === id);
+                                const ticketSub = getTicketSubCategories(selectedTicket).find((s) => s.id === id);
+                                return found?.name || ticketSub?.name || id.slice(0, 8);
+                              }).join(', ')}
                             </span>
                           </div>
                           <span className="text-[10px] text-orange-700 bg-orange-100 px-2 py-0.5 rounded-md font-semibold flex-shrink-0">

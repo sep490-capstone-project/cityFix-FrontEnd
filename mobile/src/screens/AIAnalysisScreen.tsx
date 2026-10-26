@@ -116,23 +116,48 @@ useEffect(() => {
 
       setCurrentStep(5);
 
-      const effectiveSubCatId = result.subCategoryId || result.subCategoryIds?.[0] || null;
-      const effectiveSubCatName = result.subCategoryName || result.subCategoryNames?.[0] || null;
+      // Trích xuất danh sách subCategoryIds (hỗ trợ cả 1 hoặc nhiều ID)
+      const subCatIds: string[] = [];
+      if (Array.isArray(result.subCategoryIds) && result.subCategoryIds.length > 0) {
+        subCatIds.push(...result.subCategoryIds.filter(Boolean));
+      } else if (result.subCategoryId) {
+        subCatIds.push(result.subCategoryId);
+      }
+
+      // Trích xuất danh sách subCategoryNames (hỗ trợ cả 1 hoặc nhiều tên)
+      const subCatNames: string[] = [];
+      if (Array.isArray(result.subCategoryNames) && result.subCategoryNames.length > 0) {
+        subCatNames.push(...result.subCategoryNames.filter(Boolean));
+      } else if (result.subCategoryName) {
+        subCatNames.push(result.subCategoryName);
+      } else if (Array.isArray((result as any).subCategories)) {
+        (result as any).subCategories.forEach((sc: any) => {
+          const name = sc.name || sc.subCategoryName;
+          if (name && !subCatNames.includes(name)) subCatNames.push(name);
+        });
+      }
+
+      const effectiveSubCatId = subCatIds[0] || null;
+      const effectiveSubCatName = subCatNames[0] || null;
       const effectivePriority = (result.priority || (result as any).severity || 'LOW').toUpperCase();
 
-      // Lưu kết quả AI vào draft
+      // Lưu kết quả AI vào draft (lưu đầy đủ danh sách subCategoryIds và subCategoryNames)
       setDraft({
         ...draft,
         aiAnalysis: {
           ...result,
           subCategoryId: effectiveSubCatId || undefined,
           subCategoryName: effectiveSubCatName,
+          subCategoryIds: subCatIds,
+          subCategoryNames: subCatNames,
           categoryName: result.categoryName || effectiveSubCatName || 'Sự cố hạ tầng',
           priority: effectivePriority,
           severity: effectivePriority,
         },
         userCategoryId: result.categoryId || effectiveSubCatId || null,
         userSubCategoryId: effectiveSubCatId,
+        userSubCategoryIds: subCatIds,
+        userSubCategoryNames: subCatNames,
         userDescription: draft.userDescription || result.description || '',
       });
 
@@ -262,15 +287,51 @@ useEffect(() => {
                   </Text>
                 </View>
 
-                {/* 2. Danh mục con (subCategoryName) */}
-                {draft.aiAnalysis?.subCategoryName || draft.aiAnalysis?.subCategoryId ? (
-                  <View style={styles.resultRow}>
-                    <Text style={styles.rowLabel}>Chi tiết sự cố</Text>
-                    <Text style={[styles.rowValue, { color: '#ea580c' }]}>
-                      {draft.aiAnalysis?.subCategoryName || draft.aiAnalysis?.subCategoryId}
-                    </Text>
-                  </View>
-                ) : null}
+                {/* 2. Chi tiết sự cố (hỗ trợ cả 1 hoặc nhiều subcategories) */}
+                {(() => {
+                  const names: string[] = [];
+                  if (Array.isArray(draft.aiAnalysis?.subCategoryNames) && draft.aiAnalysis.subCategoryNames.length > 0) {
+                    names.push(...draft.aiAnalysis.subCategoryNames.filter(Boolean));
+                  } else if (draft.aiAnalysis?.subCategoryName) {
+                    names.push(draft.aiAnalysis.subCategoryName);
+                  } else if (draft.aiAnalysis?.subCategoryId) {
+                    names.push(draft.aiAnalysis.subCategoryId);
+                  }
+
+                  if (names.length === 0) return null;
+
+                  if (names.length === 1) {
+                    return (
+                      <View style={styles.resultRow}>
+                        <Text style={styles.rowLabel}>Chi tiết sự cố</Text>
+                        <Text style={[styles.rowValue, { color: '#ea580c' }]}>
+                          {names[0]}
+                        </Text>
+                      </View>
+                    );
+                  }
+
+                  return (
+                    <View style={styles.multiSubCatBlock}>
+                      <View style={styles.multiSubCatHeader}>
+                        <Text style={styles.rowLabel}>
+                          Chi tiết sự cố ({names.length} mục nhận diện)
+                        </Text>
+                        <View style={styles.multiBadgeTag}>
+                          <Text style={styles.multiBadgeText}>ĐA LĨNH VỰC</Text>
+                        </View>
+                      </View>
+                      <View style={styles.subCatChipsWrap}>
+                        {names.map((n, idx) => (
+                          <View key={idx} style={styles.subCatChip}>
+                            <Ionicons name="pricetag" size={12} color="#ea580c" />
+                            <Text style={styles.subCatChipText}>{n}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 {/* 3. Mức độ ưu tiên (priority) */}
                 <View style={styles.resultRow}>
@@ -614,6 +675,52 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 18,
     fontStyle: 'italic',
+  },
+  multiSubCatBlock: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    gap: 8,
+  },
+  multiSubCatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  multiBadgeTag: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  multiBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#c2410c',
+    letterSpacing: 0.5,
+  },
+  subCatChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  subCatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  subCatChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#c2410c',
   },
 
 

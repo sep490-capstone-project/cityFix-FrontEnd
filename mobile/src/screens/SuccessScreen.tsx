@@ -55,10 +55,24 @@ export default function SuccessScreen({
     ticket?.category ||
     'Sự cố đô thị';
 
-  const subCategoryName =
-    ticket?.subCategories?.[0]?.name ||
-    draft?.aiAnalysis?.subCategoryName ||
-    null;
+  const subCategoryNames: string[] = [];
+  if (Array.isArray(ticket?.subCategories) && ticket.subCategories.length > 0) {
+    ticket.subCategories.forEach((sc: any) => {
+      const n = sc.name || sc.subCategoryName;
+      if (n && !subCategoryNames.includes(n)) subCategoryNames.push(n);
+    });
+  }
+  if (subCategoryNames.length === 0 && Array.isArray(draft?.aiAnalysis?.subCategoryNames)) {
+    draft.aiAnalysis.subCategoryNames.forEach((n) => {
+      if (n && !subCategoryNames.includes(n)) subCategoryNames.push(n);
+    });
+  }
+  if (subCategoryNames.length === 0) {
+    const single = ticket?.subCategories?.[0]?.name || draft?.aiAnalysis?.subCategoryName;
+    if (single) subCategoryNames.push(single);
+  }
+
+  const subCategoryName = subCategoryNames[0] || null;
 
   // 3. Cơ quan tiếp nhận động
   const agencyName =
@@ -253,7 +267,27 @@ export default function SuccessScreen({
                 <Text style={styles.gridValue} numberOfLines={1}>
                   {categoryName}
                 </Text>
-                {subCategoryName && subCategoryName !== categoryName ? (
+                {subCategoryNames.length > 1 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                    {subCategoryNames.map((name, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          backgroundColor: '#fff7ed',
+                          borderWidth: 1,
+                          borderColor: '#fed7aa',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#c2410c' }} numberOfLines={1}>
+                          {name}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : subCategoryName && subCategoryName !== categoryName ? (
                   <Text style={styles.gridSubValue} numberOfLines={1}>
                     {subCategoryName}
                   </Text>

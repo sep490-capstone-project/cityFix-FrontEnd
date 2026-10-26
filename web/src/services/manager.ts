@@ -218,6 +218,8 @@ export interface ManagerTicketItem {
   subCategoryId?: string;
   subCategoryName?: string;
   subCategories?: Array<{ id?: string; subCategoryId?: string; name?: string; subCategoryName?: string; description?: string; sla?: number; priority?: string; active?: boolean }>;
+  subCategoryIds?: string[];
+  subCategoryNames?: string[];
   categories?: Array<{ categoryId: string; categoryName: string }>;
   severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   priority?: string;
