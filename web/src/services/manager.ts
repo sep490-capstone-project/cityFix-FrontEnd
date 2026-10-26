@@ -312,16 +312,34 @@ async function managerRequest<T>(
  */
 export async function updateStepDeadline(
   stepId: string,
-  deadline: string | { deadline: string }
+  deadline: string | { deadline: string },
+  altStepId?: string
 ): Promise<TicketStep> {
-  const bodyData = typeof deadline === 'string' ? { deadline } : deadline;
-  return managerRequest<TicketStep>(
-    `/api/v1/manager/tickets/steps/${encodeURIComponent(stepId)}/deadline`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(bodyData),
+  let deadlineStr = typeof deadline === 'string' ? deadline : deadline.deadline;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deadlineStr.trim())) {
+    deadlineStr = `${deadlineStr.trim()}:00`;
+  }
+  const bodyData = { deadline: deadlineStr.trim() };
+  try {
+    return await managerRequest<TicketStep>(
+      `/api/v1/manager/tickets/steps/${encodeURIComponent(stepId)}/deadline`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(bodyData),
+      }
+    );
+  } catch (err: any) {
+    if (err?.status === 404 && altStepId && altStepId !== stepId) {
+      return await managerRequest<TicketStep>(
+        `/api/v1/manager/tickets/steps/${encodeURIComponent(altStepId)}/deadline`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(bodyData),
+        }
+      );
     }
-  );
+    throw err;
+  }
 }
 
 /**

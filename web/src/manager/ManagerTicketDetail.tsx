@@ -40,7 +40,13 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
 
   // Chỉnh sửa hạn chót (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)
-  const [editingStepDeadline, setEditingStepDeadline] = useState<{ stepId: string; deadline: string } | null>(null);
+  const [editingStepDeadline, setEditingStepDeadline] = useState<{
+    stepId: string;
+    altStepId?: string;
+    stepName?: string;
+    currentDeadline?: string | null;
+    deadline: string;
+  } | null>(null);
   const [savingDeadline, setSavingDeadline] = useState(false);
 
   // Tải chi tiết Ticket và các bước từ Backend
@@ -179,21 +185,37 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
   }
 
   // Cập nhật hạn chót cho bước (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)
-  async function handleUpdateStepDeadline(stepId: string, deadlineStr: string) {
+  // Chỉ thực hiện khi vé đang ở trạng thái là Đang xử lý (IN_PROGRESS)
+  async function handleUpdateStepDeadline(stepId: string, deadlineStr: string, altStepId?: string) {
     if (!stepId || !deadlineStr) return;
+    if (ticket?.status !== 'IN_PROGRESS') {
+      setFeedback({
+        type: 'error',
+        message: 'Chỉ có thể điều chỉnh hạn chót của bước khi hồ sơ đang ở trạng thái Đang xử lý (IN_PROGRESS).',
+      });
+      return;
+    }
     setSavingDeadline(true);
     setFeedback(null);
     try {
-      const formatted = deadlineStr.includes(':') && deadlineStr.length === 16 ? `${deadlineStr}:00` : deadlineStr;
-      await updateStepDeadline(stepId, { deadline: formatted });
+      let formatted = deadlineStr.trim();
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(formatted)) {
+        formatted = `${formatted}:00`;
+      }
+      await updateStepDeadline(stepId, { deadline: formatted }, altStepId);
       setEditingStepDeadline(null);
       setFeedback({ type: 'success', message: 'Đã cập nhật hạn chót (deadline) của bước xử lý thành công.' });
 
       // Cập nhật local state phản hồi tức thì
       setSteps((prev) =>
         prev.map((s) => {
-          const sId = s.id || (s as any).ticketStepId;
-          return sId === stepId ? { ...s, deadline: formatted } : s;
+          const sId = s.id || s.stepId || (s as any).ticketStepId;
+          const match =
+            sId === stepId ||
+            s.id === stepId ||
+            s.stepId === stepId ||
+            (altStepId && (s.id === altStepId || s.stepId === altStepId));
+          return match ? { ...s, deadline: formatted } : s;
         })
       );
       await loadData();
@@ -461,6 +483,24 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Banner trạng thái IN_PROGRESS cho Quản lý điều chỉnh deadline */}
+                {ticket?.status === 'IN_PROGRESS' ? (
+                  <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between gap-2 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base flex-shrink-0">⏱️</span>
+                      <p>
+                        <span className="font-bold text-blue-950">Hồ sơ đang xử lý (IN_PROGRESS):</span> Quản lý có quyền gia hạn và điều chỉnh hạn chót (deadline) cho từng bước xử lý theo tiến độ thực tế.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500 flex items-center gap-2">
+                    <span className="text-gray-400">ℹ️</span>
+                    <span>
+                      Hạn chót bước chỉ được phép điều chỉnh khi hồ sơ ở trạng thái <strong className="text-gray-700">Đang xử lý (IN_PROGRESS)</strong>. (Trạng thái hiện tại: <strong className="text-orange-600">{ticket?.status || 'N/A'}</strong>)
+                    </span>
+                  </div>
+                )}
                 {steps.map((st, idx) => {
                   // Theo Backend: API PUT /api/v1/manager/tickets/steps/{stepId}/status dùng st.id của bước trong ticket, fallback ticketStepId hoặc stepId
                   const stepInstanceId = st.id || (st as any).ticketStepId || (st as any).stepInstanceId || st.stepId || '';
@@ -634,61 +674,35 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-600">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-gray-400 font-semibold">⏱️ Hạn chót:</span>
-                          {editingStepDeadline && editingStepDeadline.stepId === stepInstanceId ? (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <input
-                                type="datetime-local"
-                                value={editingStepDeadline.deadline}
-                                onChange={(e) =>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono-cf font-semibold text-gray-800">
+                              {st.deadline ? st.deadline.replace('T', ' ').slice(0, 16) : 'Chưa có hạn chót'}
+                            </span>
+                            {currentUser.role === 'MANAGER' && !isCompleted && ticket?.status === 'IN_PROGRESS' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const stepName =
+                                    st.stepName || (st as any).name || (st as any).title || (st as any).stepTitle || `Bước ${idx + 1}`;
+                                  const initialVal = st.deadline
+                                    ? st.deadline.slice(0, 16)
+                                    : new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 16);
                                   setEditingStepDeadline({
                                     stepId: stepInstanceId,
-                                    deadline: e.target.value,
-                                  })
-                                }
-                                className="bg-white border border-orange-400 rounded-lg px-2 py-0.5 text-[11px] outline-none text-gray-800 shadow-2xs"
-                              />
-                              <button
-                                type="button"
-                                disabled={savingDeadline || !editingStepDeadline.deadline}
-                                onClick={() => {
-                                  if (editingStepDeadline?.deadline) {
-                                    handleUpdateStepDeadline(stepInstanceId, editingStepDeadline.deadline);
-                                  }
+                                    altStepId: st.stepId && st.stepId !== stepInstanceId ? st.stepId : st.id,
+                                    stepName,
+                                    currentDeadline: st.deadline || null,
+                                    deadline: initialVal,
+                                  });
                                 }}
-                                className="px-2 py-0.5 text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md cursor-pointer disabled:opacity-50"
+                                className="text-[10px] font-bold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs"
+                                title="Gia hạn hoặc cập nhật deadline cho bước này (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)"
                               >
-                                {savingDeadline ? '...' : 'Lưu'}
+                                <span>⏱️</span>
+                                <span>Đổi hạn</span>
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingStepDeadline(null)}
-                                className="px-2 py-0.5 text-[10px] font-semibold text-gray-600 hover:text-gray-800 cursor-pointer"
-                              >
-                                Hủy
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono-cf font-semibold text-gray-800">
-                                {st.deadline ? st.deadline.replace('T', ' ').slice(0, 16) : 'Chưa có hạn chót'}
-                              </span>
-                              {currentUser.role === 'MANAGER' && !isCompleted && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setEditingStepDeadline({
-                                      stepId: stepInstanceId,
-                                      deadline: st.deadline ? st.deadline.slice(0, 16) : '',
-                                    })
-                                  }
-                                  className="text-[10px] font-bold text-orange-600 hover:text-orange-700 hover:underline cursor-pointer bg-orange-50 border border-orange-200 px-1.5 py-0.2 rounded"
-                                  title="Chỉnh sửa hạn chót của bước này (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)"
-                                >
-                                  ✏️ Đổi hạn
-                                </button>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                         {st.notes && (
                           <div className="flex items-center gap-1.5 truncate">
@@ -872,6 +886,132 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 className="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-[12px] transition-all shadow-md shadow-orange-600/25 disabled:opacity-50 cursor-pointer active:scale-95 flex items-center gap-1.5"
               >
                 <span>{uploading ? 'Đang tải lên...' : '✓ Xác nhận tải lên'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL CẬP NHẬT DEADLINE BƯỚC (PUT /api/v1/manager/tickets/steps/{stepId}/deadline) ================= */}
+      {editingStepDeadline && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 max-w-md w-full p-6 space-y-4 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 text-sm">
+                  ⏱️
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-bold text-gray-900">Điều chỉnh hạn chót (Deadline)</h3>
+                  <p className="text-[11px] text-gray-500 truncate max-w-[260px]">{editingStepDeadline.stepName || 'Bước xử lý'}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStepDeadline(null)}
+                className="text-gray-400 hover:text-gray-700 cursor-pointer p-1 rounded-lg hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Hạn chót hiện tại */}
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Hạn chót hiện tại:</span>
+                <span className="font-mono-cf font-bold text-gray-800">
+                  {editingStepDeadline.currentDeadline
+                    ? editingStepDeadline.currentDeadline.replace('T', ' ').slice(0, 16)
+                    : 'Chưa thiết lập'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Trạng thái hồ sơ:</span>
+                <span className="font-bold text-blue-700">Đang xử lý (IN_PROGRESS)</span>
+              </div>
+            </div>
+
+            {/* Các nút gia hạn nhanh */}
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1.5">Gia hạn nhanh:</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { label: '+1 ngày', days: 1 },
+                  { label: '+2 ngày', days: 2 },
+                  { label: '+3 ngày', days: 3 },
+                  { label: '+1 tuần', days: 7 },
+                ].map((preset) => (
+                  <button
+                    key={preset.days}
+                    type="button"
+                    onClick={() => {
+                      const baseDate = editingStepDeadline.deadline
+                        ? new Date(editingStepDeadline.deadline)
+                        : new Date();
+                      const validBase = isNaN(baseDate.getTime()) ? new Date() : baseDate;
+                      const nextDate = new Date(validBase.getTime() + preset.days * 24 * 3600 * 1000);
+                      const pad = (n: number) => String(n).padStart(2, '0');
+                      const nextStr = `${nextDate.getFullYear()}-${pad(nextDate.getMonth() + 1)}-${pad(nextDate.getDate())}T${pad(nextDate.getHours())}:${pad(nextDate.getMinutes())}`;
+                      setEditingStepDeadline((prev) => (prev ? { ...prev, deadline: nextStr } : null));
+                    }}
+                    className="py-1.5 px-2 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors text-center cursor-pointer"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chọn ngày giờ tùy chỉnh */}
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                Thời hạn hoàn thành mới (Deadline) <span className="text-red-500">*</span>:
+              </label>
+              <input
+                type="datetime-local"
+                value={editingStepDeadline.deadline}
+                onChange={(e) =>
+                  setEditingStepDeadline((prev) => (prev ? { ...prev, deadline: e.target.value } : null))
+                }
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 font-semibold outline-none focus:border-blue-500"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                Định dạng gửi lên Backend: YYYY-MM-DDTHH:mm:ss.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setEditingStepDeadline(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-xs hover:bg-gray-50 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={savingDeadline || !editingStepDeadline.deadline}
+                onClick={() => {
+                  if (editingStepDeadline.deadline) {
+                    handleUpdateStepDeadline(
+                      editingStepDeadline.stepId,
+                      editingStepDeadline.deadline,
+                      editingStepDeadline.altStepId
+                    );
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {savingDeadline ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeLinecap="round" />
+                    </svg>
+                    <span>Đang lưu...</span>
+                  </>
+                ) : (
+                  <span>Lưu hạn chót mới</span>
+                )}
               </button>
             </div>
           </div>
