@@ -206,17 +206,6 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
           </select>
         )}
 
-        <select
-          value={sevF}
-          onChange={(e) => setSevF(e.target.value)}
-          className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold outline-none cursor-pointer hover:bg-gray-100 transition-colors shadow-2xs"
-        >
-          <option value="all">Mọi mức độ nghiêm trọng</option>
-          <option value="CRITICAL">Cực kỳ nghiêm trọng</option>
-          <option value="HIGH">Cao</option>
-          <option value="MEDIUM">Trung bình</option>
-          <option value="LOW">Thấp</option>
-        </select>
 
         <select
           value={priorityF}
@@ -237,7 +226,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
           <table className="w-full text-left min-w-[850px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
-                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'TIẾN ĐỘ BƯỚC', 'MỨC ĐỘ', 'ĐỘ ƯU TIÊN', 'TRẠNG THÁI', 'NGÀY TẠO', 'THAO TÁC'].map((h) => (
+                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'TIẾN ĐỘ BƯỚC', 'ĐỘ ƯU TIÊN', 'TRẠNG THÁI', 'NGÀY TẠO', 'THAO TÁC'].map((h) => (
                   <th key={h} className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -247,7 +236,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-16 text-center text-gray-400">
                     {loading ? (
                       <div className="flex items-center justify-center gap-2 text-orange-600 font-semibold">
                         <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -290,8 +279,60 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                       </div>
                     </td>
 
-                    <td className="px-4 py-3.5 text-[12px] font-bold text-gray-800 max-w-[160px] truncate">
-                      {t.categoryName || 'Chưa phân loại'}
+                    <td className="px-4 py-3.5 max-w-[200px]">
+                      {(() => {
+                        const subs: string[] = [];
+                        if (Array.isArray(t.subCategories)) {
+                          t.subCategories.forEach((sc: any) => {
+                            const n = sc.name || sc.subCategoryName;
+                            if (n && !subs.includes(n)) subs.push(n);
+                          });
+                        }
+                        if (Array.isArray((t as any).subCategoryNames)) {
+                          (t as any).subCategoryNames.forEach((n: string) => {
+                            if (n && !subs.includes(n)) subs.push(n);
+                          });
+                        }
+                        if (subs.length === 0 && t.subCategoryName) {
+                          subs.push(t.subCategoryName);
+                        }
+
+                        const hasCat = t.categoryName && t.categoryName.trim() && t.categoryName !== 'Chưa phân loại';
+
+                        return (
+                          <div>
+                            {hasCat ? (
+                              <div className="text-[12px] font-bold text-gray-800 truncate mb-1">
+                                {t.categoryName}
+                              </div>
+                            ) : null}
+
+                            {subs.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1">
+                                {subs.slice(0, 2).map((name, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md truncate max-w-[150px]"
+                                    title={name}
+                                  >
+                                    🏷️ {name}
+                                  </span>
+                                ))}
+                                {subs.length > 2 && (
+                                  <span
+                                    className="text-[9px] font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md"
+                                    title={subs.slice(2).join(', ')}
+                                  >
+                                    +{subs.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            ) : !hasCat ? (
+                              <span className="text-gray-400 text-[11px]">—</span>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     <td className="px-4 py-3.5 text-[11px] text-gray-600 max-w-[200px] truncate">
@@ -315,12 +356,6 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                       ) : (
                         <span className="text-[11px] text-gray-400 italic">Chưa thiết lập</span>
                       )}
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sv.cls}`}>
-                        {sv.label}
-                      </span>
                     </td>
 
                     <td className="px-4 py-3.5">

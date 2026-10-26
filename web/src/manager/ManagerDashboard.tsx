@@ -124,7 +124,7 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
                         </div>
                       </td>
                       <td className="px-4 py-3 text-[12px] font-bold text-gray-800 max-w-[140px] truncate">
-                        {t.categoryName || 'Chưa phân loại'}
+                        {t.categoryName || (Array.isArray(t.subCategories) && (t.subCategories[0]?.name || (t.subCategories[0] as any)?.subCategoryName)) || '—'}
                       </td>
                       <td className="px-4 py-3 text-[11px] text-gray-600 max-w-[160px] truncate">{t.address || '—'}</td>
                       <td className="px-4 py-3">

@@ -109,14 +109,21 @@ export default function ReviewDraftScreen({
         console.warn('Check duplicates API warning:', dupErr);
       }
 
-      // 4. Build request body theo đúng Swagger
-      const effectiveSubCatId =
-        draft.userSubCategoryId ||
-        draft.aiAnalysis.subCategoryId ||
-        (draft.aiAnalysis as any)?.subCategoryIds?.[0] ||
-        '';
+      // 4. Build request body theo đúng Swagger (hỗ trợ cả 1 hoặc nhiều subCategoryIds)
+      const effectiveSubCatIds: string[] = [];
+      if (Array.isArray(draft.userSubCategoryIds) && draft.userSubCategoryIds.length > 0) {
+        effectiveSubCatIds.push(...draft.userSubCategoryIds.filter(Boolean));
+      } else if (Array.isArray(draft.aiAnalysis.subCategoryIds) && draft.aiAnalysis.subCategoryIds.length > 0) {
+        effectiveSubCatIds.push(...draft.aiAnalysis.subCategoryIds.filter(Boolean));
+      } else if (draft.userSubCategoryId) {
+        effectiveSubCatIds.push(draft.userSubCategoryId);
+      } else if (draft.aiAnalysis.subCategoryId) {
+        effectiveSubCatIds.push(draft.aiAnalysis.subCategoryId);
+      }
 
-      if (!effectiveSubCatId) {
+      const uniqueSubCatIds = Array.from(new Set(effectiveSubCatIds.filter(Boolean)));
+
+      if (uniqueSubCatIds.length === 0) {
         throw new Error('Chưa có danh mục con (subCategory). Vui lòng thử phân tích lại ảnh.');
       }
 
@@ -125,7 +132,7 @@ export default function ReviewDraftScreen({
         (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
         'LOW';
 
-      const finalCategoryId = effectiveCatId || effectiveSubCatId;
+      const finalCategoryId = effectiveCatId || uniqueSubCatIds[0];
 
       const requestBody = {
         description:
@@ -134,7 +141,7 @@ export default function ReviewDraftScreen({
           '',
         imageUrl: draft.imageUrls[0],
         categoryId: finalCategoryId,
-        subCategoryIds: effectiveSubCatId ? [effectiveSubCatId] : [],
+        subCategoryIds: uniqueSubCatIds,
         severity: (draft.aiAnalysis.severity || effectivePriority || 'LOW').toUpperCase(),
         dangerLevel: (draft.aiAnalysis.dangerLevel || 'CAUTION').toUpperCase(),
         priority: effectivePriority.toUpperCase(),
@@ -147,12 +154,20 @@ export default function ReviewDraftScreen({
         isAnonymous: draft.isAnonymous ?? false,
       };
 
-      console.log('🎫 CREATE TICKET BODY:', JSON.stringify(requestBody, null, 2));
+      console.log('🎫 CREATE TICKET BODY (ALL SUB-CATS):', JSON.stringify(requestBody, null, 2));
 
       // 5. Gọi API Backend
       const result = await createTicket(requestBody, accessToken);
 
       console.log('✅ TICKET CREATED:', result);
+
+      // Trích xuất danh sách tên subCategories
+      const allSubNames: string[] = [];
+      if (Array.isArray(draft.aiAnalysis.subCategoryNames) && draft.aiAnalysis.subCategoryNames.length > 0) {
+        allSubNames.push(...draft.aiAnalysis.subCategoryNames.filter(Boolean));
+      } else if (draft.aiAnalysis.subCategoryName) {
+        allSubNames.push(draft.aiAnalysis.subCategoryName);
+      }
 
       // 6. Thành công
       const fullTicketData = {
@@ -164,8 +179,8 @@ export default function ReviewDraftScreen({
           draft.aiAnalysis.categoryName,
         subCategories:
           result?.subCategories ||
-          (draft.aiAnalysis.subCategoryName
-            ? [{ name: draft.aiAnalysis.subCategoryName }]
+          (allSubNames.length > 0
+            ? allSubNames.map((name) => ({ name }))
             : []),
         address: result?.address || draft.address || '',
         imageUrl: result?.imageUrl || draft.imageUrls[0],
@@ -353,14 +368,64 @@ export default function ReviewDraftScreen({
                 </View>
               )}
 
-              {ai?.subCategoryName ? (
-                <View style={{ marginTop: 6, marginBottom: 4 }}>
-                  <Text style={styles.metaLabel}>Chi tiết sự cố:</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#ea580c', marginTop: 2 }}>
-                    {ai.subCategoryName}
-                  </Text>
-                </View>
-              ) : null}
+              {/* Chi tiết sự cố: hỗ trợ cả 1 hoặc nhiều subcategories */}
+              {(() => {
+                const subNames: string[] = [];
+                if (Array.isArray(ai?.subCategoryNames) && ai.subCategoryNames.length > 0) {
+                  subNames.push(...ai.subCategoryNames.filter(Boolean));
+                } else if (ai?.subCategoryName) {
+                  subNames.push(ai.subCategoryName);
+                }
+
+                if (subNames.length === 0) return null;
+
+                if (subNames.length === 1) {
+                  return (
+                    <View style={{ marginTop: 6, marginBottom: 4 }}>
+                      <Text style={styles.metaLabel}>Chi tiết sự cố:</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#ea580c', marginTop: 2 }}>
+                        {subNames[0]}
+                      </Text>
+                    </View>
+                  );
+                }
+
+                return (
+                  <View style={{ marginTop: 8, marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={styles.metaLabel}>
+                        Chi tiết sự cố ({subNames.length} sự cố nhận diện):
+                      </Text>
+                      <View style={{ backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#c2410c' }}>ĐA LĨNH VỰC</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                      {subNames.map((name, idx) => (
+                        <View
+                          key={idx}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                            backgroundColor: '#fff7ed',
+                            borderWidth: 1,
+                            borderColor: '#fed7aa',
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            borderRadius: 8,
+                          }}
+                        >
+                          <Ionicons name="pricetag" size={12} color="#ea580c" />
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#c2410c' }}>
+                            {name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })()}
 
               <View style={styles.aiMetaRow}>
                 <View style={styles.aiMetaItem}>

@@ -68,6 +68,8 @@ export interface ReportDraft {
   aiAnalysis: AIAnalysis | null;
   userCategoryId: string | null;
   userSubCategoryId?: string | null;
+  userSubCategoryIds?: string[];
+  userSubCategoryNames?: string[];
   userDescription: string;
   isAnonymous?: boolean;
 }

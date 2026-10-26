@@ -355,7 +355,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
 
                     {/* Danh mục */}
                     <td className="px-4 py-3 font-medium text-slate-900 max-w-[160px] truncate">
-                      {t.categoryName || 'Chưa phân loại'}
+                      {t.categoryName || (Array.isArray(t.subCategories) && (t.subCategories[0]?.name || (t.subCategories[0] as any)?.subCategoryName)) || '—'}
                     </td>
 
                     {/* Địa chỉ */}

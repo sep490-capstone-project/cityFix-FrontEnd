@@ -362,29 +362,61 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             </div>
 
             {/* Phân loại & Mức độ */}
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
                 <span className="text-[10px] font-bold text-gray-400 block mb-1">Danh mục</span>
-                <span className="text-[11px] font-bold text-gray-800 truncate block">
-                  {ticket?.categoryName || cat?.name || 'Chưa phân loại'}
+                {(() => {
+                  const displayName = ticket?.categoryName || cat?.name;
+                  if (displayName && displayName !== 'Chưa phân loại') {
+                    return (
+                      <span className="text-[11px] font-bold text-gray-800 truncate block">
+                        {displayName}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+                {(() => {
+                  const subs: string[] = [];
+                  if (Array.isArray(ticket?.subCategories)) {
+                    ticket.subCategories.forEach((sc: any) => {
+                      const n = sc.name || sc.subCategoryName;
+                      if (n && !subs.includes(n)) subs.push(n);
+                    });
+                  }
+                  if (Array.isArray((ticket as any)?.subCategoryNames)) {
+                    (ticket as any).subCategoryNames.forEach((n: string) => {
+                      if (n && !subs.includes(n)) subs.push(n);
+                    });
+                  }
+                  if (subs.length === 0 && ticket?.subCategoryName) {
+                    subs.push(ticket.subCategoryName);
+                  }
+                  if (subs.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {subs.map((n, idx) => (
+                        <span
+                          key={idx}
+                          className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md"
+                        >
+                          🏷️ {n}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
+                <span className="text-[10px] font-bold text-gray-400 block mb-1">Độ ưu tiên</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${pi.cls}`}>
+                  {pi.label}
                 </span>
               </div>
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
                 <span className="text-[10px] font-bold text-gray-400 block mb-1">Hạn chót tổng</span>
                 <span className="font-mono-cf text-[11px] font-extrabold text-orange-700 truncate block">
                   {ticket?.deadline ? ticket.deadline.replace('T', ' ').slice(0, 16) : 'Tính theo các bước'}
-                </span>
-              </div>
-              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
-                <span className="text-[10px] font-bold text-gray-400 block mb-1">Mức nghiêm trọng</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${sv.cls}`}>
-                  {sv.label}
-                </span>
-              </div>
-              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
-                <span className="text-[10px] font-bold text-gray-400 block mb-1">Độ ưu tiên</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border inline-block ${pi.cls}`}>
-                  {pi.label}
                 </span>
               </div>
             </div>

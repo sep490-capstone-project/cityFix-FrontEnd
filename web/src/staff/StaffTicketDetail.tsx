@@ -530,7 +530,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
                 <span className="text-[10px] font-bold text-gray-400 block mb-1">Danh mục</span>
                 <span className="text-[11px] font-bold text-gray-800 truncate block">
-                  {ticket.categoryName || cat?.name || 'Chưa phân loại'}
+                  {ticket.categoryName || cat?.name || (Array.isArray(ticket.subCategories) && (ticket.subCategories[0]?.name || (ticket.subCategories[0] as any)?.subCategoryName)) || '—'}
                 </span>
               </div>
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-2.5">
