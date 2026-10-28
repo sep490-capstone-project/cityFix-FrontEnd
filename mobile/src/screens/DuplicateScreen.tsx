@@ -747,7 +747,7 @@ export default function DuplicateScreen({
    * nếu backend bổ sung imageUrl sau này.
    */
   const getImageUrl = (item: DuplicateTicketItem) => {
-    return (item as any)?.imageUrl || null;
+    return (item as any)?.imageUrls?.[0] || (item as any)?.imageUrl || null;
   };
 
   /**

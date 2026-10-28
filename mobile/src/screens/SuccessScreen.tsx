@@ -139,6 +139,7 @@ export default function SuccessScreen({
 
   // 9. Ảnh sự cố
   const photoUrl =
+    (ticket?.imageUrls && ticket?.imageUrls[0]) ||
     ticket?.imageUrl ||
     (ticket?.images && ticket?.images[0]) ||
     draft?.imageUrls?.[0] ||
