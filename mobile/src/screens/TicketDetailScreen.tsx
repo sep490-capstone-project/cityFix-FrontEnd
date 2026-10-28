@@ -58,6 +58,7 @@ export interface Ticket {
   statusKey: 'processing' | 'received' | 'done' | 'rejected' | 'cancelled';
   description: string;
   imageUrl: string;
+  imageUrls?: string[];
   rawStatus?: string;
 }
 
@@ -197,6 +198,16 @@ export default function TicketDetailScreen({
   let ticket: Ticket;
   if (ticketData) {
     const stInfo = mapBackendStatus(ticketData.status);
+    const resolvedImages: string[] = (
+      (ticketData.imageUrls && Array.isArray(ticketData.imageUrls) && ticketData.imageUrls.length > 0
+        ? ticketData.imageUrls
+        : null) ||
+      (ticketData.images && Array.isArray(ticketData.images) && ticketData.images.length > 0
+        ? ticketData.images
+        : null) ||
+      (ticketData.imageUrl ? [ticketData.imageUrl] : [])
+    ).filter(Boolean);
+
     ticket = {
       id: ticketData.id,
       category: ticketData.categoryName || ticketData.subCategories?.[0]?.name || ticketData.description || 'Sự cố hạ tầng',
@@ -218,20 +229,30 @@ export default function TicketDetailScreen({
       status: stInfo.statusText,
       statusKey: stInfo.statusKey,
       description: ticketData.description || 'Không có mô tả chi tiết.',
-      imageUrl:
-        ticketData.imageUrl ||
-        (ticketData.images && ticketData.images[0]) ||
-        'https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=800&h=400&fit=crop&auto=format',
+      imageUrl: resolvedImages[0] || '',
+      imageUrls: resolvedImages,
       rawStatus: ticketData.status,
     };
   } else {
-    ticket = MOCK_TICKETS_FULL.find((t) => t.id === ticketId) || MOCK_TICKETS_FULL[0];
+    const mock = MOCK_TICKETS_FULL.find((t) => t.id === ticketId) || MOCK_TICKETS_FULL[0];
+    ticket = {
+      ...mock,
+      imageUrls: mock.imageUrl ? [mock.imageUrl] : [],
+    };
   }
 
   const isInitiated = (ticketData?.status || ticket.rawStatus || '').toUpperCase() === 'INITIATED';
   const isCompleted =
     ticket.statusKey === 'done' ||
     ['RESOLVED', 'COMPLETED'].includes((ticketData?.status || ticket.rawStatus || '').toUpperCase());
+
+  // Image gallery states
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
+  }, [ticketData?.id, ticketId]);
 
   // Rating states
   const [myRating, setMyRating] = useState<TicketRating | null>(null);
@@ -466,22 +487,95 @@ export default function TicketDetailScreen({
       {/* Scrollable Content */}
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
         <View style={styles.contentPadding}>
-          {/* Hero Image Card */}
-          <View style={styles.heroCard}>
-            <Image source={{ uri: ticket.imageUrl }} style={styles.heroImage} />
-            <View style={styles.imageOverlay} />
+          {/* Hero Image Card / Gallery */}
+          {ticket.imageUrls && ticket.imageUrls.length > 0 ? (
+            <View style={styles.heroSection}>
+              <TouchableOpacity
+                style={styles.heroCard}
+                activeOpacity={0.9}
+                onPress={() => setFullscreenImage(ticket.imageUrls?.[selectedImageIndex] || ticket.imageUrl)}
+              >
+                <Image
+                  source={{ uri: ticket.imageUrls[selectedImageIndex] || ticket.imageUrl }}
+                  style={styles.heroImage}
+                  resizeMode="cover"
+                />
+                <View style={styles.imageOverlay} />
 
-            <View style={[styles.severityBadge, { backgroundColor: sev.bg, borderColor: sev.border }]}>
-              <Text style={[styles.severityText, { color: sev.color }]}>
-                ĐỘ ƯU TIÊN: {sev.label.toUpperCase()}
-              </Text>
-            </View>
+                {/* Counter badge if multiple images */}
+                {ticket.imageUrls.length > 1 && (
+                  <View style={styles.imageCounterBadge}>
+                    <Ionicons name="images-outline" size={13} color="#ffffff" />
+                    <Text style={styles.imageCounterText}>
+                      {selectedImageIndex + 1}/{ticket.imageUrls.length}
+                    </Text>
+                  </View>
+                )}
 
-            <View style={styles.upvoteChip}>
-              <Feather name="thumbs-up" size={12} color="#f97316" />
-              <Text style={styles.upvoteChipText}>{ticket.upvotes} upvote</Text>
+                {/* Tap to expand hint */}
+                <View style={styles.expandHintBadge}>
+                  <Ionicons name="scan-outline" size={14} color="#ffffff" />
+                </View>
+
+                <View style={[styles.severityBadge, { backgroundColor: sev.bg, borderColor: sev.border }]}>
+                  <Text style={[styles.severityText, { color: sev.color }]}>
+                    ĐỘ ƯU TIÊN: {sev.label.toUpperCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.upvoteChip}>
+                  <Feather name="thumbs-up" size={12} color="#f97316" />
+                  <Text style={styles.upvoteChipText}>{ticket.upvotes} upvote</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Thumbnail Strip when there are multiple photos */}
+              {ticket.imageUrls.length > 1 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.thumbnailStrip}
+                >
+                  {ticket.imageUrls.map((url, idx) => {
+                    const isSelected = idx === selectedImageIndex;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.thumbnailItem,
+                          isSelected && styles.thumbnailItemActive,
+                        ]}
+                        onPress={() => setSelectedImageIndex(idx)}
+                        activeOpacity={0.8}
+                      >
+                        <Image source={{ uri: url }} style={styles.thumbnailImg} resizeMode="cover" />
+                        {isSelected && <View style={styles.thumbnailActiveBorder} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
             </View>
-          </View>
+          ) : (
+            <View style={styles.noImageCard}>
+              <View style={styles.noImageIconBox}>
+                <Ionicons name="image-outline" size={32} color="#94a3b8" />
+              </View>
+              <Text style={styles.noImageTitle}>Không có hình ảnh đính kèm</Text>
+              <Text style={styles.noImageSub}>Người dân không gửi ảnh khi báo cáo sự cố này</Text>
+              <View style={styles.noImageMetaRow}>
+                <View style={[styles.severityBadgeInline, { backgroundColor: sev.bg, borderColor: sev.border }]}>
+                  <Text style={[styles.severityText, { color: sev.color }]}>
+                    ĐỘ ƯU TIÊN: {sev.label.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.upvoteChipInline}>
+                  <Feather name="thumbs-up" size={12} color="#f97316" />
+                  <Text style={styles.upvoteChipText}>{ticket.upvotes} upvote</Text>
+                </View>
+              </View>
+            </View>
+          )}
 
           {/* General Information Card */}
           <View style={styles.card}>
@@ -960,7 +1054,12 @@ export default function TicketDetailScreen({
                       Bước: {ev.stepName || `Khắc phục #${idx + 1}`}
                     </Text>
                     {ev.imageUrl ? (
-                      <Image source={{ uri: ev.imageUrl }} style={styles.evidenceImg} resizeMode="cover" />
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setFullscreenImage(ev.imageUrl)}
+                      >
+                        <Image source={{ uri: ev.imageUrl }} style={styles.evidenceImg} resizeMode="cover" />
+                      </TouchableOpacity>
                     ) : null}
                     {ev.resolutionNote ? (
                       <View style={styles.evidenceNoteBox}>
@@ -998,6 +1097,31 @@ export default function TicketDetailScreen({
               <Text style={styles.evidenceCloseBtnText}>ĐÓNG</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+
+      {/* FULLSCREEN IMAGE MODAL */}
+      <Modal
+        visible={Boolean(fullscreenImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullscreenImage(null)}
+      >
+        <View style={styles.fullscreenModalBackdrop}>
+          <TouchableOpacity
+            style={styles.fullscreenCloseBtn}
+            onPress={() => setFullscreenImage(null)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="close" size={24} color="#ffffff" />
+          </TouchableOpacity>
+          {fullscreenImage && (
+            <Image
+              source={{ uri: fullscreenImage }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          )}
         </View>
       </Modal>
     </View>
@@ -1096,14 +1220,18 @@ const styles = StyleSheet.create({
     gap: 16,
   },
 
-  /* Hero Image Card */
+  /* Hero Image Card & Gallery */
+  heroSection: {
+    gap: 10,
+  },
   heroCard: {
-    height: 190,
+    height: 200,
     borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e2e8f0',
     position: 'relative',
+    backgroundColor: '#0f172a',
   },
   heroImage: {
     width: '100%',
@@ -1115,7 +1243,144 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.25)',
+    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+  },
+  imageCounterBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  imageCounterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  expandHintBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    borderRadius: 8,
+    padding: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbnailStrip: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  thumbnailItem: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    position: 'relative',
+  },
+  thumbnailItemActive: {
+    borderColor: '#ea580c',
+  },
+  thumbnailImg: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbnailActiveBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(234, 88, 12, 0.2)',
+  },
+  /* No Image Card */
+  noImageCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noImageIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  noImageTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  noImageSub: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
+    marginBottom: 16,
+  },
+  noImageMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  severityBadgeInline: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  upvoteChipInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff7ed',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  /* Fullscreen Modal */
+  fullscreenModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 25,
+    right: 20,
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '80%',
   },
   severityBadge: {
     position: 'absolute',

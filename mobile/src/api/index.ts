@@ -728,6 +728,7 @@ export interface ReportedTicket {
   id: string;
   description: string;
   imageUrl?: string;
+  imageUrls?: string[];
   categoryId?: string;
   categoryName?: string;
   categories?: Array<{ categoryId: string; categoryName: string }>;

@@ -413,7 +413,10 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
               t.description ||
               'Sự cố đô thị';
             const iconName = getCategoryIcon(catName);
-            const photoUrl = t.imageUrl || (t.images && t.images[0]);
+            const photoUrl =
+              (t.imageUrls && t.imageUrls.length > 0 ? t.imageUrls[0] : null) ||
+              t.imageUrl ||
+              (t.images && t.images[0]);
             const isResolved = stInfo.statusKey === 'done';
             const isAlreadyRated = ratedTicketIds.has(t.id);
 
