@@ -64,6 +64,7 @@ export interface ReportDraft {
   location: LocationData | null;
   address: string;
   locationMethod: 'AUTO_GPS' | 'MANUAL_ENTRY' | null;
+  locationSource?: 'GPS' | 'MANUAL' | 'MAP' | null;
   imageUrls: string[];
   aiAnalysis: AIAnalysis | null;
   userCategoryId: string | null;

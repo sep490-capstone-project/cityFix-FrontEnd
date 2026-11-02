@@ -127,7 +127,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            👤 Hồ sơ của tôi ({activeTab === 'mine' ? filtered.length : '...'})
+            👤 Hồ sơ tiếp nhận ({activeTab === 'mine' ? filtered.length : '...'})
           </button>
           <button
             type="button"
