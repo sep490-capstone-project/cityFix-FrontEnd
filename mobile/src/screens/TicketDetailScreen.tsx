@@ -62,7 +62,8 @@ export interface Ticket {
   rawStatus?: string;
 }
 
-export const MOCK_TICKETS_FULL: Ticket[] = [
+export const MOCK_TICKETS_FULL: Ticket[] = [];
+/* const DEPRECATED_MOCK_TICKETS = [
   {
     id: 'CF-2910',
     category: 'Đèn đường chiếu sáng không hoạt động',
@@ -114,7 +115,7 @@ export const MOCK_TICKETS_FULL: Ticket[] = [
     imageUrl:
       'https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=800&h=400&fit=crop&auto=format',
   },
-];
+]; */
 
 const STATUS_MAP = {
   processing: { label: 'Đang xử lý', color: '#ea580c', bg: 'rgba(249, 115, 22, 0.08)', border: 'rgba(249, 115, 22, 0.25)' },
@@ -163,7 +164,7 @@ export default function TicketDetailScreen({
   const [ticketData, setTicketData] = useState<ReportedTicket | null>(initialTicketData || null);
   const [cancelling, setCancelling] = useState(false);
   const [loading, setLoading] = useState<boolean>(
-    !initialTicketData && Boolean(ticketId) && !ticketId?.startsWith('CF-')
+    !initialTicketData && Boolean(ticketId)
   );
 
   useEffect(() => {
@@ -173,7 +174,7 @@ export default function TicketDetailScreen({
       return;
     }
 
-    if (ticketId && !ticketId.startsWith('CF-')) {
+    if (ticketId) {
       let isMounted = true;
       setLoading(true);
       getTicketById(ticketId)
@@ -183,7 +184,7 @@ export default function TicketDetailScreen({
           }
         })
         .catch((err) => {
-          console.warn('Lỗi tải chi tiết vé từ server:', err);
+          console.warn('Lỗi tải chi tiết hồ sơ báo cáo từ server:', err);
         })
         .finally(() => {
           if (isMounted) setLoading(false);
@@ -209,6 +210,8 @@ export default function TicketDetailScreen({
     ).filter(Boolean);
 
     ticket = {
+
+
       id: ticketData.id,
       category: ticketData.categoryName || ticketData.subCategories?.[0]?.name || ticketData.description || 'Sự cố hạ tầng',
       address: ticketData.address || 'Chưa xác định vị trí',
@@ -224,7 +227,7 @@ export default function TicketDetailScreen({
             year: 'numeric',
           })
         : (ticketData.status === 'INITIATED' ? 'Chờ duyệt / Chưa có hạn chót' : 'Chưa có hạn chót'),
-      upvotes: 0,
+      upvotes: (ticketData as any).upvotes ?? (ticketData as any).upvoteCount ?? 0,
       severity: (((ticketData.priority || ticketData.severity || 'LOW')).toUpperCase() as any),
       status: stInfo.statusText,
       statusKey: stInfo.statusKey,
@@ -234,10 +237,25 @@ export default function TicketDetailScreen({
       rawStatus: ticketData.status,
     };
   } else {
-    const mock = MOCK_TICKETS_FULL.find((t) => t.id === ticketId) || MOCK_TICKETS_FULL[0];
     ticket = {
-      ...mock,
-      imageUrls: mock.imageUrl ? [mock.imageUrl] : [],
+      id: ticketId || '',
+      category: 'Hồ sơ sự cố',
+      address: '',
+      submittedAt: '',
+      locationMethod: 'AUTO_GPS',
+      agency: '',
+      deadline: '',
+      upvotes: 0,
+      severity: 'LOW',
+      status: '',
+      statusKey: 'received',
+      description: '',
+      imageUrl: '',
+      imageUrls: [],
+      rawStatus: '',
+
+
+
     };
   }
 
@@ -273,7 +291,7 @@ export default function TicketDetailScreen({
 
   const fetchRatings = useCallback(async () => {
     const targetId = ticketData?.id || ticket.id;
-    if (!targetId || targetId.startsWith('CF-')) return;
+    if (!targetId) return;
 
     try {
       setLoadingRating(true);
@@ -402,8 +420,8 @@ export default function TicketDetailScreen({
     if (!targetId) return;
 
     Alert.alert(
-      'Hủy vé phản ánh',
-      'Bạn có chắc chắn muốn hủy vé phản ánh này không? Sau khi hủy, yêu cầu sẽ không được chuyển cho cơ quan xử lý.',
+      'Hủy hồ sơ báo cáo phản ánh',
+      'Bạn có chắc chắn muốn hủy hồ sơ báo cáo phản ánh này không? Sau khi hủy, yêu cầu sẽ không được chuyển cho cơ quan xử lý.',
       [
         { text: 'Quay lại', style: 'cancel' },
         {
@@ -415,10 +433,10 @@ export default function TicketDetailScreen({
               const updatedTicket = await cancelTicket(targetId);
               setTicketData(updatedTicket);
               onTicketCancelled?.(updatedTicket);
-              Alert.alert('Thành công', 'Vé phản ánh đã được hủy thành công.');
+              Alert.alert('Thành công', 'Hồ sơ báo cáo phản ánh đã được hủy thành công.');
             } catch (err: any) {
-              console.error('❌ Lỗi hủy vé:', err);
-              Alert.alert('Không thể hủy vé', err?.message || 'Có lỗi xảy ra khi hủy vé.');
+              console.error('❌ Lỗi hủy hồ sơ báo cáo:', err);
+              Alert.alert('Không thể hủy hồ sơ báo cáo', err?.message || 'Có lỗi xảy ra khi hủy hồ sơ báo cáo.');
             } finally {
               setCancelling(false);
             }
@@ -438,12 +456,12 @@ export default function TicketDetailScreen({
     );
   }
 
-  if (!ticketId && !ticketData) {
+  if (!ticketData) {
     return (
       <View style={styles.notFoundContainer}>
         <StatusBar barStyle="dark-content" />
         <Ionicons name="document-text-outline" size={48} color="#94a3b8" />
-        <Text style={styles.notFoundText}>Không tìm thấy thông tin vé sự cố</Text>
+        <Text style={styles.notFoundText}>Không tìm thấy thông tin hồ sơ báo cáo sự cố</Text>
         <TouchableOpacity style={styles.goBackBtn} onPress={goBack}>
           <Text style={styles.goBackBtnText}>← Quay lại danh sách</Text>
         </TouchableOpacity>
@@ -525,7 +543,7 @@ export default function TicketDetailScreen({
 
                 <View style={styles.upvoteChip}>
                   <Feather name="thumbs-up" size={12} color="#f97316" />
-                  <Text style={styles.upvoteChipText}>{ticket.upvotes} upvote</Text>
+                  <Text style={styles.upvoteChipText}>{ticket.upvotes} đồng tình</Text>
                 </View>
               </TouchableOpacity>
 
@@ -571,7 +589,7 @@ export default function TicketDetailScreen({
                 </View>
                 <View style={styles.upvoteChipInline}>
                   <Feather name="thumbs-up" size={12} color="#f97316" />
-                  <Text style={styles.upvoteChipText}>{ticket.upvotes} upvote</Text>
+                  <Text style={styles.upvoteChipText}>{ticket.upvotes} đồng tình</Text>
                 </View>
               </View>
             </View>
@@ -617,7 +635,7 @@ export default function TicketDetailScreen({
             </TouchableOpacity>
           ) : null}
 
-          {/* ĐÁNH GIÁ CHẤT LƯỢNG KHI VÉ HOÀN THÀNH (Đưa lên đầu ngay sau Thông tin chung) */}
+          {/* ĐÁNH GIÁ CHẤT LƯỢNG KHI HỒ SƠ BÁO CÁO HOÀN THÀNH (Đưa lên đầu ngay sau Thông tin chung) */}
           {isCompleted ? (
             <View style={styles.ratingSectionContainer}>
               {loadingRating ? (
@@ -712,7 +730,7 @@ export default function TicketDetailScreen({
                   <View style={styles.rateInviteBody}>
                     <Text style={styles.rateInviteTitle}>Đánh giá chất lượng xử lý</Text>
                     <Text style={styles.rateInviteDesc}>
-                      Bạn là người báo cáo hoặc đã theo dõi vé này? Hãy chia sẻ đánh giá về kết quả giải quyết sự cố.
+                      Bạn là người báo cáo hoặc đã theo dõi hồ sơ báo cáo này? Hãy chia sẻ đánh giá về kết quả giải quyết sự cố.
                     </Text>
                     <TouchableOpacity
                       style={styles.openRateBtn}
@@ -864,7 +882,7 @@ export default function TicketDetailScreen({
               <Text style={{ fontWeight: '700', color: '#ea580c' }}>
                 {ticket.upvotes} người
               </Text>{' '}
-              đã upvote vé này — được xếp ưu tiên xử lý cao hơn.
+              đã đồng tình hồ sơ báo cáo này — được xếp ưu tiên xử lý cao hơn.
             </Text>
           </View>
 
@@ -882,12 +900,12 @@ export default function TicketDetailScreen({
                 ) : (
                   <>
                     <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                    <Text style={styles.cancelBtnText}>HỦY VÉ PHẢN ÁNH</Text>
+                    <Text style={styles.cancelBtnText}>HỦY HỒ SƠ BÁO CÁO PHẢN ÁNH</Text>
                   </>
                 )}
               </TouchableOpacity>
               <Text style={styles.cancelHintText}>
-                Người dân chỉ có thể hủy vé khi ở trạng thái tiếp nhận (INITIATED).
+                Người dân chỉ có thể hủy hồ sơ báo cáo khi ở trạng thái tiếp nhận (INITIATED).
               </Text>
             </View>
           ) : null}
@@ -897,7 +915,7 @@ export default function TicketDetailScreen({
             <View style={styles.cancelledBanner}>
               <Ionicons name="information-circle-outline" size={20} color="#64748b" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.cancelledBannerTitle}>Vé đã được hủy</Text>
+                <Text style={styles.cancelledBannerTitle}>Hồ sơ báo cáo đã được hủy</Text>
                 <Text style={styles.cancelledBannerText}>
                   Bạn đã hủy yêu cầu xử lý sự cố này.
                 </Text>

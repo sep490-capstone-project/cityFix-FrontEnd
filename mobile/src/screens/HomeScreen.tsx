@@ -9,6 +9,7 @@ import {
   StatusBar,
   Dimensions,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from './LoginScreen';
@@ -61,32 +62,6 @@ const TRENDING = [
   },
 ];
 
-const MY_TICKETS = [
-  {
-    id: 'CF-2910',
-    category: 'Đèn đường chiếu sáng không hoạt động',
-    address: '128 Nguyễn Trãi, Phường 3, Quận 5',
-    status: 'ĐANG XỬ LÝ',
-    statusKey: 'processing',
-    time: '20 phút trước',
-  },
-  {
-    id: 'CF-2898',
-    category: 'Nắp cống bị bể gây nguy hiểm',
-    address: '45 Trần Hưng Đạo, Phường Phạm Ngũ Lão, Q.1',
-    status: 'ĐÃ TIẾP NHẬN',
-    statusKey: 'received',
-    time: '2 giờ trước',
-  },
-  {
-    id: 'CF-2750',
-    category: 'Cây xanh che khuất biển báo giao thông',
-    address: 'Hẻm 210 Lê Văn Sỹ, Phường 10, Q.3',
-    status: 'HOÀN THÀNH',
-    statusKey: 'done',
-    time: '3 ngày trước',
-  },
-];
 
 const COMMUNITY_FEED = [
   { time: '14 phút', user: 'Minh T.', action: 'báo cáo ổ gà', loc: 'Hoàng Diệu, Q.4', avatar: 'MT', report: true },
@@ -206,7 +181,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
               <Ionicons name="checkmark-circle-outline" size={18} color="#16a34a" />
               <Text style={[styles.statValue, { color: '#16a34a' }]}>127</Text>
               <Text style={styles.statLabel}>Hoàn thành</Text>
-              <Text style={[styles.statSub, { color: '#16a34a' }]}>Tháng 9/2026</Text>
+              <Text style={[styles.statSub, { color: '#16a34a' }]}>{`Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`}</Text>
             </View>
           </View>
         </View>
@@ -220,7 +195,13 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
               </View>
               <TouchableOpacity
                 style={styles.alertContent}
-                onPress={() => navigate('emergency-alert')}
+                onPress={() => {
+                Alert.alert(
+                  'Cảnh báo khu vực',
+                  'Khu vực Đinh Tiên Hoàng, Bình Thạnh đang ghi nhận tình trạng ngập úng nghiêm trọng do triều cường. Đội thoát nước đô thị đang khẩn trương xử lý. Vui lòng chú ý an toàn khi di chuyển.',
+                  [{ text: 'Đã hiểu' }]
+                );
+              }}
               >
                 <View style={styles.alertTagRow}>
                   <Text style={styles.alertTagText}>CẢNH BÁO KHU VỰC</Text>
@@ -228,7 +209,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                 </View>
                 <Text style={styles.alertTitle}>Ngập úng nghiêm trọng · Đinh Tiên Hoàng</Text>
                 <Text style={styles.alertSub}>
-                  11 người upvote · Bình Thạnh · <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xem chi tiết →</Text>
+                  11 người đồng tình · Bình Thạnh · <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xem chi tiết →</Text>
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setAlertDismissed(true)}>
@@ -341,8 +322,21 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                   </Text>
                   <View style={styles.trendingFooter}>
                     <Text style={styles.trendingDelta}>{t.delta}</Text>
-                    <TouchableOpacity style={styles.upvoteBtn}>
-                      <Text style={styles.upvoteBtnText}>Upvote</Text>
+                    <TouchableOpacity
+                      style={styles.upvoteBtn}
+                      onPress={() => {
+                        Alert.alert(
+                          'Đồng tình sự cố',
+                          'Bạn có thể đồng tình các sự cố lân cận khi tạo báo cáo mới hoặc truy cập danh sách hồ sơ báo cáo.',
+                          [
+                            { text: 'Đóng', style: 'cancel' },
+                            { text: 'Xem danh sách', onPress: () => navigate('my-reports') },
+                          ]
+                        );
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.upvoteBtnText}>Đồng tình</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -380,7 +374,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         {/* My Recent Tickets */}
         <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
           <SectionLabel
-            title="VÉ GẦN ĐÂY CỦA TÔI"
+            title="HỒ SƠ BÁO CÁO GẦN ĐÂY CỦA TÔI"
             action="Xem tất cả →"
             onAction={() => navigate('my-reports')}
           />
@@ -431,50 +425,13 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                 );
               })
             ) : (
-              MY_TICKETS.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={styles.ticketCard}
-                  onPress={() => navigate('my-reports')}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.ticketAccentLine} />
-                  <View style={styles.ticketBody}>
-                    <Text style={styles.ticketCategory} numberOfLines={1}>
-                      {t.category}
-                    </Text>
-                    <Text style={styles.ticketAddress} numberOfLines={1}>
-                      {t.address}
-                    </Text>
-                  </View>
-                  <View style={styles.ticketStatusCol}>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        t.statusKey === 'processing'
-                          ? styles.statusProcessing
-                          : t.statusKey === 'done'
-                          ? styles.statusDone
-                          : styles.statusReceived,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusText,
-                          t.statusKey === 'processing'
-                            ? { color: '#ea580c' }
-                            : t.statusKey === 'done'
-                            ? { color: '#16a34a' }
-                            : { color: '#64748b' },
-                        ]}
-                      >
-                        {t.status}
-                      </Text>
-                    </View>
-                    <Text style={styles.ticketTime}>{t.time}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))
+              <View style={styles.emptyReportsBox}>
+                <Ionicons name="document-text-outline" size={36} color="#94a3b8" />
+                <Text style={styles.emptyReportsTitle}>Chưa có hồ sơ báo cáo nào</Text>
+                <Text style={styles.emptyReportsSub}>
+                  Bạn chưa tạo hồ sơ sự cố nào. Hãy bấm "TẠO BÁO CÁO MỚI" bên dưới khi phát hiện sự cố hạ tầng đô thị.
+                </Text>
+              </View>
             )}
           </View>
         </View>
@@ -1196,6 +1153,31 @@ const styles = StyleSheet.create({
   feedRight: {
     alignItems: 'flex-end',
     gap: 4,
+  },
+  emptyReportsBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderStyle: 'dashed',
+    marginVertical: 4,
+  },
+  emptyReportsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  emptyReportsSub: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 12,
   },
   feedDot: {
     width: 6,

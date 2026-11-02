@@ -33,7 +33,7 @@ export default function SuccessScreen({
   const [isPaused, setIsPaused] = useState(false);
   const [subscribed, setSubscribed] = useState(true);
 
-  // 1. Mã vé động
+  // 1. Mã hồ sơ báo cáo động
   const rawId = ticket?.ticketCode || ticket?.id || ticket?.ticketId || '';
   const displayTicketId = rawId
     ? rawId.length >= 8 && rawId.includes('-')
@@ -41,7 +41,7 @@ export default function SuccessScreen({
       : rawId.startsWith('CF-')
       ? rawId
       : `CF-${rawId.toUpperCase()}`
-    : `CF-${2800 + Math.floor(Math.random() * 100)}`;
+    : 'CHỜ CẤP MÃ';
 
   // 2. Loại sự cố động
   const categoryName =
@@ -127,7 +127,7 @@ export default function SuccessScreen({
   };
   const severityInfo = severityMap[severityRaw] || severityMap.LOW;
 
-  // 8. Trạng thái vé
+  // 8. Trạng thái hồ sơ báo cáo
   const stInfo = isUpvote
     ? {
         statusText: 'ĐÃ ĐỒNG THUẬN',
@@ -145,9 +145,9 @@ export default function SuccessScreen({
     draft?.imageUrls?.[0] ||
     null;
 
-  // Countdown timer tự động về trang chủ nếu không thao tác
+  // Giữ màn hình để người dùng chủ động đọc và sao chép mã phản ánh
   useEffect(() => {
-    if (isPaused) return;
+    return; // Người dùng chủ động chuyển trang qua nút bấm
 
     const interval = setInterval(() => {
       setCountdown((c) => {
@@ -166,7 +166,7 @@ export default function SuccessScreen({
   const handleCopyCode = () => {
     setIsPaused(true);
     Alert.alert(
-      'Mã vé phản ánh',
+      'Mã hồ sơ báo cáo phản ánh',
       `Mã đầy đủ: ${rawId || displayTicketId}\n\nBạn có thể dùng mã này để tra cứu tiến độ xử lý sự cố bất kỳ lúc nào.`,
       [{ text: 'Đã hiểu' }]
     );
@@ -209,7 +209,7 @@ export default function SuccessScreen({
 
             <Text style={styles.heroSubText}>
               {isUpvote
-                ? 'Cảm ơn bạn đã upvote đồng thuận. Mức độ ưu tiên xử lý sự cố này sẽ được tăng cường.'
+                ? 'Cảm ơn bạn đã đồng tình. Mức độ ưu tiên xử lý sự cố này sẽ được tăng cường.'
                 : 'Cảm ơn bạn đã phản ánh sự cố. Báo cáo đã được tiếp nhận và đang được điều phối xử lý.'}
             </Text>
           </View>
@@ -223,7 +223,7 @@ export default function SuccessScreen({
                 style={styles.codeTouchArea}
               >
                 <View style={styles.ticketLabelRow}>
-                  <Text style={styles.ticketLabel}>MÃ VÉ SỰ CỐ</Text>
+                  <Text style={styles.ticketLabel}>MÃ HỒ SƠ BÁO CÁO SỰ CỐ</Text>
                   <Ionicons name="copy-outline" size={12} color="#94a3b8" />
                 </View>
                 <Text style={styles.ticketIdText}>{displayTicketId}</Text>
@@ -386,7 +386,7 @@ export default function SuccessScreen({
             <View style={{ flex: 1 }}>
               <Text style={styles.subTitle}>Nhận thông báo cập nhật</Text>
               <Text style={styles.subText}>
-                Theo dõi tiến trình xử lý vé {displayTicketId}
+                Theo dõi tiến trình xử lý hồ sơ báo cáo {displayTicketId}
               </Text>
             </View>
             <Switch
@@ -419,7 +419,7 @@ export default function SuccessScreen({
         >
           <Ionicons name="home" size={18} color="#ffffff" />
           <Text style={styles.homeBtnText}>
-            VỀ TRANG CHỦ {!isPaused && countdown > 0 ? `(${countdown}s)` : ''}
+            VỀ TRANG CHỦ
           </Text>
         </TouchableOpacity>
       </View>

@@ -90,7 +90,7 @@
 //       navigate('success');
 //     } catch (err: any) {
 //       console.error('Create ticket anyway error:', err);
-//       alert(err instanceof Error ? err.message : 'Không thể tạo vé mới.');
+//       alert(err instanceof Error ? err.message : 'Không thể tạo hồ sơ báo cáo mới.');
 //     } finally {
 //       setCreatingAnyway(false);
 //     }
@@ -116,8 +116,8 @@
 //             <View style={{ flex: 1 }}>
 //               <Text style={styles.warningTitle}>PHÁT HIỆN SỰ CỐ LÂN CẬN!</Text>
 //               <Text style={styles.warningSubText}>
-//                 Hệ thống tìm thấy các vé sự cố tương tự gần vị trí này. Bạn có thể Upvote ủng hộ
-//                 vé có sẵn hoặc vẫn tạo vé mới.
+//                 Hệ thống tìm thấy các hồ sơ báo cáo sự cố tương tự gần vị trí này. Bạn có thể Đồng tình ủng hộ
+//                 hồ sơ báo cáo có sẵn hoặc vẫn tạo hồ sơ báo cáo mới.
 //               </Text>
 //             </View>
 //           </View>
@@ -137,13 +137,13 @@
 //               <Text style={[styles.statValue, { color: '#16a34a' }]}>
 //                 {displayList.reduce((acc, cur) => acc + (cur.upvotes || 0), 0) || '—'}
 //               </Text>
-//               <Text style={styles.statLabel}>Tổng upvote</Text>
+//               <Text style={styles.statLabel}>Tổng đồng tình</Text>
 //             </View>
 //           </View>
 //         </View>
 
 //         <View style={styles.contentPadding}>
-//           <Text style={styles.sectionHeaderTitle}>CHỌN BÁO CÁO ĐỂ BÌNH CHỌN (UPVOTE)</Text>
+//           <Text style={styles.sectionHeaderTitle}>CHỌN BÁO CÁO ĐỂ BÌNH CHỌN (ĐỒNG TÌNH)</Text>
 
 //           {displayList.map((item, idx) => {
 //             const itemId = item.id || item.ticketId || `ticket-${idx}`;
@@ -228,7 +228,7 @@
 //                   <View style={styles.selectedBanner}>
 //                     <Ionicons name="checkmark-circle" size={14} color="#ea580c" />
 //                     <Text style={styles.selectedBannerText}>
-//                       Đã chọn — Bấm Upvote để xác nhận
+//                       Đã chọn — Bấm Đồng tình để xác nhận
 //                     </Text>
 //                   </View>
 //                 ) : null}
@@ -262,7 +262,7 @@
 //               ) : (
 //                 <>
 //                   <Feather name="thumbs-up" size={18} color="#ffffff" />
-//                   <Text style={styles.upvoteBtnText}>ĐỒNG TÌNH · UPVOTE</Text>
+//                   <Text style={styles.upvoteBtnText}>ĐỒNG TÌNH</Text>
 //                 </>
 //               )}
 //             </TouchableOpacity>
@@ -277,7 +277,7 @@
 //               {creatingAnyway ? (
 //                 <ActivityIndicator size="small" color="#ea580c" />
 //               ) : (
-//                 <Text style={styles.createNewBtnText}>Vẫn tạo vé mới riêng →</Text>
+//                 <Text style={styles.createNewBtnText}>Vẫn tạo hồ sơ báo cáo mới riêng →</Text>
 //               )}
 //             </TouchableOpacity>
 
@@ -832,7 +832,7 @@ export default function DuplicateScreen({
       alert(
         err instanceof Error
           ? err.message
-          : 'Không thể upvote báo cáo này.'
+          : 'Không thể đồng tình báo cáo này.'
       );
     }
   };
@@ -877,9 +877,9 @@ export default function DuplicateScreen({
               </Text>
 
               <Text style={styles.warningSubText}>
-                Hệ thống tìm thấy các vé sự cố tương tự
-                gần vị trí này. Bạn có thể Upvote ủng hộ
-                vé đã có hoặc chọn Hủy báo cáo.
+                Hệ thống tìm thấy các hồ sơ báo cáo sự cố tương tự
+                gần vị trí này. Bạn có thể Đồng tình ủng hộ
+                hồ sơ báo cáo đã có hoặc chọn Hủy báo cáo.
               </Text>
             </View>
           </View>
@@ -899,7 +899,7 @@ export default function DuplicateScreen({
               </Text>
 
               <Text style={styles.statLabel}>
-                Ticket lân cận
+                Báo cáo lân cận
               </Text>
             </View>
 
@@ -909,7 +909,7 @@ export default function DuplicateScreen({
               </Text>
 
               <Text style={styles.statLabel}>
-                Bán kính ST_DWithin
+                Phạm vi quét
               </Text>
             </View>
 
@@ -920,11 +920,11 @@ export default function DuplicateScreen({
                   { color: '#16a34a' },
                 ]}
               >
-                —
+                {displayList.reduce((acc, cur) => acc + (cur.upvotes || 0), 0)}
               </Text>
 
               <Text style={styles.statLabel}>
-                Tổng upvote
+                Tổng đồng tình
               </Text>
             </View>
           </View>
@@ -935,7 +935,7 @@ export default function DuplicateScreen({
         ================================= */}
         <View style={styles.contentPadding}>
           <Text style={styles.sectionHeaderTitle}>
-            CHỌN BÁO CÁO ĐỂ BÌNH CHỌN (UPVOTE)
+            CHỌN BÁO CÁO ĐỂ BÌNH CHỌN (ĐỒNG TÌNH)
           </Text>
 
           {displayList.length === 0 ? (
@@ -947,7 +947,7 @@ export default function DuplicateScreen({
               />
 
               <Text style={styles.emptyTitle}>
-                Không tìm thấy vé trùng lặp
+                Không tìm thấy hồ sơ báo cáo trùng lặp
               </Text>
 
               <Text style={styles.emptyText}>
@@ -1128,7 +1128,7 @@ export default function DuplicateScreen({
                           styles.selectedBannerText
                         }
                       >
-                        Đã chọn — Bấm Upvote để xác nhận
+                        Đã chọn — Bấm Đồng tình để xác nhận
                       </Text>
                     </View>
                   ) : null}
@@ -1190,7 +1190,7 @@ export default function DuplicateScreen({
                   <Text
                     style={styles.upvoteBtnText}
                   >
-                    ĐỒNG TÌNH · UPVOTE
+                    ĐỒNG TÌNH
                   </Text>
                 </>
               )}

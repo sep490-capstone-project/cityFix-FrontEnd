@@ -27,7 +27,7 @@ interface Props {
   setDraft: (d: ReportDraft) => void;
 }
 
-const GPS_ADDRESS = '123 Nguyễn Văn Cừ, Phường 2, Quận 5, TP.HCM';
+
 
 export default function LocationScreen({ navigate, goBack, draft, setDraft }: Props) {
   const [mode, setMode] = useState<Mode>(

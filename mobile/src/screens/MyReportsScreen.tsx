@@ -109,7 +109,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
       if (res && Array.isArray(res.content)) {
         setTickets(res.content);
 
-        // Kiểm tra những vé đã hoàn thành xem vé nào đã được đánh giá để ẩn khung ngôi sao
+        // Kiểm tra những hồ sơ báo cáo đã hoàn thành xem hồ sơ báo cáo nào đã được đánh giá để ẩn khung ngôi sao
         const resolvedTickets = res.content.filter(
           (t) => mapBackendStatus(t.status).statusKey === 'done'
         );
@@ -136,13 +136,13 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         setTickets([]);
       }
     } catch (err: any) {
-      console.warn('⚠️ Lỗi tải danh sách vé:', err);
+      console.warn('⚠️ Lỗi tải danh sách hồ sơ báo cáo:', err);
       setTickets([]);
       setError(
         err?.message ||
         (activeTab === 'my_reports'
           ? 'Không thể tải danh sách báo cáo từ máy chủ.'
-          : 'Không thể tải danh sách vé đã upvote từ máy chủ.')
+          : 'Không thể tải danh sách hồ sơ báo cáo đã đồng tình từ máy chủ.')
       );
     } finally {
       setLoading(false);
@@ -195,7 +195,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         });
         Alert.alert('Thành công', 'Cảm ơn bạn đã gửi đánh giá chất lượng khắc phục sự cố!');
       }
-      // Đánh dấu vé đã đánh giá để ẩn khung ngôi sao đánh giá ngay
+      // Đánh dấu hồ sơ báo cáo đã đánh giá để ẩn khung ngôi sao đánh giá ngay
       setRatedTicketIds((prev) => new Set([...prev, selectedTicketForRating.id]));
       setRatingModalVisible(false);
     } catch (err: any) {
@@ -228,11 +228,11 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         <View style={styles.headerTitleRow}>
           <View style={styles.orangeIndicator} />
           <Text style={styles.headerTitle}>
-            {activeTab === 'my_reports' ? 'BÁO CÁO CỦA TÔI' : 'VÉ TÔI ĐÃ UPVOTE'}
+            {activeTab === 'my_reports' ? 'HỒ SƠ BÁO CÁO CỦA TÔI' : 'HỒ SƠ BÁO CÁO TÔI ĐÃ ĐỒNG TÌNH'}
           </Text>
         </View>
         <Text style={styles.headerSub}>
-          {authUser?.fullName ?? 'Người dân'} · {tickets.length} {activeTab === 'my_reports' ? 'vé báo cáo' : 'vé đã upvote'}
+          {authUser?.fullName ?? 'Người dân'} · {tickets.length} {activeTab === 'my_reports' ? 'hồ sơ báo cáo' : 'hồ sơ đã đồng tình'}
         </Text>
 
         {/* Tab switch */}
@@ -255,7 +255,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
               color={activeTab === 'my_reports' ? '#ea580c' : '#64748b'}
             />
             <Text style={[styles.tabSwitchText, activeTab === 'my_reports' && styles.tabSwitchTextActive]}>
-              Báo cáo của tôi
+              Hồ sơ báo cáo của tôi
             </Text>
           </TouchableOpacity>
 
@@ -277,7 +277,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
               color={activeTab === 'upvoted' ? '#ea580c' : '#64748b'}
             />
             <Text style={[styles.tabSwitchText, activeTab === 'upvoted' && styles.tabSwitchTextActive]}>
-              Vé đã upvote
+              Hồ sơ báo cáo đã đồng tình
             </Text>
           </TouchableOpacity>
         </View>
@@ -332,7 +332,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#ea580c" />
               <Text style={styles.loadingText}>
-                {activeTab === 'my_reports' ? 'Đang tải danh sách báo cáo...' : 'Đang tải danh sách vé đã upvote...'}
+                {activeTab === 'my_reports' ? 'Đang tải danh sách hồ sơ báo cáo...' : 'Đang tải danh sách hồ sơ báo cáo đã đồng tình...'}
               </Text>
             </View>
           ) : null}
@@ -384,8 +384,8 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
                 {filter === 'all'
                   ? (activeTab === 'my_reports'
                       ? 'Bạn chưa gửi báo cáo sự cố nào'
-                      : 'Bạn chưa upvote sự cố nào')
-                  : 'Không tìm thấy vé ở trạng thái này'}
+                      : 'Bạn chưa đồng tình sự cố nào')
+                  : 'Không tìm thấy hồ sơ báo cáo ở trạng thái này'}
               </Text>
               {filter === 'all' ? (
                 <TouchableOpacity
@@ -467,7 +467,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
                     </Text>
                   </View>
 
-                  {/* Ẩn khung ngôi sao đánh giá ngay nếu vé này đã được đánh giá */}
+                  {/* Ẩn khung ngôi sao đánh giá ngay nếu hồ sơ báo cáo này đã được đánh giá */}
                   {isResolved && !isAlreadyRated ? (
                     <TouchableOpacity
                       style={styles.rateHighlightBadge}
@@ -509,7 +509,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         <View style={styles.bottomTabBar}>
           {[
             { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
-            { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
+            { id: 'my-reports', label: 'Hồ sơ báo cáo', icon: 'document-text-outline' },
             { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
           ].map((tab) => {
             const active = tab.id === 'my-reports';
@@ -534,7 +534,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         </View>
       </View>
 
-      {/* MODAL ĐÁNH GIÁ TRỰC TIẾP TRÊN DANH SÁCH VÉ */}
+      {/* MODAL ĐÁNH GIÁ TRỰC TIẾP TRÊN DANH SÁCH HỒ SƠ BÁO CÁO */}
       <Modal
         visible={ratingModalVisible}
         transparent
