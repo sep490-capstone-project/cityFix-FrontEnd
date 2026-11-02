@@ -214,7 +214,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
           <div className="flex-1">
             <h1 className="font-display text-[20px] font-extrabold text-gray-900 uppercase tracking-tight">
               {page === 'dashboard' ? 'Dashboard' :
-               page === 'tickets' || page === 'ticket-detail' ? 'Hồ sơ của tôi' :
+               page === 'tickets' || page === 'ticket-detail' ? 'Hồ sơ tiếp nhận' :
                page === 'dispatch' ? 'Điều phối & Duyệt vé' :
                page === 'staff' ? 'Cán bộ & Phòng ban' : 'Hồ sơ cá nhân'}
             </h1>

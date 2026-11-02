@@ -39,7 +39,7 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
   const resolved = tickets.filter((t) => t.status === 'RESOLVED' || t.status === 'COMPLETED');
 
   const KPIS = [
-    { label: 'Hồ sơ của tôi', value: String(assignedToMe.length), color: 'text-orange-600' },
+    { label: 'Hồ sơ tiếp nhận', value: String(assignedToMe.length), color: 'text-orange-600' },
     { label: 'Đang xử lý', value: String(inProgress.length), color: 'text-blue-600' },
     { label: 'Khẩn cấp / Nguy hiểm', value: String(critical.length), color: 'text-red-600' },
     { label: 'Đã giải quyết', value: String(resolved.length), color: 'text-emerald-600' },
