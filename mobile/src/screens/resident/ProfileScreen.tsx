@@ -11,8 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { AuthUser } from './LoginScreen';
-import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../api';
+import { AuthUser } from '../LoginScreen';
+import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../../api';
 
 interface Props {
   navigate: (screen: string) => void;

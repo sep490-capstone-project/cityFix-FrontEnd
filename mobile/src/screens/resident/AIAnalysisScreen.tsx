@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { analyzeReportImage } from '../api';
+import { analyzeReportImage } from '../../api';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ReportDraft } from '../types';
+import { ReportDraft } from '../../types';
 
 
 

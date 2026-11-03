@@ -11,8 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { AuthUser } from './LoginScreen';
-import { getMyReportedTickets, ReportedTicket, mapBackendStatus, getUnreadNotificationCount } from '../api';
+import { AuthUser } from '../LoginScreen';
+import { getMyReportedTickets, ReportedTicket, mapBackendStatus, getUnreadNotificationCount } from '../../api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -128,7 +128,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
     getMyReportedTickets(null, 0, 3)
       .then((res) => {
         if (res && Array.isArray(res.content)) {
-          setRealTickets(res.content);
+          setRealTickets(res.content.slice(0, 3));
         }
       })
       .catch((e) => console.log('HomeScreen tickets load note:', e?.message));
