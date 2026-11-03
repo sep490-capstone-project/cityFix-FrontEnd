@@ -702,9 +702,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   upvoteTicket,
   DuplicateTicketItem,
-} from '../api';
+} from '../../api';
 
-import { ReportDraft } from '../types';
+import { ReportDraft } from '../../types';
 
 interface Props {
   navigate: (s: string) => void;

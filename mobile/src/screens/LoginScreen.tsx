@@ -13,7 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ApiError, login, getProfile, UserProfile } from '../api';
+import { ApiError, login, getProfile, UserProfile, decodeJwt } from '../api';
 
 export interface AuthUser {
   userId: string;
@@ -23,6 +23,8 @@ export interface AuthUser {
   ward: string;
   address?: string;
   province?: string;
+  role?: 'STAFF' | 'CITIZEN' | 'MANAGER' | 'ADMIN' | string;
+  departmentId?: string;
 }
 
 interface Props {
@@ -65,14 +67,36 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
         console.warn('⚠️ Lỗi khi tải profile ngay sau đăng nhập:', profileErr);
       }
 
+      // Giải mã JWT để xác định role chính xác (STAFF / CITIZEN / ...)
+      const decoded = decodeJwt(result.accessToken);
+      const rawRoleCandidate =
+        result.role ||
+        profile?.roleName ||
+        decoded?.role ||
+        (Array.isArray(decoded?.roles) ? decoded.roles[0] : decoded?.roles) ||
+        decoded?.roleName ||
+        (Array.isArray(decoded?.authorities) ? decoded.authorities[0] : decoded?.authorities) ||
+        decoded?.scope ||
+        '';
+      const upperRole = String(rawRoleCandidate).toUpperCase();
+      const resolvedRole = upperRole.includes('STAFF')
+        ? 'STAFF'
+        : upperRole.includes('MANAGER')
+        ? 'MANAGER'
+        : upperRole.includes('ADMIN')
+        ? 'ADMIN'
+        : 'CITIZEN';
+
       const formattedUser: AuthUser = {
-        userId: email.trim(),
+        userId: profile?.userId || decoded?.userId || decoded?.sub || email.trim(),
         fullName: profile?.fullName?.trim() || email.trim().split('@')[0],
         phone: profile?.phoneNumber?.trim() || '',
-        email: email.trim(),
+        email: profile?.email?.trim() || email.trim(),
         ward: profile?.ward?.trim() || '',
         address: profile?.address?.trim() || '',
         province: profile?.province?.trim() || '',
+        role: resolvedRole,
+        departmentId: profile?.departmentId,
       };
 
       onLogin?.(formattedUser, result.accessToken);

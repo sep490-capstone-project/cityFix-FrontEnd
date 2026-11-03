@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, MapPressEvent, MarkerDragStartEndEvent } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
-import { ReportDraft } from '../types';
+import { ReportDraft } from '../../types';
 
 type Mode =
   | 'idle'
