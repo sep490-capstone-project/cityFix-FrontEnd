@@ -11,8 +11,8 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { mapBackendStatus } from '../api';
-import { ReportDraft, CATEGORIES } from '../types';
+import { mapBackendStatus } from '../../api';
+import { ReportDraft, CATEGORIES } from '../../types';
 
 interface Props {
   ticket?: any | null;

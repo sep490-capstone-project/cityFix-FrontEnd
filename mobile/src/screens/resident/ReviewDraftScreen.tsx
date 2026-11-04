@@ -11,10 +11,10 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ReportDraft, CATEGORIES } from '../types';
+import { ReportDraft, CATEGORIES } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createTicket, checkDuplicates, DuplicateTicketItem } from '../api';
-import { AuthUser } from './LoginScreen';
+import { createTicket, checkDuplicates, DuplicateTicketItem } from '../../api';
+import { AuthUser } from '../LoginScreen';
 
 interface Props {
   navigate: (s: string) => void;

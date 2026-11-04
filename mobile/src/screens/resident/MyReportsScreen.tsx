@@ -16,7 +16,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { AuthUser } from './LoginScreen';
+import { AuthUser } from '../LoginScreen';
 import {
   getMyReportedTickets,
   getMyUpvotedTickets,
@@ -26,7 +26,7 @@ import {
   updateRating,
   getMyRating,
   TicketRating,
-} from '../api';
+} from '../../api';
 
 const RATING_LABELS: Record<number, { text: string; color: string }> = {
   1: { text: 'Rất tệ', color: '#ef4444' },
@@ -102,9 +102,10 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
       else setLoading(true);
       setError(null);
 
-      const res = activeTab === 'my_reports'
-        ? await getMyReportedTickets(null, 0, 50, 'createdAt,desc')
-        : await getMyUpvotedTickets(null, 0, 50, 'createdAt,desc');
+      const res =
+        activeTab === 'my_reports'
+          ? await getMyReportedTickets(null, 0, 50, 'createdAt,desc')
+          : await getMyUpvotedTickets(null, 0, 50, 'createdAt,desc');
 
       if (res && Array.isArray(res.content)) {
         setTickets(res.content);
@@ -232,7 +233,12 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
           </Text>
         </View>
         <Text style={styles.headerSub}>
+<<<<<<< HEAD:mobile/src/screens/MyReportsScreen.tsx
           {authUser?.fullName ?? 'Người dân'} · {tickets.length} {activeTab === 'my_reports' ? 'hồ sơ báo cáo' : 'hồ sơ đã đồng tình'}
+=======
+          {authUser?.fullName ?? 'Người dân'} · {tickets.length}{' '}
+          {activeTab === 'my_reports' ? 'vé báo cáo' : 'vé đã upvote'}
+>>>>>>> origin/main:mobile/src/screens/resident/MyReportsScreen.tsx
         </Text>
 
         {/* Tab switch */}
@@ -332,7 +338,13 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#ea580c" />
               <Text style={styles.loadingText}>
+<<<<<<< HEAD:mobile/src/screens/MyReportsScreen.tsx
                 {activeTab === 'my_reports' ? 'Đang tải danh sách hồ sơ báo cáo...' : 'Đang tải danh sách hồ sơ báo cáo đã đồng tình...'}
+=======
+                {activeTab === 'my_reports'
+                  ? 'Đang tải danh sách báo cáo...'
+                  : 'Đang tải danh sách vé đã upvote...'}
+>>>>>>> origin/main:mobile/src/screens/resident/MyReportsScreen.tsx
               </Text>
             </View>
           ) : null}
@@ -382,10 +394,17 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
               </View>
               <Text style={styles.emptyText}>
                 {filter === 'all'
+<<<<<<< HEAD:mobile/src/screens/MyReportsScreen.tsx
                   ? (activeTab === 'my_reports'
                       ? 'Bạn chưa gửi báo cáo sự cố nào'
                       : 'Bạn chưa đồng tình sự cố nào')
                   : 'Không tìm thấy hồ sơ báo cáo ở trạng thái này'}
+=======
+                  ? activeTab === 'my_reports'
+                    ? 'Bạn chưa gửi báo cáo sự cố nào'
+                    : 'Bạn chưa upvote sự cố nào'
+                  : 'Không tìm thấy vé ở trạng thái này'}
+>>>>>>> origin/main:mobile/src/screens/resident/MyReportsScreen.tsx
               </Text>
               {filter === 'all' ? (
                 <TouchableOpacity

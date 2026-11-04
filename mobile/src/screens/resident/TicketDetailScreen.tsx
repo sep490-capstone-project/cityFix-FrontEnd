@@ -26,7 +26,8 @@ import {
   createRating,
   updateRating,
   deleteRating,
-} from '../api';
+} from '../../api';
+import { AuthUser } from '../LoginScreen';
 
 const RATING_LABELS: Record<number, { text: string; color: string }> = {
   1: { text: 'Rất tệ', color: '#ef4444' },
@@ -39,6 +40,7 @@ const RATING_LABELS: Record<number, { text: string; color: string }> = {
 interface Props {
   ticketId: string | null;
   ticketData?: ReportedTicket | null;
+  authUser?: AuthUser | null;
   goBack: () => void;
   navigate: (s: string) => void;
   onTicketCancelled?: (updatedTicket: ReportedTicket) => void;
@@ -157,6 +159,7 @@ function getTimeline(statusKey: string) {
 export default function TicketDetailScreen({
   ticketId,
   ticketData: initialTicketData,
+  authUser,
   goBack,
   navigate,
   onTicketCancelled,

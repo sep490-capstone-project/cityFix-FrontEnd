@@ -8,20 +8,14 @@ import {
   StyleSheet,
   StatusBar,
   Modal,
-  Platform,
-  Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { AuthUser } from './LoginScreen';
+import { AuthUser } from '../LoginScreen';
 import {
-  getMyReportedTickets,
+  getStaffAssignedTickets,
   ReportedTicket,
   mapBackendStatus,
-  updateProfile,
-  getProfile,
-  ApiError,
-} from '../api';
+} from '../../api';
 
 interface Props {
   navigate: (screen: string) => void;
@@ -31,8 +25,7 @@ interface Props {
   openTicket?: (id: string, ticketObj?: ReportedTicket) => void;
 }
 
-
-export default function ProfileScreen({
+export default function StaffProfileScreen({
   navigate,
   authUser,
   onLogout,
@@ -41,66 +34,48 @@ export default function ProfileScreen({
 }: Props) {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [editFullName, setEditFullName] = useState(authUser?.fullName ?? '');
-  const [editPhone, setEditPhone] = useState(authUser?.phone ?? '');
   const [editEmail, setEditEmail] = useState(authUser?.email ?? '');
   const [editWard, setEditWard] = useState(authUser?.ward ?? '');
   const [editAddress, setEditAddress] = useState(authUser?.address ?? '');
   const [editProvince, setEditProvince] = useState(authUser?.province ?? '');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
-  const [totalReportsCount, setTotalReportsCount] = useState<number>(0);
+  const [assignedTickets, setAssignedTickets] = useState<ReportedTicket[]>([]);
+  const [totalAssignedCount, setTotalAssignedCount] = useState<number>(0);
 
   useEffect(() => {
-    getProfile()
-      .then((profile) => {
-        if (profile && authUser) {
-          onUpdateUser({
-            ...authUser,
-            fullName: profile.fullName || authUser.fullName,
-            phone: profile.phoneNumber || authUser.phone,
-            address: profile.address ?? authUser.address,
-            province: profile.province ?? authUser.province,
-            ward: profile.ward ?? authUser.ward,
-          });
-        }
-      })
-      .catch((e) => console.log('Profile fetch note:', e?.message));
-
-    getMyReportedTickets(null, 0, 10)
+    getStaffAssignedTickets(null, 'all', 0, 50)
       .then((res) => {
         if (res && Array.isArray(res.content)) {
-          setRealTickets(res.content);
-          setTotalReportsCount(res.totalElements ?? res.content.length);
+          setAssignedTickets(res.content);
+          setTotalAssignedCount(res.totalElements ?? res.content.length);
         }
       })
-      .catch((e) => console.log('Profile tickets fetch note:', e?.message));
+      .catch((e) => console.log('StaffProfile tickets fetch note:', e?.message));
   }, []);
 
-  const initials = (authUser?.fullName?.trim() || '?')
+  const initials = (authUser?.fullName?.trim() || 'NV')
     .split(/\s+/)
     .map((w: string) => w[0])
     .slice(-2)
     .join('')
     .toUpperCase();
 
-  const totalTickets = totalReportsCount || realTickets.length;
-  const processingCount = realTickets.filter(
+  const totalTickets = totalAssignedCount || assignedTickets.length;
+  const processingCount = assignedTickets.filter(
     (t) => mapBackendStatus(t.status).statusKey === 'processing'
   ).length;
-  const doneCount = realTickets.filter(
+  const doneCount = assignedTickets.filter(
     (t) => mapBackendStatus(t.status).statusKey === 'done'
   ).length;
 
   const stats = [
-    { value: String(totalTickets), label: 'Báo cáo đã gửi' },
+    { value: String(totalTickets), label: 'Hồ sơ tiếp nhận' },
     { value: String(processingCount), label: 'Đang xử lý' },
-    { value: String(doneCount), label: 'Hoàn thành' },
+    { value: String(doneCount), label: 'Đã hoàn thành' },
   ];
 
   function startEdit() {
-    setEditPhone(authUser?.phone ?? '');
     setEditFullName(authUser?.fullName ?? '');
     setEditEmail(authUser?.email ?? '');
     setEditWard(authUser?.ward ?? '');
@@ -110,62 +85,20 @@ export default function ProfileScreen({
     setSaveSuccess(false);
   }
 
-  async function saveEdit() {
-    if (!authUser || saving) return;
-
-    const trimmedFullName = editFullName.trim();
-    if (!trimmedFullName) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập họ và tên.');
-      return;
-  
-    }
-
-    const cleanPhone = (editPhone || authUser.phone || '').replace(/[\s-]/g, '');
-    const phoneRegex = /^\d{10,11}$/;
-    if (!phoneRegex.test(cleanPhone)) {
-      Alert.alert(
-        'Số điện thoại không hợp lệ',
-        'Vui lòng nhập số điện thoại gồm 10 đến 11 chữ số.'
-      );
-      return;
-    }
-
-
-    setSaving(true);
-    try {
-      const updatedProfile = await updateProfile({
-        fullName: trimmedFullName,
-        phoneNumber: cleanPhone,
-        address: editAddress.trim(),
-        province: editProvince.trim(),
-        ward: editWard.trim(),
-      });
-
-      const updatedUser: AuthUser = {
-        ...authUser,
-        fullName: updatedProfile.fullName || trimmedFullName,
-        phone: updatedProfile.phoneNumber || cleanPhone,
-        address: updatedProfile.address ?? editAddress.trim(),
-        province: updatedProfile.province ?? editProvince.trim(),
-        ward: updatedProfile.ward ?? editWard.trim(),
-      };
-
-      onUpdateUser(updatedUser);
-      setEditMode(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err: any) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : err?.message || 'Không thể cập nhật thông tin. Vui lòng thử lại.';
-      Alert.alert('Cập nhật thất bại', msg);
-    } finally {
-      setSaving(false);
-    }
+  function saveEdit() {
+    if (!authUser) return;
+    onUpdateUser({
+      ...authUser,
+      fullName: editFullName.trim(),
+      email: editEmail.trim(),
+      ward: editWard.trim(),
+      address: editAddress.trim(),
+      province: editProvince.trim(),
+    });
+    setEditMode(false);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2500);
   }
-
-
 
   return (
     <View style={styles.container}>
@@ -181,13 +114,14 @@ export default function ProfileScreen({
             </View>
 
             <View style={styles.heroInfo}>
+              <View style={styles.roleBadge}>
+                <Ionicons name="shield-checkmark" size={11} color="#ea580c" />
+                <Text style={styles.roleBadgeText}>NHÂN VIÊN XỬ LÝ HIỆN TRƯỜNG</Text>
+              </View>
               <Text style={styles.userName} numberOfLines={1}>
-                {authUser?.fullName ?? 'Chưa cập nhật'}
+                {authUser?.fullName ?? 'Nhân viên CityFix'}
               </Text>
-              <Text style={styles.userPhone}>{authUser?.phone || '—'}</Text>
-              <Text style={styles.userWard}>
-                {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') || '—'}
-              </Text>
+              <Text style={styles.userPhone}>{authUser?.email || authUser?.phone || '—'}</Text>
             </View>
           </View>
 
@@ -206,7 +140,7 @@ export default function ProfileScreen({
           {/* Account Info Section */}
           <View style={styles.sectionCard}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardHeaderTitle}>THÔNG TIN TÀI KHOẢN</Text>
+              <Text style={styles.cardHeaderTitle}>THÔNG TIN NHÂN VIÊN</Text>
               {!editMode ? (
                 <TouchableOpacity onPress={startEdit} style={styles.editBtn}>
                   <Feather name="edit-2" size={12} color="#ea580c" />
@@ -216,21 +150,12 @@ export default function ProfileScreen({
                 <View style={styles.editActionRow}>
                   <TouchableOpacity
                     onPress={() => setEditMode(false)}
-                    disabled={saving}
                     style={styles.cancelBtn}
                   >
                     <Text style={styles.cancelBtnText}>Hủy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={saveEdit}
-                    style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <Text style={styles.saveBtnText}>Lưu</Text>
-                    )}
+                  <TouchableOpacity onPress={saveEdit} style={styles.saveBtn}>
+                    <Text style={styles.saveBtnText}>Lưu</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -244,9 +169,8 @@ export default function ProfileScreen({
             ) : null}
 
             <View style={styles.infoList}>
-              {/* Full Name */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Họ và tên</Text>
+                <Text style={styles.infoLabel}>Họ tên</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
@@ -258,90 +182,58 @@ export default function ProfileScreen({
                 )}
               </View>
 
-              {/* Email (Read-only) */}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Vai trò</Text>
+                <Text style={[styles.infoValue, { color: '#ea580c' }]}>
+                  Nhân viên xử lý 
+                </Text>
+              </View>
+
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Email</Text>
                 {editMode ? (
-                  <View style={styles.disabledInputWrapper}>
-                    <Text style={styles.disabledInputText}>{authUser?.email || '—'}</Text>
-                    <View style={styles.readOnlyBadge}>
-                      <Text style={styles.readOnlyBadgeText}>Cố định</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <Text style={styles.infoValue}>{authUser?.email || '—'}</Text>
-                )}
-              </View>
-
-              {/* Phone (Editable) */}
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>SĐT</Text>
-                {editMode ? (
                   <TextInput
                     style={styles.infoInput}
-                    value={editPhone}
-                    onChangeText={setEditPhone}
-                    keyboardType="phone-pad"
-                    placeholder="0912345678"
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                    keyboardType="email-address"
+                    placeholder="email@example.com"
                   />
                 ) : (
                   <Text style={styles.infoValue}>
-                    {authUser?.phone || '—'}
+                    {authUser?.email || 'Chưa cập nhật'}
                   </Text>
                 )}
               </View>
 
-              {/* Ward / Area */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Phường/Xã</Text>
+                <Text style={styles.infoLabel}>SĐT</Text>
+                <Text style={styles.infoValue}>{authUser?.phone || '—'}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Khu vực</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
                     value={editWard}
                     onChangeText={setEditWard}
-                    placeholder="Phường / Xã"
+                    placeholder="Phường / Quận phụ trách"
                   />
                 ) : (
-                  <Text style={styles.infoValue}>{authUser?.ward || '—'}</Text>
-                )}
-              </View>
-
-              {/* Address */}
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Địa chỉ</Text>
-                {editMode ? (
-                  <TextInput
-                    style={styles.infoInput}
-                    value={editAddress}
-                    onChangeText={setEditAddress}
-                    placeholder="Số nhà, đường"
-                  />
-                ) : (
-                  <Text style={styles.infoValue}>{authUser?.address || '—'}</Text>
-                )}
-              </View>
-
-              {/* Province */}
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Tỉnh/TP</Text>
-                {editMode ? (
-                  <TextInput
-                    style={styles.infoInput}
-                    value={editProvince}
-                    onChangeText={setEditProvince}
-                    placeholder="Tỉnh / Thành phố"
-                  />
-                ) : (
-                  <Text style={styles.infoValue}>{authUser?.province || '—'}</Text>
+                  <Text style={styles.infoValue}>
+                    {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') ||
+                      'TP.HCM'}
+                  </Text>
                 )}
               </View>
             </View>
           </View>
 
-          {/* My Recent Tickets */}
+          {/* Recent Assigned Tickets */}
           <View style={{ marginTop: 16 }}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeaderTitle}>HỒ SƠ BÁO CÁO CỦA TÔI</Text>
+              <Text style={styles.sectionHeaderTitle}>HỒ SƠ PHÂN CÔNG GẦN ĐÂY</Text>
               <TouchableOpacity
                 onPress={() => navigate('my-reports')}
                 style={styles.seeAllBtn}
@@ -351,11 +243,17 @@ export default function ProfileScreen({
             </View>
 
             <View style={{ gap: 8 }}>
-              {realTickets.length > 0 ? (
-                realTickets.slice(0, 3).map((t) => {
+              {assignedTickets.length > 0 ? (
+                assignedTickets.slice(0, 4).map((t) => {
                   const st = mapBackendStatus(t.status);
-                  const catName = t.categoryName || t.subCategories?.[0]?.name || t.description || 'Sự cố';
-                  const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleDateString('vi-VN') : '';
+                  const catName =
+                    t.categoryName ||
+                    t.subCategories?.[0]?.name ||
+                    t.description ||
+                    'Sự cố';
+                  const timeStr = t.createdAt
+                    ? new Date(t.createdAt).toLocaleDateString('vi-VN')
+                    : '';
                   return (
                     <TouchableOpacity
                       key={t.id}
@@ -373,7 +271,10 @@ export default function ProfileScreen({
                         <View
                           style={[
                             styles.statusChip,
-                            { backgroundColor: st.bgColor, borderColor: st.borderColor },
+                            {
+                              backgroundColor: st.bgColor,
+                              borderColor: st.borderColor,
+                            },
                           ]}
                         >
                           <Text style={[styles.statusChipText, { color: st.color }]}>
@@ -386,43 +287,12 @@ export default function ProfileScreen({
                   );
                 })
               ) : (
-                <View style={styles.emptyReportsCard}>
-                  <Ionicons name="document-text-outline" size={32} color="#94a3b8" />
-                  <Text style={styles.emptyReportsTitle}>Chưa có hồ sơ báo cáo nào</Text>
-                  <Text style={styles.emptyReportsSub}>
-                    Các phản ánh sự cố đô thị bạn đã gửi sẽ xuất hiện tại đây.
+                <View style={styles.emptyBox}>
+                  <Text style={styles.emptyBoxText}>
+                    Chưa có hồ sơ nào được phân công
                   </Text>
-                  <TouchableOpacity
-                    style={styles.emptyCreateBtn}
-                    onPress={() => navigate('location')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.emptyCreateBtnText}>+ Tạo báo cáo mới</Text>
-                  </TouchableOpacity>
                 </View>
               )}
-            </View>
-          </View>
-
-          {/* Settings Group */}
-          <View style={[styles.sectionCard, { marginTop: 16 }]}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardHeaderTitle}>CÀI ĐẶT</Text>
-            </View>
-            <View style={styles.settingsList}>
-              {[
-                { label: 'Thông báo đẩy', icon: 'notifications-outline' },
-                { label: 'Ngôn ngữ', icon: 'globe-outline' },
-                { label: 'Điều khoản sử dụng', icon: 'document-text-outline' },
-              ].map((item, idx) => (
-                <TouchableOpacity key={idx} style={styles.settingItem}>
-                  <View style={styles.settingLeft}>
-                    <Ionicons name={item.icon as any} size={18} color="#64748b" />
-                    <Text style={styles.settingText}>{item.label}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-                </TouchableOpacity>
-              ))}
             </View>
           </View>
 
@@ -438,11 +308,11 @@ export default function ProfileScreen({
         </View>
       </ScrollView>
 
-      {/* Bottom Navigation */}
+      {/* Staff Bottom Navigation */}
       <View style={styles.bottomTabBar}>
         {[
           { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
-          { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
+          { id: 'my-reports', label: 'Hồ sơ tiếp nhận', icon: 'briefcase-outline' },
           { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
         ].map((tab) => {
           const active = tab.id === 'profile';
@@ -483,8 +353,8 @@ export default function ProfileScreen({
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Đăng xuất?</Text>
                 <Text style={styles.modalSubText}>
-                  Phiên làm việc và token sẽ bị xóa khỏi thiết bị. Bạn cần đăng nhập
-                  lại để tiếp tục.
+                  Phiên làm việc của nhân viên sẽ kết thúc. Bạn cần đăng nhập lại để
+                  tiếp tục xử lý hồ sơ.
                 </Text>
               </View>
             </View>
@@ -529,8 +399,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
   },
-
-  /* Hero Section */
   heroCard: {
     backgroundColor: '#ffffff',
     paddingHorizontal: 20,
@@ -566,6 +434,24 @@ const styles = StyleSheet.create({
   heroInfo: {
     flex: 1,
   },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  roleBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
   userName: {
     fontSize: 20,
     fontWeight: '800',
@@ -576,12 +462,6 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 2,
   },
-  userWard: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-
-  /* Stats Grid */
   statsGrid: {
     flexDirection: 'row',
     gap: 8,
@@ -606,8 +486,6 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 2,
   },
-
-  /* Section Card */
   sectionCard: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -705,7 +583,7 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontSize: 12,
     color: '#64748b',
-    width: 70,
+    width: 80,
   },
   infoValue: {
     fontSize: 13,
@@ -726,37 +604,6 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     textAlign: 'right',
   },
-  disabledInputWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 6,
-  },
-  disabledInputText: {
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  readOnlyBadge: {
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  readOnlyBadgeText: {
-    fontSize: 9,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-
-  /* My Recent Tickets Header */
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -780,43 +627,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ea580c',
   },
-
-  /* Ticket Card */
-  emptyReportsCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderStyle: 'dashed',
-    gap: 6,
-  },
-  emptyReportsTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  emptyReportsSub: {
-    fontSize: 11,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  emptyCreateBtn: {
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fdba74',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-  },
-  emptyCreateBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#ea580c',
-  },
   ticketCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -826,26 +636,15 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     borderRadius: 14,
     padding: 12,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 2,
   },
   ticketLeft: {
     flex: 1,
     paddingRight: 8,
   },
-  ticketId: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
   ticketCategory: {
     fontSize: 12,
     fontWeight: '700',
     color: '#0f172a',
-    marginTop: 2,
   },
   ticketTime: {
     fontSize: 9,
@@ -855,7 +654,7 @@ const styles = StyleSheet.create({
   ticketRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   statusChip: {
     paddingHorizontal: 8,
@@ -863,99 +662,70 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
   },
-  statusProcessing: {
-    backgroundColor: 'rgba(249, 115, 22, 0.08)',
-    borderColor: 'rgba(249, 115, 22, 0.25)',
-  },
-  statusDone: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
-  },
-  statusReceived: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#e2e8f0',
-  },
   statusChipText: {
     fontSize: 9,
     fontWeight: '800',
   },
-
-  /* Settings List */
-  settingsList: {},
-  settingItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyBox: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 16,
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
   },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  emptyBoxText: {
+    fontSize: 12,
+    color: '#64748b',
   },
-  settingText: {
-    fontSize: 13,
-    color: '#334155',
-  },
-
-  /* Logout Button */
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     backgroundColor: '#fef2f2',
     borderWidth: 1,
-    borderColor: '#fca5a5',
-    borderRadius: 14,
+    borderColor: '#fecaca',
+    borderRadius: 16,
     paddingVertical: 14,
-    gap: 8,
-    marginTop: 20,
+    marginTop: 18,
   },
   logoutBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
     color: '#dc2626',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
   },
-
-  /* Bottom Navigation */
   bottomTabBar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    backgroundColor: '#ffffff',
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
-    backgroundColor: '#ffffff',
-    paddingTop: 8,
-    paddingBottom: 20,
   },
   tabItem: {
+    flex: 1,
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
     position: 'relative',
   },
   tabActiveBar: {
     position: 'absolute',
-    top: -8,
-    width: 24,
-    height: 3,
-    borderRadius: 2,
+    top: 0,
+    width: 32,
+    height: 2,
     backgroundColor: '#f97316',
+    borderRadius: 1,
   },
   tabLabel: {
     fontSize: 9,
     fontWeight: '600',
     color: '#94a3b8',
+    marginTop: 3,
   },
   tabLabelActive: {
-    color: '#ea580c',
+    color: '#f97316',
     fontWeight: '700',
   },
-
-  /* Modal Logout Sheet */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.5)',
@@ -965,74 +735,66 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 32,
+    padding: 20,
     gap: 16,
   },
   modalHandle: {
-    width: 36,
+    width: 40,
     height: 4,
     borderRadius: 2,
     backgroundColor: '#cbd5e1',
     alignSelf: 'center',
-    marginBottom: 8,
   },
   modalHeaderRow: {
     flexDirection: 'row',
     gap: 12,
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   modalIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: '#fef2f2',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
   },
   modalSubText: {
     fontSize: 12,
     color: '#64748b',
-    marginTop: 4,
-    lineHeight: 18,
+    marginTop: 2,
   },
   modalActions: {
-    gap: 8,
-    marginTop: 4,
+    flexDirection: 'row',
+    gap: 10,
   },
   stayBtn: {
-    backgroundColor: '#f97316',
+    flex: 1,
+    backgroundColor: '#f1f5f9',
     borderRadius: 14,
-    paddingVertical: 14,
+    paddingVertical: 13,
     alignItems: 'center',
-    shadowColor: '#f97316',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
   },
   stayBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#475569',
   },
   confirmLogoutBtn: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fca5a5',
+    flex: 1.5,
+    backgroundColor: '#dc2626',
     borderRadius: 14,
-    paddingVertical: 14,
+    paddingVertical: 13,
     alignItems: 'center',
   },
   confirmLogoutBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#dc2626',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });
+

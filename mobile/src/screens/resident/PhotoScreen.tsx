@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uploadReportImage } from '../api';
+import { uploadReportImage } from '../../api';
 
 import {
   View,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
-import { ReportDraft } from '../types';
+import { ReportDraft } from '../../types';
 
 const MAX_IMAGES = 5;
 

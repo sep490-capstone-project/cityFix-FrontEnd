@@ -121,7 +121,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
 
   const NAV = [
     { key: 'dashboard', label: 'Dashboard',     icon: <GridIcon /> },
-    { key: 'tickets',   label: 'Hồ sơ của tôi', icon: <TicketIcon /> },
+    { key: 'tickets',   label: 'Hồ sơ tiếp nhận', icon: <TicketIcon /> },
     { key: 'profile',   label: 'Hồ sơ cá nhân', icon: <UserIcon /> },
   ] as const;
 
@@ -206,7 +206,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
           <div className="flex-1">
             <h1 className="text-base sm:text-lg font-bold text-slate-900 uppercase tracking-tight">
               {page === 'dashboard' ? 'DASHBOARD' :
-               page === 'tickets' || page === 'ticket-detail' ? 'HỒ SƠ CỦA TÔI' : 'HỒ SƠ CÁ NHÂN'}
+               page === 'tickets' || page === 'ticket-detail' ? 'HỒ SƠ Tiếp nhận' : 'HỒ SƠ CÁ NHÂN'}
             </h1>
           </div>
           <p className="font-mono-cf text-xs text-slate-400 tracking-wider">10/09/2026</p>
