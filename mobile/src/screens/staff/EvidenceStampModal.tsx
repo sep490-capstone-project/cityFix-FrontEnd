@@ -1418,6 +1418,7 @@ export default function EvidenceStampModal({
     } catch (err: any) {
       Alert.alert('Lỗi chọn ảnh', err?.message || 'Không thể chọn ảnh từ thư viện.');
       setProcessingPhoto(false);
+    }
   };
 
   const handleRemovePhoto = (id: string) => {
@@ -2395,4 +2396,4 @@ const styles = StyleSheet.create({
 
   },
 
-});
+})
