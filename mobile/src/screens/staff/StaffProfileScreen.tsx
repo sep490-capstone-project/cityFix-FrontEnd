@@ -313,7 +313,7 @@ export default function StaffProfileScreen({
         {[
           { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
           { id: 'my-reports', label: 'Hồ sơ tiếp nhận', icon: 'briefcase-outline' },
-          { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+          { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
         ].map((tab) => {
           const active = tab.id === 'profile';
           return (
@@ -351,10 +351,10 @@ export default function StaffProfileScreen({
                 <Ionicons name="log-out-outline" size={22} color="#dc2626" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Đăng xuất?</Text>
+                <Text style={styles.modalTitle}>Xác nhận đăng xuất</Text>
                 <Text style={styles.modalSubText}>
-                  Phiên làm việc của nhân viên sẽ kết thúc. Bạn cần đăng nhập lại để
-                  tiếp tục xử lý hồ sơ.
+                  Bạn có chắc chắn muốn đăng xuất? Bạn sẽ cần đăng nhập lại để
+                  tiếp tục tiếp nhận và cập nhật tiến độ hồ sơ.
                 </Text>
               </View>
             </View>
@@ -364,7 +364,7 @@ export default function StaffProfileScreen({
                 style={styles.stayBtn}
                 onPress={() => setShowLogoutDialog(false)}
               >
-                <Text style={styles.stayBtnText}>Ở LẠI</Text>
+                <Text style={styles.stayBtnText}>Ở lại</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.confirmLogoutBtn}
@@ -373,7 +373,7 @@ export default function StaffProfileScreen({
                   onLogout();
                 }}
               >
-                <Text style={styles.confirmLogoutBtnText}>XÁC NHẬN ĐĂNG XUẤT</Text>
+                <Text style={styles.confirmLogoutBtnText}>Đăng xuất</Text>
               </TouchableOpacity>
             </View>
           </View>

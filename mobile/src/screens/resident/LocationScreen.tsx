@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import * as Location from 'expo-location';
 import {
   View,
+  Alert,
   Text,
   TouchableOpacity,
   StyleSheet,
@@ -111,7 +112,10 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setMode('idle');
-        alert('Ứng dụng cần quyền truy cập vị trí để sử dụng GPS.');
+        Alert.alert(
+          'Yêu cầu quyền vị trí',
+          'CityFix cần quyền truy cập định vị GPS để xác định chính xác địa điểm xảy ra sự cố.'
+        );
         return;
       }
 
@@ -147,7 +151,10 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
     } catch (error) {
       console.error('GPS error:', error);
       setMode('idle');
-      alert('Không thể lấy vị trí hiện tại. Vui lòng thử lại.');
+      Alert.alert(
+        'Không thể định vị',
+        'Không thể lấy tọa độ hiện tại. Vui lòng bật GPS hoặc chọn địa chỉ thủ công trên bản đồ.'
+      );
     }
   };
 
@@ -233,7 +240,10 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
       console.log('📍 GEOCODING RESULTS:', results);
 
       if (!results || results.length === 0) {
-        alert('Không tìm thấy vị trí này. Vui lòng nhập địa chỉ rõ hơn.');
+        Alert.alert(
+          'Không tìm thấy địa chỉ',
+          'Không tìm thấy vị trí tương ứng. Vui lòng nhập chi tiết số nhà, tên đường, phường/xã.'
+        );
         return;
       }
 
@@ -256,7 +266,10 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
       setPanelCollapsed(false);
     } catch (error) {
       console.error('❌ GEOCODING ERROR:', error);
-      alert('Không thể xác định vị trí từ địa chỉ này. Vui lòng thử lại.');
+      Alert.alert(
+        'Không thể xác định vị trí',
+        'Đã có lỗi xảy ra khi tra cứu tọa độ từ địa chỉ. Vui lòng thử lại hoặc chọn trực tiếp trên bản đồ.'
+      );
     }
   };
 

@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { analyzeReportImage } from '../../api';
 import {
   View,
+  Alert,
   Text,
   TextInput,
   TouchableOpacity,
@@ -171,10 +172,9 @@ useEffect(() => {
       // Có thể xử lý UI error sau
       setCurrentStep(0);
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'Không thể phân tích hình ảnh. Vui lòng thử lại.'
+      Alert.alert(
+        'Phân tích ảnh gián đoạn',
+        error instanceof Error ? error.message : 'Hệ thống AI không thể nhận diện ảnh lúc này. Bạn vẫn có thể tiếp tục chọn danh mục sự cố thủ công.'
       );
     }
   };
@@ -391,7 +391,7 @@ useEffect(() => {
             onPress={handleNext}
             activeOpacity={0.85}
           >
-            <Text style={styles.nextBtnText}>XEM & XÁC NHẬN BẢN NHÁP</Text>
+            <Text style={styles.nextBtnText}>KIỂM TRA & XÁC NHẬN BÁO CÁO</Text>
             <Ionicons name="arrow-forward" size={18} color="#ffffff" />
           </TouchableOpacity>
         </View>

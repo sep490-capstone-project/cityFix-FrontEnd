@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
+  Alert,
   Text,
   TextInput,
   TouchableOpacity,
@@ -81,7 +82,7 @@ export default function ReviewDraftScreen({
       }
 
       const effectiveCatId =
-        draft.userCategoryId || draft.aiAnalysis.categoryId || '';
+        (draft.userCategoryId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(draft.userCategoryId) ? draft.userCategoryId : null) || draft.aiAnalysis.categoryId || draft.userCategoryId || '';
 
       // 3. Gọi API check-duplicates trước khi tạo
       try {
@@ -200,10 +201,9 @@ export default function ReviewDraftScreen({
     } catch (error) {
       console.error('❌ CREATE TICKET ERROR:', error);
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'Không thể gửi báo cáo. Vui lòng thử lại.'
+      Alert.alert(
+        'Gửi báo cáo thất bại',
+        error instanceof Error ? error.message : 'Đã xảy ra lỗi khi gửi báo cáo tới hệ thống. Vui lòng kiểm tra kết nối mạng và thử lại.'
       );
     } finally {
       setSubmitting(false);
@@ -530,7 +530,7 @@ export default function ReviewDraftScreen({
             <Ionicons name="shield-checkmark-outline" size={18} color="#64748b" />
             <Text style={styles.disclaimerText}>
               Bằng cách gửi báo cáo, bạn xác nhận thông tin cung cấp là trung thực. Hệ thống
-              sẽ kiểm tra trùng lặp vị trí bằng PostGIS trước khi lưu vé.
+              sẽ kiểm tra trùng lặp vị trí bằng PostGIS trước khi lưu hồ sơ báo cáo.
             </Text>
           </View>
         </View>

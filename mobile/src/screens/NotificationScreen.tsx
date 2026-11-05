@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '../api';
+import { Haptics } from '../utils/haptics';
 
 interface Props {
   navigate: (screen: string) => void;
@@ -51,6 +52,82 @@ function formatRelativeTime(dateStr?: string | null): string {
   });
 }
 
+/**
+ * Tải TOÀN BỘ thông báo từ máy chủ (không giới hạn 50 phần tử)
+ */
+async function fetchAllNotifications(): Promise<NotificationItem[]> {
+  let allItems: NotificationItem[] = [];
+  let page = 0;
+  const requestedSize = 200;
+  let hasMore = true;
+
+  while (hasMore) {
+    try {
+      const res: any = await getNotifications(undefined, page, requestedSize, 'createdAt,desc');
+      const batch: NotificationItem[] = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.content)
+        ? res.content
+        : [];
+
+      if (batch.length === 0) {
+        break;
+      }
+
+      allItems = allItems.concat(batch);
+
+      const serverTotal = typeof res?.totalElements === 'number' ? res.totalElements : undefined;
+      const totalPages = typeof res?.totalPages === 'number' ? res.totalPages : undefined;
+
+      if (serverTotal !== undefined && allItems.length >= serverTotal) {
+        hasMore = false;
+      } else if (totalPages !== undefined && page + 1 >= totalPages) {
+        hasMore = false;
+      } else if (batch.length < 50) {
+        // Backend trả về ít hơn 50 phần tử tức là đã tải đến trang cuối cùng
+        hasMore = false;
+      } else {
+        page++;
+        if (page >= 15) break; // Giới hạn an toàn tối đa 15 trang
+      }
+    } catch (err) {
+      console.warn(`Lỗi khi tải thông báo trang ${page}:`, err);
+      break;
+    }
+  }
+
+  // Khử trùng lặp theo notificationId
+  const uniqueMap = new Map<string, NotificationItem>();
+  allItems.forEach((item) => {
+    if (item.notificationId) {
+      uniqueMap.set(item.notificationId, item);
+    }
+  });
+
+  return Array.from(uniqueMap.values());
+}
+
+function NotificationSkeleton() {
+  return (
+    <View style={styles.skeletonContainer}>
+      {[1, 2, 3, 4, 5].map((key) => (
+        <View key={key} style={styles.skeletonRow}>
+          <View style={styles.skeletonIconBox} />
+          <View style={styles.skeletonContent}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonBody} />
+            <View style={styles.skeletonBodyShort} />
+            <View style={styles.skeletonFooterRow}>
+              <View style={styles.skeletonTime} />
+              <View style={styles.skeletonLink} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function NotificationScreen({
   navigate,
   goBack,
@@ -59,36 +136,32 @@ function NotificationScreen({
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [unreadCount, setUnreadCount] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [listRes, countRes] = await Promise.allSettled([
-        getNotifications(
-          filter === 'unread' ? false : undefined,
-          0,
-          50,
-          'createdAt,desc'
-        ),
-        getUnreadNotificationCount(),
+      const [items, unreadApiCount] = await Promise.all([
+        fetchAllNotifications(),
+        getUnreadNotificationCount().catch(() => 0),
       ]);
 
-      if (listRes.status === 'fulfilled' && listRes.value?.content) {
-        setNotifications(listRes.value.content);
-      }
+      const localUnread = items.filter((n) => !n.read).length;
+      const finalUnread = Math.max(unreadApiCount, localUnread);
+      const finalTotal = Math.max(items.length, finalUnread);
 
-      if (countRes.status === 'fulfilled') {
-        setUnreadCount(countRes.value);
-      }
+      setNotifications(items);
+      setTotalCount(finalTotal);
+      setUnreadCount(finalUnread);
     } catch (err) {
       console.warn('Lỗi khi tải thông báo:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -98,6 +171,10 @@ function NotificationScreen({
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
+  };
+
+  const handleTabChange = (newFilter: 'all' | 'unread') => {
+    setFilter(newFilter);
   };
 
   const handleItemPress = async (item: NotificationItem) => {
@@ -143,10 +220,12 @@ function NotificationScreen({
     }
   };
 
-  const displayedList =
-    filter === 'unread'
-      ? notifications.filter((n) => !n.read)
-      : notifications;
+  const displayedList = useMemo(() => {
+    if (filter === 'unread') {
+      return notifications.filter((n) => !n.read);
+    }
+    return notifications;
+  }, [filter, notifications]);
 
   const renderItem = ({ item }: { item: NotificationItem }) => (
     <TouchableOpacity
@@ -183,7 +262,7 @@ function NotificationScreen({
           <Text style={styles.itemTime}>{formatRelativeTime(item.createdAt)}</Text>
           {item.ticketId && (
             <View style={styles.ticketLinkRow}>
-              <Text style={styles.ticketLinkText}>Xem hồ sơ</Text>
+              <Text style={styles.ticketLinkText}>Xem chi tiết</Text>
               <Ionicons name="chevron-forward" size={13} color="#475569" />
             </View>
           )}
@@ -199,7 +278,9 @@ function NotificationScreen({
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={goBack}
+          onPress={() => {
+            goBack();
+          }}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel="Quay lại"
@@ -248,7 +329,7 @@ function NotificationScreen({
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tabItem, filter === 'all' && styles.tabItemActive]}
-          onPress={() => setFilter('all')}
+          onPress={() => handleTabChange('all')}
           activeOpacity={0.8}
           accessibilityRole="tab"
           accessibilityState={{ selected: filter === 'all' }}
@@ -258,14 +339,14 @@ function NotificationScreen({
           </Text>
           <View style={[styles.tabCount, filter === 'all' && styles.tabCountActive]}>
             <Text style={[styles.tabCountText, filter === 'all' && styles.tabCountTextActive]}>
-              {notifications.length}
+              {totalCount > 999 ? '999+' : totalCount}
             </Text>
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.tabItem, filter === 'unread' && styles.tabItemActive]}
-          onPress={() => setFilter('unread')}
+          onPress={() => handleTabChange('unread')}
           activeOpacity={0.8}
           accessibilityRole="tab"
           accessibilityState={{ selected: filter === 'unread' }}
@@ -284,15 +365,15 @@ function NotificationScreen({
       </View>
 
       {loading && !refreshing ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#64748B" />
-          <Text style={styles.loadingText}>Đang tải thông báo...</Text>
-        </View>
+        <NotificationSkeleton />
       ) : (
         <FlatList
           data={displayedList}
           keyExtractor={(item) => item.notificationId}
           renderItem={renderItem}
+          initialNumToRender={20}
+          maxToRenderPerBatch={20}
+          windowSize={11}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -335,6 +416,65 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  skeletonContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 10,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+  },
+  skeletonIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonContent: {
+    flex: 1,
+    gap: 8,
+  },
+  skeletonTitle: {
+    width: '65%',
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+  },
+  skeletonBody: {
+    width: '95%',
+    height: 11,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonBodyShort: {
+    width: '80%',
+    height: 11,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  skeletonTime: {
+    width: 70,
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonLink: {
+    width: 80,
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
   },
   header: {
     minHeight: 58,
@@ -458,148 +598,141 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabCount: {
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 5,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
     backgroundColor: '#F1F5F9',
   },
   tabCountActive: {
     backgroundColor: '#FFEDD5',
   },
   tabCountText: {
-    color: '#64748B',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
+    color: '#64748B',
   },
   tabCountTextActive: {
-    color: '#334155',
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 12,
-    color: '#64748B',
+    color: '#C2410C',
+    fontWeight: '700',
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 24,
+    padding: 16,
+    gap: 10,
   },
   emptyListContent: {
     flexGrow: 1,
     justifyContent: 'center',
   },
-  itemSeparator: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginLeft: 52,
-  },
   notificationRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 4,
+    padding: 14,
     backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   notificationRowUnread: {
-    backgroundColor: '#FFFCF8',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#FDBA74',
+    borderLeftWidth: 3,
+    borderLeftColor: '#EA580C',
   },
   iconBox: {
     width: 38,
     height: 38,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconBoxUnread: {
-    backgroundColor: '#FFF1E6',
+    backgroundColor: '#FFEDD5',
   },
   itemContent: {
     flex: 1,
-    minWidth: 0,
   },
   itemHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 7,
+    justifyContent: 'space-between',
+    gap: 6,
   },
   itemTitle: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#334155',
+    flex: 1,
+    lineHeight: 19,
   },
   itemTitleUnread: {
     color: '#0F172A',
     fontWeight: '700',
   },
   unreadDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
     backgroundColor: '#EA580C',
     marginTop: 5,
   },
   itemBody: {
-    marginTop: 5,
-    fontSize: 12,
+    fontSize: 12.5,
     color: '#64748B',
     lineHeight: 18,
+    marginTop: 4,
   },
   itemFooterRow: {
-    marginTop: 9,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    marginTop: 8,
   },
   itemTime: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#94A3B8',
   },
   ticketLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
   },
   ticketLinkText: {
-    fontSize: 11,
-    color: '#C2410C',
+    fontSize: 11.5,
     fontWeight: '600',
+    color: '#C2410C',
+  },
+  itemSeparator: {
+    height: 8,
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 40,
+    justifyContent: 'center',
+    paddingVertical: 50,
+    paddingHorizontal: 30,
   },
   emptyIconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 12,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
   emptyTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#1E293B',
+    color: '#334155',
     marginBottom: 6,
-    textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: 12,
+    fontSize: 12.5,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 18,
@@ -607,4 +740,3 @@ const styles = StyleSheet.create({
 });
 
 export default NotificationScreen;
-export { NotificationScreen };

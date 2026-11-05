@@ -230,7 +230,7 @@
 //     try {
 //       const perm = await ImagePicker.requestCameraPermissionsAsync();
 //       if (!perm.granted) {
-//         Alert.alert('Quyền truy cập', 'Cần cấp quyền Camera để chụp ảnh bằng chứng.');
+//         Alert.alert('Yêu cầu quyền Camera', 'CityFix cần quyền sử dụng máy ảnh để chụp ảnh hiện trường xử lý sự cố.');
 //         return;
 //       }
 
@@ -253,7 +253,7 @@
 //     try {
 //       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 //       if (!perm.granted) {
-//         Alert.alert('Quyền truy cập', 'Cần cấp quyền Thư viện ảnh để chọn ảnh bằng chứng.');
+//         Alert.alert('Yêu cầu quyền Thư viện ảnh', 'CityFix cần quyền truy cập thư viện để chọn ảnh hiện trường sự cố.');
 //         return;
 //       }
 
@@ -277,11 +277,11 @@
 
 //   const handleSubmit = async () => {
 //     if (!selectedStepId) {
-//       Alert.alert('Thiếu thông tin', 'Vui lòng chọn bước quy trình cần nộp bằng chứng.');
+//       Alert.alert('Chưa chọn bước xử lý', 'Vui lòng chọn bước công việc tương ứng để đính kèm ảnh minh chứng.');
 //       return;
 //     }
 //     if (photos.length === 0) {
-//       Alert.alert('Thiếu hình ảnh', 'Vui lòng chụp ít nhất 1 ảnh bằng chứng hiện trường.');
+//       Alert.alert('Chưa có ảnh chụp', 'Vui lòng chụp hoặc tải lên ít nhất 1 ảnh hiện trường trước khi hoàn tất.');
 //       return;
 //     }
 
@@ -1380,7 +1380,7 @@ export default function EvidenceStampModal({
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Quyền truy cập', 'Cần cấp quyền Camera để chụp ảnh bằng chứng.');
+        Alert.alert('Yêu cầu quyền Camera', 'CityFix cần quyền sử dụng máy ảnh để chụp ảnh hiện trường xử lý sự cố.');
         return;
       }
 
@@ -1403,7 +1403,7 @@ export default function EvidenceStampModal({
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Quyền truy cập', 'Cần cấp quyền Thư viện ảnh để chọn ảnh bằng chứng.');
+        Alert.alert('Yêu cầu quyền Thư viện ảnh', 'CityFix cần quyền truy cập thư viện để chọn ảnh hiện trường sự cố.');
         return;
       }
 
@@ -1427,11 +1427,11 @@ export default function EvidenceStampModal({
 
   const handleSubmit = async () => {
     if (!selectedStepId) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn bước quy trình cần nộp bằng chứng.');
+      Alert.alert('Chưa chọn bước xử lý', 'Vui lòng chọn bước công việc tương ứng để đính kèm ảnh minh chứng.');
       return;
     }
     if (photos.length === 0) {
-      Alert.alert('Thiếu hình ảnh', 'Vui lòng chụp ít nhất 1 ảnh bằng chứng hiện trường.');
+      Alert.alert('Chưa có ảnh chụp', 'Vui lòng chụp hoặc tải lên ít nhất 1 ảnh hiện trường trước khi hoàn tất.');
       return;
     }
 
@@ -1444,17 +1444,11 @@ export default function EvidenceStampModal({
         resolutionNote.trim() || undefined
       );
 
-      Alert.alert(
-        'Thành công',
-        'Đã tải ảnh bằng chứng (kèm dấu thời gian & địa chỉ) lên hệ thống thành công!'
-      );
+      Alert.alert('Cập nhật thành công', 'Đã lưu và đính kèm ảnh minh chứng (kèm dấu thời gian & tọa độ GPS) vào hồ sơ thành công!');
       onSuccess(selectedStepId, uploaded);
       onClose();
     } catch (err: any) {
-      Alert.alert(
-        'Không thể tải bằng chứng',
-        err?.message || 'Đã xảy ra lỗi khi gửi bằng chứng.'
-      );
+      Alert.alert('Không thể tải ảnh minh chứng', err?.message || 'Đã xảy ra lỗi khi tải ảnh lên máy chủ. Vui lòng thử lại sau.');
     } finally {
       setSubmitting(false);
     }

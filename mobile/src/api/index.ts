@@ -26,16 +26,25 @@ export interface LoginResult {
   role?: string;
 }
 
+export interface UpdateProfilePayload {
+  fullName: string;
+  phoneNumber: string;
+  address?: string;
+  province?: string;
+  ward?: string;
+}
+
 export interface UserProfile {
   userId?: string;
   email?: string;
-  roleName?: string;
-  departmentId?: string;
   fullName: string;
   phoneNumber: string;
   address: string;
   province: string;
   ward: string;
+  roleName?: string;
+  departmentId?: string;
+  status?: string;
 }
 
 export function decodeJwt(token: string): Record<string, any> | null {
@@ -78,6 +87,9 @@ export interface RegisterPayload {
   phoneNumber: string;
   province: string;
   ward: string;
+  roleName?: string;
+  departmentId?: string;
+  status?: string;
   address: string;
 }
 
@@ -146,7 +158,14 @@ export async function login(
    USER PROFILE
    ========================================================= */
 
-export async function getProfile(accessToken: string): Promise<UserProfile> {
+export async function getProfile(accessToken?: string | null): Promise<UserProfile> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
   let response: Response;
 
   try {
@@ -154,7 +173,7 @@ export async function getProfile(accessToken: string): Promise<UserProfile> {
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
     });
   } catch {
@@ -167,6 +186,54 @@ export async function getProfile(accessToken: string): Promise<UserProfile> {
 
   const message =
     payload?.message || 'Không thể lấy thông tin profile người dùng.';
+
+  if (!response.ok || !payload?.success || !payload.data) {
+    throw new ApiError(message, response.status);
+  }
+
+  return payload.data;
+}
+
+/* =========================================================
+/* =========================================================
+   UPDATE USER PROFILE
+   PUT /api/v1/profile
+   ========================================================= */
+
+export async function updateProfile(
+  data: UpdateProfilePayload,
+  accessToken?: string | null
+): Promise<UserProfile> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+  } catch {
+    throw new ApiError('Không thể kết nối đến máy chủ. Vui lòng thử lại.');
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | ApiResponse<UserProfile>
+    | null;
+
+  const message =
+    payload?.message || `Cập nhật thông tin thất bại (${response.status})`;
 
   if (!response.ok || !payload?.success || !payload.data) {
     throw new ApiError(message, response.status);
@@ -275,7 +342,7 @@ interface UploadImageResponse {
 
 // export async function uploadReportImage(
 //   uri: string,
-//   accessToken: string
+//   accessToken?: string | null
 // ): Promise<string> {
 //   const formData = new FormData();
 
@@ -297,7 +364,7 @@ interface UploadImageResponse {
 //         method: 'POST',
 //         headers: {
 //           Accept: 'application/json',
-//           Authorization: `Bearer ${accessToken}`,
+//           Authorization: `Bearer ${token}`,
 //         },
 //         body: formData,
 //       }
@@ -339,10 +406,15 @@ interface UploadImageResponse {
 
 export async function uploadReportImage(
   uri: string,
-  accessToken: string
+  accessToken?: string | null
 ): Promise<string> {
   const url =
     `${API_BASE_URL}/api/v1/tickets/upload-image?folder=cityfix%2Freports`;
+
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
 
   console.log('==============================');
   console.log('📤 START UPLOAD');
@@ -368,7 +440,7 @@ export async function uploadReportImage(
       method: 'POST',
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: formData,
     });
@@ -459,9 +531,14 @@ export interface AIAnalysisResponse {
 
 export async function analyzeReportImage(
   imageUrl: string,
-  accessToken: string
+  accessToken?: string | null
 ): Promise<AIAnalysisResponse> {
   const url = `${API_BASE_URL}/api/v1/tickets/analyze`;
+
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
 
   console.log('==============================');
   console.log('🤖 START ANALYZE API');
@@ -478,7 +555,7 @@ export async function analyzeReportImage(
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         mediaUrl: imageUrl,
@@ -584,8 +661,13 @@ export interface DuplicateTicketItem {
 
 export async function createTicket(
   data: CreateTicketRequest,
-  accessToken: string
+  accessToken?: string | null
 ) {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
   const payloadBody = {
     description: data.description,
     imageUrl: data.imageUrl,
@@ -616,7 +698,7 @@ export async function createTicket(
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payloadBody),
     }
@@ -660,7 +742,7 @@ export interface CheckDuplicatesParams {
 
 export async function checkDuplicates(
   params: CheckDuplicatesParams,
-  accessToken: string
+  accessToken?: string | null
 ): Promise<DuplicateTicketItem[]> {
   const query = new URLSearchParams();
   query.append('categoryId', params.categoryId);
@@ -714,7 +796,7 @@ export async function checkDuplicates(
 
 export async function upvoteTicket(
   ticketId: string,
-  accessToken: string
+  accessToken?: string | null
 ): Promise<void> {
   const url = `${API_BASE_URL}/api/v1/tickets/${ticketId}/upvote`;
   console.log('👍 UPVOTE TICKET URL:', url);
@@ -740,7 +822,7 @@ export async function upvoteTicket(
   if (!response.ok || (payload && payload.success === false)) {
     throw new ApiError(
       payload?.message ||
-      `Upvote thất bại (${response.status})`,
+      `Đồng tình thất bại (${response.status})`,
       response.status
     );
   }
@@ -880,7 +962,7 @@ export async function getMyReportedTickets(
 /* =========================================================
    CANCEL TICKET
    PUT /api/v1/tickets/{id}/cancel
-   Người dân hủy vé do chính mình tạo (khi ở trạng thái INITIATED)
+   Người dân hủy hồ sơ báo cáo do chính mình tạo (khi ở trạng thái INITIATED)
    ========================================================= */
 
 export async function cancelTicket(
@@ -925,7 +1007,7 @@ export async function cancelTicket(
 
   if (!response.ok || !payload?.success) {
     throw new ApiError(
-      payload?.message || `Hủy vé thất bại (${response.status})`,
+      payload?.message || `Hủy hồ sơ báo cáo thất bại (${response.status})`,
       response.status
     );
   }
@@ -978,7 +1060,7 @@ export async function getTicketById(
     console.warn('Lỗi gọi GET /api/v1/tickets/{id}:', err);
   }
 
-  // Fallback: Tìm trong danh sách vé đã báo cáo của người dùng
+  // Fallback: Tìm trong danh sách hồ sơ báo cáo của người dùng
   try {
     const page = await getMyReportedTickets(token, 0, 50);
     const found = page.content?.find(
@@ -986,7 +1068,7 @@ export async function getTicketById(
     );
     if (found) return found;
   } catch (e) {
-    console.warn('Fallback tìm vé trong my-reports thất bại:', e);
+    console.warn('Fallback tìm hồ sơ báo cáo trong my-reports thất bại:', e);
   }
 
   throw new ApiError('Không tìm thấy thông tin sự cố.', 404);
@@ -1263,7 +1345,7 @@ export async function getMyUpvotedTickets(
   if (!response.ok || !payload?.success) {
     const defaultMsg = response.status >= 500
       ? 'Máy chủ backend đang gặp sự cố tạm thời (500). Vui lòng thử lại sau.'
-      : `Không thể tải danh sách vé đã upvote (${response.status})`;
+      : `Không thể tải danh sách hồ sơ báo cáo đã đồng tình (${response.status})`;
     throw new ApiError(
       payload?.message && payload?.message !== 'An unexpected error occurred'
         ? payload.message
@@ -1305,7 +1387,7 @@ export interface UpdateRatingRequest {
   isAnonymous?: boolean;
 }
 
-// 1. Tạo đánh giá cho vé
+// 1. Tạo đánh giá cho hồ sơ báo cáo
 // POST /api/v1/user/tickets/{ticketId}/ratings
 export async function createRating(
   ticketId: string,
@@ -1343,7 +1425,7 @@ export async function createRating(
 
   if (!response.ok || !payload?.success) {
     throw new ApiError(
-      payload?.message || `Đánh giá vé thất bại (${response.status})`,
+      payload?.message || `Đánh giá hồ sơ báo cáo thất bại (${response.status})`,
       response.status
     );
   }
@@ -1398,7 +1480,7 @@ export async function updateRating(
   return payload.data;
 }
 
-// 3. Lấy đánh giá của người dùng hiện tại trên một vé
+// 3. Lấy đánh giá của người dùng hiện tại trên một hồ sơ báo cáo
 // GET /api/v1/user/tickets/{ticketId}/ratings/my-rating
 export async function getMyRating(
   ticketId: string,
@@ -1442,7 +1524,7 @@ export async function getMyRating(
   return payload.data || null;
 }
 
-// 4. Lấy danh sách đánh giá của một vé
+// 4. Lấy danh sách đánh giá của một hồ sơ báo cáo
 // GET /api/v1/user/tickets/{ticketId}/ratings
 export async function getTicketRatings(
   ticketId: string,
@@ -1485,50 +1567,6 @@ export async function getTicketRatings(
   if (!response.ok || !payload?.success) {
     throw new ApiError(
       payload?.message || `Không thể tải danh sách đánh giá (${response.status})`,
-      response.status
-    );
-  }
-
-  return payload.data;
-}
-
-// 5. Xóa mềm đánh giá
-// DELETE /api/v1/user/tickets/{ticketId}/ratings/{ratingId}
-export async function deleteRating(
-  ticketId: string,
-  ratingId: string,
-  accessToken?: string | null
-): Promise<string> {
-  let token = accessToken;
-  if (!token) {
-    token = await AsyncStorage.getItem('accessToken');
-  }
-  if (!token) {
-    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
-  }
-
-  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/${ratingId}`;
-  console.log('⭐ DELETE RATING URL:', url);
-
-  const response = await fetch(url, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const text = await response.text();
-  console.log('⭐ DELETE RATING STATUS:', response.status);
-
-  let payload: any = null;
-  try {
-    payload = JSON.parse(text);
-  } catch {}
-
-  if (!response.ok || !payload?.success) {
-    throw new ApiError(
-      payload?.message || `Không thể xóa đánh giá (${response.status})`,
       response.status
     );
   }
@@ -1952,4 +1990,48 @@ export async function createStaffRequest(
   }
 
   return payload?.data || payload;
+}
+
+// 5. Xóa mềm đánh giá
+// DELETE /api/v1/user/tickets/{ticketId}/ratings/{ratingId}
+export async function deleteRating(
+  ticketId: string,
+  ratingId: string,
+  accessToken?: string | null
+): Promise<string> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/${ratingId}`;
+  console.log('⭐ DELETE RATING URL:', url);
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('⭐ DELETE RATING STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể xóa đánh giá (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
 }

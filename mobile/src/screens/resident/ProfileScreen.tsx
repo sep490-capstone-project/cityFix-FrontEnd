@@ -9,10 +9,19 @@ import {
   StatusBar,
   Modal,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
-import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../../api';
+import {
+  getMyReportedTickets,
+  ReportedTicket,
+  mapBackendStatus,
+  updateProfile,
+  getProfile,
+  ApiError,
+} from '../../api';
 
 interface Props {
   navigate: (screen: string) => void;
@@ -22,32 +31,6 @@ interface Props {
   openTicket?: (id: string, ticketObj?: ReportedTicket) => void;
 }
 
-const MY_TICKETS = [
-  {
-    id: 'CF-2910',
-    category: 'Đèn đường chiếu sáng không hoạt động',
-    address: '128 Nguyễn Trãi, Phường 3, Quận 5',
-    status: 'ĐANG XỬ LÝ',
-    statusKey: 'processing',
-    time: '20 phút trước',
-  },
-  {
-    id: 'CF-2898',
-    category: 'Nắp cống bị bể gây nguy hiểm',
-    address: '45 Trần Hưng Đạo, Phường Phạm Ngũ Lão, Q.1',
-    status: 'ĐÃ TIẾP NHẬN',
-    statusKey: 'received',
-    time: '2 giờ trước',
-  },
-  {
-    id: 'CF-2750',
-    category: 'Cây xanh che khuất biển báo giao thông',
-    address: 'Hẻm 210 Lê Văn Sỹ, Phường 10, Q.3',
-    status: 'HOÀN THÀNH',
-    statusKey: 'done',
-    time: '3 ngày trước',
-  },
-];
 
 export default function ProfileScreen({
   navigate,
@@ -58,7 +41,9 @@ export default function ProfileScreen({
 }: Props) {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editFullName, setEditFullName] = useState(authUser?.fullName ?? '');
+  const [editPhone, setEditPhone] = useState(authUser?.phone ?? '');
   const [editEmail, setEditEmail] = useState(authUser?.email ?? '');
   const [editWard, setEditWard] = useState(authUser?.ward ?? '');
   const [editAddress, setEditAddress] = useState(authUser?.address ?? '');
@@ -68,6 +53,21 @@ export default function ProfileScreen({
   const [totalReportsCount, setTotalReportsCount] = useState<number>(0);
 
   useEffect(() => {
+    getProfile()
+      .then((profile) => {
+        if (profile && authUser) {
+          onUpdateUser({
+            ...authUser,
+            fullName: profile.fullName || authUser.fullName,
+            phone: profile.phoneNumber || authUser.phone,
+            address: profile.address ?? authUser.address,
+            province: profile.province ?? authUser.province,
+            ward: profile.ward ?? authUser.ward,
+          });
+        }
+      })
+      .catch((e) => console.log('Profile fetch note:', e?.message));
+
     getMyReportedTickets(null, 0, 10)
       .then((res) => {
         if (res && Array.isArray(res.content)) {
@@ -85,13 +85,13 @@ export default function ProfileScreen({
     .join('')
     .toUpperCase();
 
-  const totalTickets = realTickets.length > 0 ? totalReportsCount : MY_TICKETS.length;
-  const processingCount = realTickets.length > 0
-    ? realTickets.filter((t) => mapBackendStatus(t.status).statusKey === 'processing').length
-    : MY_TICKETS.filter((t) => t.statusKey === 'processing').length;
-  const doneCount = realTickets.length > 0
-    ? realTickets.filter((t) => mapBackendStatus(t.status).statusKey === 'done').length
-    : MY_TICKETS.filter((t) => t.statusKey === 'done').length;
+  const totalTickets = totalReportsCount || realTickets.length;
+  const processingCount = realTickets.filter(
+    (t) => mapBackendStatus(t.status).statusKey === 'processing'
+  ).length;
+  const doneCount = realTickets.filter(
+    (t) => mapBackendStatus(t.status).statusKey === 'done'
+  ).length;
 
   const stats = [
     { value: String(totalTickets), label: 'Báo cáo đã gửi' },
@@ -100,6 +100,7 @@ export default function ProfileScreen({
   ];
 
   function startEdit() {
+    setEditPhone(authUser?.phone ?? '');
     setEditFullName(authUser?.fullName ?? '');
     setEditEmail(authUser?.email ?? '');
     setEditWard(authUser?.ward ?? '');
@@ -109,20 +110,62 @@ export default function ProfileScreen({
     setSaveSuccess(false);
   }
 
-  function saveEdit() {
-    if (!authUser) return;
-    onUpdateUser({
-      ...authUser,
-      fullName: editFullName.trim(),
-      email: editEmail.trim(),
-      ward: editWard.trim(),
-      address: editAddress.trim(),
-      province: editProvince.trim(),
-    });
-    setEditMode(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+  async function saveEdit() {
+    if (!authUser || saving) return;
+
+    const trimmedFullName = editFullName.trim();
+    if (!trimmedFullName) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập họ và tên.');
+      return;
+  
+    }
+
+    const cleanPhone = (editPhone || authUser.phone || '').replace(/[\s-]/g, '');
+    const phoneRegex = /^\d{10,11}$/;
+    if (!phoneRegex.test(cleanPhone)) {
+      Alert.alert(
+        'Số điện thoại không hợp lệ',
+        'Vui lòng nhập số điện thoại gồm 10 đến 11 chữ số.'
+      );
+      return;
+    }
+
+
+    setSaving(true);
+    try {
+      const updatedProfile = await updateProfile({
+        fullName: trimmedFullName,
+        phoneNumber: cleanPhone,
+        address: editAddress.trim(),
+        province: editProvince.trim(),
+        ward: editWard.trim(),
+      });
+
+      const updatedUser: AuthUser = {
+        ...authUser,
+        fullName: updatedProfile.fullName || trimmedFullName,
+        phone: updatedProfile.phoneNumber || cleanPhone,
+        address: updatedProfile.address ?? editAddress.trim(),
+        province: updatedProfile.province ?? editProvince.trim(),
+        ward: updatedProfile.ward ?? editWard.trim(),
+      };
+
+      onUpdateUser(updatedUser);
+      setEditMode(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err?.message || 'Không thể cập nhật thông tin. Vui lòng thử lại.';
+      Alert.alert('Cập nhật thất bại', msg);
+    } finally {
+      setSaving(false);
+    }
   }
+
+
 
   return (
     <View style={styles.container}>
@@ -173,12 +216,21 @@ export default function ProfileScreen({
                 <View style={styles.editActionRow}>
                   <TouchableOpacity
                     onPress={() => setEditMode(false)}
+                    disabled={saving}
                     style={styles.cancelBtn}
                   >
                     <Text style={styles.cancelBtnText}>Hủy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={saveEdit} style={styles.saveBtn}>
-                    <Text style={styles.saveBtnText}>Lưu</Text>
+                  <TouchableOpacity
+                    onPress={saveEdit}
+                    style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.saveBtnText}>Lưu</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               )}
@@ -194,7 +246,7 @@ export default function ProfileScreen({
             <View style={styles.infoList}>
               {/* Full Name */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Họ tên</Text>
+                <Text style={styles.infoLabel}>Họ và tên</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
@@ -206,35 +258,35 @@ export default function ProfileScreen({
                 )}
               </View>
 
-              {/* Phone */}
+              {/* Email (Read-only) */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>SĐT</Text>
+                <Text style={styles.infoLabel}>Email</Text>
                 {editMode ? (
                   <View style={styles.disabledInputWrapper}>
-                    <Text style={styles.disabledInputText}>{authUser?.phone || '—'}</Text>
+                    <Text style={styles.disabledInputText}>{authUser?.email || '—'}</Text>
                     <View style={styles.readOnlyBadge}>
                       <Text style={styles.readOnlyBadgeText}>Cố định</Text>
                     </View>
                   </View>
                 ) : (
-                  <Text style={styles.infoValue}>{authUser?.phone || '—'}</Text>
+                  <Text style={styles.infoValue}>{authUser?.email || '—'}</Text>
                 )}
               </View>
 
-              {/* Email */}
+              {/* Phone (Editable) */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Email</Text>
+                <Text style={styles.infoLabel}>SĐT</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
-                    value={editEmail}
-                    onChangeText={setEditEmail}
-                    keyboardType="email-address"
-                    placeholder="email@example.com"
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    keyboardType="phone-pad"
+                    placeholder="0912345678"
                   />
                 ) : (
                   <Text style={styles.infoValue}>
-                    {authUser?.email || 'Chưa cập nhật'}
+                    {authUser?.phone || '—'}
                   </Text>
                 )}
               </View>
@@ -289,7 +341,7 @@ export default function ProfileScreen({
           {/* My Recent Tickets */}
           <View style={{ marginTop: 16 }}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeaderTitle}>VÉ CỦA TÔI</Text>
+              <Text style={styles.sectionHeaderTitle}>HỒ SƠ BÁO CÁO CỦA TÔI</Text>
               <TouchableOpacity
                 onPress={() => navigate('my-reports')}
                 style={styles.seeAllBtn}
@@ -334,47 +386,20 @@ export default function ProfileScreen({
                   );
                 })
               ) : (
-                MY_TICKETS.map((t) => (
+                <View style={styles.emptyReportsCard}>
+                  <Ionicons name="document-text-outline" size={32} color="#94a3b8" />
+                  <Text style={styles.emptyReportsTitle}>Chưa có hồ sơ báo cáo nào</Text>
+                  <Text style={styles.emptyReportsSub}>
+                    Các phản ánh sự cố đô thị bạn đã gửi sẽ xuất hiện tại đây.
+                  </Text>
                   <TouchableOpacity
-                    key={t.id}
-                    style={styles.ticketCard}
-                    onPress={() => openTicket?.(t.id)}
-                    activeOpacity={0.75}
+                    style={styles.emptyCreateBtn}
+                    onPress={() => navigate('location')}
+                    activeOpacity={0.8}
                   >
-                    <View style={styles.ticketLeft}>
-                      <Text style={styles.ticketCategory} numberOfLines={1}>
-                        {t.category}
-                      </Text>
-                      <Text style={styles.ticketTime}>{t.time}</Text>
-                    </View>
-                    <View style={styles.ticketRight}>
-                      <View
-                        style={[
-                          styles.statusChip,
-                          t.statusKey === 'processing'
-                            ? styles.statusProcessing
-                            : t.statusKey === 'done'
-                            ? styles.statusDone
-                            : styles.statusReceived,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusChipText,
-                            t.statusKey === 'processing'
-                              ? { color: '#ea580c' }
-                              : t.statusKey === 'done'
-                              ? { color: '#16a34a' }
-                              : { color: '#64748b' },
-                          ]}
-                        >
-                          {t.status}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-                    </View>
+                    <Text style={styles.emptyCreateBtnText}>+ Tạo báo cáo mới</Text>
                   </TouchableOpacity>
-                ))
+                </View>
               )}
             </View>
           </View>
@@ -418,7 +443,7 @@ export default function ProfileScreen({
         {[
           { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
           { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
-          { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+          { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
         ].map((tab) => {
           const active = tab.id === 'profile';
           return (
@@ -456,10 +481,10 @@ export default function ProfileScreen({
                 <Ionicons name="log-out-outline" size={22} color="#dc2626" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Đăng xuất?</Text>
+                <Text style={styles.modalTitle}>Xác nhận đăng xuất</Text>
                 <Text style={styles.modalSubText}>
-                  Phiên làm việc và token sẽ bị xóa khỏi thiết bị. Bạn cần đăng nhập
-                  lại để tiếp tục.
+                  Bạn có chắc chắn muốn đăng xuất khỏi tài khoản CityFix? Bạn sẽ cần
+                  đăng nhập lại để tiếp tục gửi và theo dõi báo cáo phản ánh.
                 </Text>
               </View>
             </View>
@@ -469,7 +494,7 @@ export default function ProfileScreen({
                 style={styles.stayBtn}
                 onPress={() => setShowLogoutDialog(false)}
               >
-                <Text style={styles.stayBtnText}>Ở LẠI</Text>
+                <Text style={styles.stayBtnText}>Ở lại</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.confirmLogoutBtn}
@@ -478,7 +503,7 @@ export default function ProfileScreen({
                   onLogout();
                 }}
               >
-                <Text style={styles.confirmLogoutBtnText}>XÁC NHẬN ĐĂNG XUẤT</Text>
+                <Text style={styles.confirmLogoutBtnText}>Đăng xuất</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -757,6 +782,41 @@ const styles = StyleSheet.create({
   },
 
   /* Ticket Card */
+  emptyReportsCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderStyle: 'dashed',
+    gap: 6,
+  },
+  emptyReportsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  emptyReportsSub: {
+    fontSize: 11,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyCreateBtn: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  emptyCreateBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
   ticketCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
