@@ -14,9 +14,13 @@ import {
   TextInput,
   Switch,
   Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
+import { Haptics } from '../../utils/haptics';
 import {
   getMyReportedTickets,
   getMyUpvotedTickets,
@@ -35,6 +39,63 @@ const RATING_LABELS: Record<number, { text: string; color: string }> = {
   4: { text: 'Hài lòng', color: '#84cc16' },
   5: { text: 'Rất hài lòng!', color: '#16a34a' },
 };
+
+const RATING_THEMES: Record<
+  number,
+  { label: string; subLabel: string; color: string; bgColor: string; borderColor: string }
+> = {
+  1: {
+    label: 'Rất tệ',
+    subLabel: 'Chưa hài lòng - Cần khắc phục',
+    color: '#dc2626',
+    bgColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  2: {
+    label: 'Chưa đạt',
+    subLabel: 'Chưa hài lòng - Cần cải thiện',
+    color: '#ea580c',
+    bgColor: '#fff7ed',
+    borderColor: '#fed7aa',
+  },
+  3: {
+    label: 'Bình thường',
+    subLabel: 'Bình thường - Đạt yêu cầu',
+    color: '#ca8a04',
+    bgColor: '#fefce8',
+    borderColor: '#fef08a',
+  },
+  4: {
+    label: 'Hài lòng',
+    subLabel: 'Hài lòng - Xử lý tốt',
+    color: '#16a34a',
+    bgColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  5: {
+    label: 'Rất hài lòng!',
+    subLabel: 'Rất hài lòng - Xuất sắc!',
+    color: '#16a34a',
+    bgColor: '#f0fdf4',
+    borderColor: '#86efac',
+  },
+};
+
+const POSITIVE_FEEDBACK_TAGS = [
+  'Xử lý rất nhanh',
+  'Hiện trường sạch sẽ',
+  'Nhân viên nhiệt tình',
+  'Đúng thời hạn',
+  'Chất lượng sửa chữa tốt',
+];
+
+const CONSTRUCTIVE_FEEDBACK_TAGS = [
+  'Tiến độ còn chậm',
+  'Chưa dọn sạch hiện trường',
+  'Cần sửa chữa kỹ hơn',
+  'Thái độ chưa tốt',
+  'Chưa đúng thời hạn',
+];
 
 interface Props {
   navigate: (screen: string) => void;
@@ -78,6 +139,28 @@ function getCategoryIcon(catName?: string): any {
   return 'alert-circle-outline';
 }
 
+
+function ReportCardSkeleton() {
+  return (
+    <View style={styles.skeletonContainer}>
+      {[1, 2, 3].map((key) => (
+        <View key={key} style={styles.skeletonCard}>
+          <View style={styles.skeletonAccent} />
+          <View style={styles.skeletonThumb} />
+          <View style={styles.skeletonBody}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonAddress} />
+            <View style={styles.skeletonFooterRow}>
+              <View style={styles.skeletonBadge} />
+              <View style={styles.skeletonDate} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function MyReportsScreen({ navigate, authUser, openTicket }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('my_reports');
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -111,9 +194,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         setTickets(res.content);
 
         // Kiểm tra những hồ sơ báo cáo đã hoàn thành xem hồ sơ báo cáo nào đã được đánh giá để ẩn khung ngôi sao
-        const resolvedTickets = res.content.filter(
-          (t) => mapBackendStatus(t.status).statusKey === 'done'
-        );
+        const resolvedTickets = res.content.filter((t) => mapBackendStatus(t.status).statusKey === 'done').slice(0, 5);
         if (resolvedTickets.length > 0) {
           Promise.allSettled(
             resolvedTickets.map((t) =>
@@ -154,6 +235,29 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  const handleToggleTag = (tag: string) => {
+    const current = ratingFeedback.trim();
+    if (!current) {
+      setRatingFeedback(tag);
+      return;
+    }
+    const parts = current.split(/[,;]\s*/).map((p) => p.trim()).filter(Boolean);
+    const index = parts.findIndex((p) => p.toLowerCase() === tag.toLowerCase());
+    if (index >= 0) {
+      parts.splice(index, 1);
+      setRatingFeedback(parts.join(', '));
+    } else {
+      parts.push(tag);
+      setRatingFeedback(parts.join(', '));
+    }
+  };
+
+  const isTagSelected = (tag: string) => {
+    if (!ratingFeedback) return false;
+    const parts = ratingFeedback.split(/[,;]\s*/).map((p) => p.trim().toLowerCase());
+    return parts.includes(tag.toLowerCase());
+  };
 
   const handleOpenRating = async (ticket: ReportedTicket) => {
     setSelectedTicketForRating(ticket);
@@ -200,7 +304,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
       setRatedTicketIds((prev) => new Set([...prev, selectedTicketForRating.id]));
       setRatingModalVisible(false);
     } catch (err: any) {
-      Alert.alert('Không thể gửi đánh giá', err?.message || 'Có lỗi xảy ra.');
+      Alert.alert('Không thể gửi đánh giá', err?.message || 'Đã có lỗi xảy ra trong quá trình gửi đánh giá. Vui lòng thử lại sau.');
     } finally {
       setSubmittingRating(false);
     }
@@ -233,12 +337,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
           </Text>
         </View>
         <Text style={styles.headerSub}>
-<<<<<<< HEAD:mobile/src/screens/MyReportsScreen.tsx
           {authUser?.fullName ?? 'Người dân'} · {tickets.length} {activeTab === 'my_reports' ? 'hồ sơ báo cáo' : 'hồ sơ đã đồng tình'}
-=======
-          {authUser?.fullName ?? 'Người dân'} · {tickets.length}{' '}
-          {activeTab === 'my_reports' ? 'vé báo cáo' : 'vé đã upvote'}
->>>>>>> origin/main:mobile/src/screens/resident/MyReportsScreen.tsx
         </Text>
 
         {/* Tab switch */}
@@ -335,18 +434,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
       >
         <View style={styles.contentPadding}>
           {loading && !refreshing ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#ea580c" />
-              <Text style={styles.loadingText}>
-<<<<<<< HEAD:mobile/src/screens/MyReportsScreen.tsx
-                {activeTab === 'my_reports' ? 'Đang tải danh sách hồ sơ báo cáo...' : 'Đang tải danh sách hồ sơ báo cáo đã đồng tình...'}
-=======
-                {activeTab === 'my_reports'
-                  ? 'Đang tải danh sách báo cáo...'
-                  : 'Đang tải danh sách vé đã upvote...'}
->>>>>>> origin/main:mobile/src/screens/resident/MyReportsScreen.tsx
-              </Text>
-            </View>
+            <ReportCardSkeleton />
           ) : null}
 
           {error && !loading ? (
@@ -394,17 +482,10 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
               </View>
               <Text style={styles.emptyText}>
                 {filter === 'all'
-<<<<<<< HEAD:mobile/src/screens/MyReportsScreen.tsx
                   ? (activeTab === 'my_reports'
                       ? 'Bạn chưa gửi báo cáo sự cố nào'
                       : 'Bạn chưa đồng tình sự cố nào')
                   : 'Không tìm thấy hồ sơ báo cáo ở trạng thái này'}
-=======
-                  ? activeTab === 'my_reports'
-                    ? 'Bạn chưa gửi báo cáo sự cố nào'
-                    : 'Bạn chưa upvote sự cố nào'
-                  : 'Không tìm thấy vé ở trạng thái này'}
->>>>>>> origin/main:mobile/src/screens/resident/MyReportsScreen.tsx
               </Text>
               {filter === 'all' ? (
                 <TouchableOpacity
@@ -496,7 +577,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
                       }}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="star" size={12} color="#ea580c" />
+                      <Ionicons name="star" size={13} color="#f59e0b" />
                       <Text style={styles.rateHighlightBadgeText}>Đánh giá ngay</Text>
                     </TouchableOpacity>
                   ) : null}
@@ -528,8 +609,8 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
         <View style={styles.bottomTabBar}>
           {[
             { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
-            { id: 'my-reports', label: 'Hồ sơ báo cáo', icon: 'document-text-outline' },
-            { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+            { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
+            { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
           ].map((tab) => {
             const active = tab.id === 'my-reports';
             return (
@@ -557,129 +638,335 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
       <Modal
         visible={ratingModalVisible}
         transparent
-        animationType="fade"
-        onRequestClose={() => setRatingModalVisible(false)}
+        animationType="slide"
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setRatingModalVisible(false);
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleRow}>
-                <View style={styles.modalStarIconBox}>
-                  <Ionicons name="star" size={20} color="#f59e0b" />
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.keyboardAvoidContainer}
+            >
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                <View style={styles.modalBox}>
+                  <View style={styles.sheetDragHandle} />
+                  <View style={styles.modalHeader}>
+                    <View style={styles.modalTitleRow}>
+                      <View style={styles.modalStarIconBox}>
+                        <Ionicons name="star" size={20} color="#f59e0b" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.modalTitle}>
+                          {editingRatingId ? 'Cập nhật đánh giá' : 'Đánh giá xử lý sự cố'}
+                        </Text>
+                        <Text style={styles.modalSubtitle} numberOfLines={1}>
+                          {selectedTicketForRating?.categoryName ||
+                            selectedTicketForRating?.subCategories?.[0]?.name ||
+                            selectedTicketForRating?.description ||
+                            'Sự cố đô thị'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setRatingModalVisible(false);
+                      }}
+                      style={styles.modalCloseBtn}
+                    >
+                      <Ionicons name="close" size={20} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ paddingBottom: 10 }}
+                  >
+                    {/* Stars selection row */}
+                    <View style={styles.modalRatingRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity
+                          key={star}
+                          onPress={() => {
+                            Keyboard.dismiss();
+                            setRatingScore(star);
+                          }}
+                          style={styles.modalStarBtn}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={star <= ratingScore ? 'star' : 'star-outline'}
+                            size={38}
+                            color={star <= ratingScore ? '#f59e0b' : '#cbd5e1'}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Dynamic star emotional theme badge */}
+                    {(() => {
+                      const theme = RATING_THEMES[ratingScore] || RATING_THEMES[5];
+                      return (
+                        <View
+                          style={[
+                            styles.ratingThemeBadge,
+                            {
+                              backgroundColor: theme.bgColor,
+                              borderColor: theme.borderColor,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={
+                              ratingScore >= 4
+                                ? 'checkmark-circle'
+                                : ratingScore === 3
+                                ? 'information-circle'
+                                : 'alert-circle'
+                            }
+                            size={16}
+                            color={theme.color}
+                          />
+                          <Text style={[styles.ratingThemeText, { color: theme.color }]}>
+                            {ratingScore} sao · {theme.subLabel}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+
+                    {/* Quick 1-tap feedback chips */}
+                    <View style={styles.quickTagsContainer}>
+                      <View style={styles.quickTagsHeader}>
+                        <Ionicons name="flash-outline" size={13} color="#ea580c" />
+                        <Text style={styles.quickTagsTitle}>Gợi ý nhận xét nhanh 1-chạm:</Text>
+                      </View>
+                      <View style={styles.quickTagsWrap}>
+                        {(ratingScore >= 4 ? POSITIVE_FEEDBACK_TAGS : CONSTRUCTIVE_FEEDBACK_TAGS).map((tag) => {
+                          const selected = isTagSelected(tag);
+                          const theme = RATING_THEMES[ratingScore] || RATING_THEMES[5];
+                          return (
+                            <TouchableOpacity
+                              key={tag}
+                              onPress={() => handleToggleTag(tag)}
+                              style={[
+                                styles.quickTagChip,
+                                selected && {
+                                  backgroundColor: theme.bgColor,
+                                  borderColor: theme.color,
+                                },
+                              ]}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons
+                                name={selected ? 'checkmark' : 'add'}
+                                size={13}
+                                color={selected ? theme.color : '#64748b'}
+                              />
+                              <Text
+                                style={[
+                                  styles.quickTagText,
+                                  selected && { color: theme.color, fontWeight: '700' },
+                                ]}
+                              >
+                                {tag}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {/* Feedback TextInput with quick dismiss */}
+                    <View style={styles.modalInputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <Text style={styles.modalInputLabel}>Nhận xét của bạn (không bắt buộc)</Text>
+                        <TouchableOpacity
+                          onPress={Keyboard.dismiss}
+                          style={styles.dismissBtn}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="chevron-down" size={13} color="#ea580c" />
+                          <Text style={styles.dismissBtnText}>Ẩn phím</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <TextInput
+                        style={styles.modalTextInput}
+                        placeholder="Chia sẻ trải nghiệm về tiến độ và kết quả khắc phục sự cố..."
+                        placeholderTextColor="#94a3b8"
+                        multiline
+                        numberOfLines={3}
+                        value={ratingFeedback}
+                        onChangeText={setRatingFeedback}
+                      />
+                    </View>
+
+                    {/* Anonymous switch */}
+                    <View style={styles.modalSwitchRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.switchLabel}>Đánh giá ẩn danh</Text>
+                        <Text style={styles.switchSub}>Tên và ảnh của bạn sẽ không hiển thị công khai</Text>
+                      </View>
+                      <Switch
+                        value={isAnonymousRating}
+                        onValueChange={setIsAnonymousRating}
+                        trackColor={{ false: '#cbd5e1', true: '#fed7aa' }}
+                        thumbColor={isAnonymousRating ? '#ea580c' : '#f8fafc'}
+                      />
+                    </View>
+
+                    {/* Actions */}
+                    <View style={styles.modalActionsRow}>
+                      <TouchableOpacity
+                        style={styles.modalCancelBtn}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setRatingModalVisible(false);
+                        }}
+                        disabled={submittingRating}
+                      >
+                        <Text style={styles.modalCancelText}>HỦY</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.modalSubmitBtn}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          handleSubmitRating();
+                        }}
+                        disabled={submittingRating}
+                        activeOpacity={0.85}
+                      >
+                        {submittingRating ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
+                            <Text style={styles.modalSubmitText}>
+                              {editingRatingId ? 'CẬP NHẬT' : 'GỬI ĐÁNH GIÁ'}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalTitle}>
-                    {editingRatingId ? 'Cập nhật đánh giá' : 'Đánh giá xử lý sự cố'}
-                  </Text>
-                  <Text style={styles.modalSubtitle} numberOfLines={1}>
-                    {selectedTicketForRating?.categoryName ||
-                      selectedTicketForRating?.subCategories?.[0]?.name ||
-                      selectedTicketForRating?.description ||
-                      'Sự cố đô thị'}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={() => setRatingModalVisible(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={20} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Stars selection row */}
-            <View style={styles.modalRatingRow}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity
-                  key={star}
-                  onPress={() => setRatingScore(star)}
-                  style={styles.modalStarBtn}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={star <= ratingScore ? 'star' : 'star-outline'}
-                    size={38}
-                    color={star <= ratingScore ? '#f59e0b' : '#cbd5e1'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.ratingLabelContainer}>
-              <Text
-                style={[
-                  styles.ratingLabelText,
-                  { color: RATING_LABELS[ratingScore]?.color || '#16a34a' },
-                ]}
-              >
-                {RATING_LABELS[ratingScore]?.text}
-              </Text>
-            </View>
-
-            {/* Feedback TextInput */}
-            <View style={styles.modalInputGroup}>
-              <Text style={styles.modalInputLabel}>Nhận xét của bạn (không bắt buộc)</Text>
-              <TextInput
-                style={styles.modalTextInput}
-                placeholder="Chia sẻ trải nghiệm về tiến độ và kết quả khắc phục sự cố..."
-                placeholderTextColor="#94a3b8"
-                multiline
-                numberOfLines={3}
-                value={ratingFeedback}
-                onChangeText={setRatingFeedback}
-              />
-            </View>
-
-            {/* Anonymous switch */}
-            <View style={styles.modalSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.switchLabel}>Đánh giá ẩn danh</Text>
-                <Text style={styles.switchSub}>Tên và ảnh của bạn sẽ không hiển thị công khai</Text>
-              </View>
-              <Switch
-                value={isAnonymousRating}
-                onValueChange={setIsAnonymousRating}
-                trackColor={{ false: '#cbd5e1', true: '#fed7aa' }}
-                thumbColor={isAnonymousRating ? '#ea580c' : '#f8fafc'}
-              />
-            </View>
-
-            {/* Actions */}
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setRatingModalVisible(false)}
-                disabled={submittingRating}
-              >
-                <Text style={styles.modalCancelText}>HỦY</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalSubmitBtn}
-                onPress={handleSubmitRating}
-                disabled={submittingRating}
-                activeOpacity={0.85}
-              >
-                {submittingRating ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
-                    <Text style={styles.modalSubmitText}>
-                      {editingRatingId ? 'CẬP NHẬT' : 'GỬI ĐÁNH GIÁ'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidContainer: {
+    width: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dismissBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  dismissBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+
+  /* Bottom Sheet UX */
+  sheetDragHandle: {
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  skeletonContainer: {
+    gap: 12,
+    paddingTop: 4,
+  },
+  skeletonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    gap: 12,
+  },
+  skeletonAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: '#E2E8F0',
+  },
+  skeletonThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    marginLeft: 4,
+  },
+  skeletonBody: {
+    flex: 1,
+    gap: 8,
+  },
+  skeletonTitle: {
+    width: '70%',
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+  },
+  skeletonAddress: {
+    width: '90%',
+    height: 11,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  skeletonBadge: {
+    width: 65,
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonDate: {
+    width: 75,
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
@@ -755,18 +1042,23 @@ const styles = StyleSheet.create({
   rateHighlightBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
     backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    borderWidth: 1.2,
+    borderColor: '#fdba74',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+    shadowColor: '#ea580c',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
   },
   rateHighlightBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#c2410c',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ea580c',
   },
 
   /* Filter Bar */
@@ -1149,21 +1441,25 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    padding: 20,
   },
   modalBox: {
     backgroundColor: '#ffffff',
-    borderRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     width: '100%',
-    maxWidth: 420,
-    padding: 22,
+    maxWidth: 500,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 38 : 26,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
+    shadowRadius: 16,
+    elevation: 12,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1211,6 +1507,56 @@ const styles = StyleSheet.create({
   },
   modalStarBtn: {
     padding: 4,
+  },
+  ratingThemeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  ratingThemeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  quickTagsContainer: {
+    marginBottom: 14,
+  },
+  quickTagsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  quickTagsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  quickTagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  quickTagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  quickTagText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500',
   },
   ratingLabelContainer: {
     alignItems: 'center',

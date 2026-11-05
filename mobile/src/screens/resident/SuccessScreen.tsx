@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
   StatusBar,
   Image,
   Alert,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { mapBackendStatus } from '../../api';
 import { ReportDraft, CATEGORIES } from '../../types';
+import { Haptics } from '../../utils/haptics';
 
 interface Props {
   ticket?: any | null;
@@ -29,6 +31,25 @@ export default function SuccessScreen({
   isUpvote = false,
   onViewDetail,
 }: Props) {
+  // Animated celebration pop-in
+  const iconScale = useRef(new Animated.Value(0.2)).current;
+  const iconOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(iconScale, {
+        toValue: 1,
+        friction: 5,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(iconOpacity, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
   const [countdown, setCountdown] = useState(12);
   const [isPaused, setIsPaused] = useState(false);
   const [subscribed, setSubscribed] = useState(true);
@@ -190,10 +211,14 @@ export default function SuccessScreen({
         <View style={styles.contentPadding}>
           {/* Hero Celebration Box */}
           <View style={styles.heroBox}>
-            <View
+            <Animated.View
               style={[
                 styles.successIconBox,
                 isUpvote && { backgroundColor: '#2563eb', shadowColor: '#2563eb' },
+                {
+                  opacity: iconOpacity,
+                  transform: [{ scale: iconScale }],
+                },
               ]}
             >
               <Ionicons
@@ -201,10 +226,10 @@ export default function SuccessScreen({
                 size={40}
                 color="#ffffff"
               />
-            </View>
+            </Animated.View>
 
             <Text style={styles.heroTitle}>
-              {isUpvote ? 'ĐÃ BÌNH CHỌN THÀNH CÔNG!' : 'BÁO CÁO ĐÃ ĐƯỢC GỬI!'}
+              {isUpvote ? 'ĐÃ GỬI ĐỒNG TÌNH THÀNH CÔNG!' : 'BÁO CÁO ĐÃ ĐƯỢC GỬI!'}
             </Text>
 
             <Text style={styles.heroSubText}>

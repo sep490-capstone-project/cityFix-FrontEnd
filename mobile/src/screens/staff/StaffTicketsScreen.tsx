@@ -330,7 +330,7 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket }: P
           {[
             { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
             { id: 'my-reports', label: 'Hồ sơ tiếp nhận', icon: 'briefcase-outline' },
-            { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+            { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
           ].map((tab) => {
             const active = tab.id === 'my-reports';
             return (

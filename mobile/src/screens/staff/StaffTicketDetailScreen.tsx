@@ -12,6 +12,9 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -405,7 +408,7 @@ export default function StaffTicketDetailScreen({
         }".`
       );
     } catch (err: any) {
-      Alert.alert('Lỗi cập nhật bước', err?.message || 'Không thể đổi trạng thái bước.');
+      Alert.alert('Lỗi cập nhật', err?.message || 'Đã có lỗi xảy ra khi cập nhật trạng thái bước xử lý.');
     } finally {
       setUpdatingStepId(null);
     }
@@ -466,11 +469,11 @@ export default function StaffTicketDetailScreen({
 
   const handleSubmitStaffRequest = async () => {
     if (!requestTitle.trim()) {
-      Alert.alert('Thiếu tiêu đề', 'Vui lòng nhập tiêu đề báo cáo / yêu cầu.');
+      Alert.alert('Chưa có tiêu đề', 'Vui lòng nhập tóm tắt nội dung vướng mắc cần hỗ trợ.');
       return;
     }
     if (!requestContent.trim()) {
-      Alert.alert('Thiếu nội dung', 'Vui lòng nhập nội dung chi tiết gửi Quản lý.');
+      Alert.alert('Chưa có nội dung', 'Vui lòng mô tả chi tiết lý do hoặc vướng mắc thực tế gửi đến Quản lý.');
       return;
     }
 
@@ -488,7 +491,7 @@ export default function StaffTicketDetailScreen({
         'Yêu cầu của bạn đã được gửi tới Quản lý phụ trách thành công!'
       );
     } catch (err: any) {
-      Alert.alert('Không thể gửi yêu cầu', err?.message || 'Đã xảy ra lỗi.');
+      Alert.alert('Gửi yêu cầu thất bại', err?.message || 'Không thể chuyển yêu cầu tới Quản lý lúc này. Vui lòng thử lại sau.');
     } finally {
       setSubmittingRequest(false);
     }
@@ -678,7 +681,7 @@ export default function StaffTicketDetailScreen({
                       : 'Ghim thủ công',
                 },
                 { label: 'Đơn vị phụ trách', value: ticket.agency },
-                { label: 'Thời hạn SLA', value: ticket.deadline },
+                { label: 'Thời hạn xử lý', value: ticket.deadline },
               ].map((row, idx) => (
                 <View key={idx} style={styles.infoRow}>
                   <Text style={styles.infoLabel}>{row.label}</Text>
@@ -937,7 +940,7 @@ export default function StaffTicketDetailScreen({
                         >
                           <Ionicons name="camera-outline" size={15} color="#ffffff" />
                           <Text style={styles.staffStepBtnCameraText}>
-                            Chụp Evidence
+                            Chụp ảnh hiện trường
                           </Text>
                         </TouchableOpacity>
 

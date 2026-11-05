@@ -191,7 +191,7 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
               <Ionicons name="construct-outline" size={18} color="#f97316" />
               <Text style={styles.statValue}>{processingCount}</Text>
               <Text style={styles.statLabel}>Đang xử lý</Text>
-              <Text style={styles.statSub}>cần chụp evidence</Text>
+              <Text style={styles.statSub}>cần nộp ảnh hiện trường</Text>
             </View>
             <View style={styles.statCard}>
               <Ionicons name="checkmark-circle-outline" size={18} color="#16a34a" />
@@ -261,7 +261,7 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
               <View style={styles.catIconBox}>
                 <Ionicons name="camera-outline" size={22} color="#f97316" />
               </View>
-              <Text style={styles.catLabel}>Nộp Evidence</Text>
+              <Text style={styles.catLabel}>Nộp ảnh hiện trường</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -404,7 +404,7 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
           {[
             { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
             { id: 'my-reports', label: 'Hồ sơ tiếp nhận', icon: 'briefcase-outline' },
-            { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+            { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
           ].map((tab) => {
             const active = tab.id === 'home';
             return (

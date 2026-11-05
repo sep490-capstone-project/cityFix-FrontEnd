@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen, { AuthUser } from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -38,6 +39,7 @@ const INITIAL_DRAFT: ReportDraft = {
 };
 
 export default function AppNavigator() {
+  const [initializing, setInitializing] = useState<boolean>(true);
   const [currentScreen, setCurrentScreen] = useState<string>('login');
   const [previousScreen, setPreviousScreen] = useState<string>('home');
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -47,15 +49,54 @@ export default function AppNavigator() {
   const [draft, setDraft] = useState<ReportDraft>(INITIAL_DRAFT);
   const [duplicateTickets, setDuplicateTickets] = useState<any[]>([]);
   const [createdTicket, setCreatedTicket] = useState<any | null>(null);
+  const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ home: true });
 
-  const handleLoginSuccess = (authUser: AuthUser, token: string) => {
+  // Tự động khôi phục phiên đăng nhập khi khởi động ứng dụng
+  useEffect(() => {
+    let isMounted = true;
+    async function restoreSession() {
+      try {
+        const [token, savedUserStr] = await Promise.all([
+          AsyncStorage.getItem('accessToken'),
+          AsyncStorage.getItem('@cityfix_auth_user'),
+        ]);
+
+        if (isMounted && token && savedUserStr) {
+          const parsedUser = JSON.parse(savedUserStr);
+          setUser(parsedUser);
+          setCurrentScreen('home');
+        }
+      } catch (err) {
+        console.warn('Lỗi kiểm tra phiên đăng nhập:', err);
+      } finally {
+        if (isMounted) {
+          setInitializing(false);
+        }
+      }
+    }
+    restoreSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleLoginSuccess = async (authUser: AuthUser, token: string) => {
     setUser(authUser);
+    try {
+      await AsyncStorage.setItem('@cityfix_auth_user', JSON.stringify(authUser));
+    } catch (e) {
+      console.warn('Lỗi lưu thông tin user:', e);
+    }
+    setVisitedTabs({ home: true });
     setCurrentScreen('splash');
   };
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem('accessToken');
+      await Promise.all([
+        AsyncStorage.removeItem('accessToken'),
+        AsyncStorage.removeItem('@cityfix_auth_user'),
+      ]);
     } catch (e) {
       console.warn('Lỗi khi xóa token:', e);
     }
@@ -63,11 +104,13 @@ export default function AppNavigator() {
     setDraft(INITIAL_DRAFT);
     setDuplicateTickets([]);
     setCreatedTicket(null);
+    setVisitedTabs({ home: true });
     setCurrentScreen('login');
   };
 
   const handleUpdateUser = (updatedUser: AuthUser) => {
     setUser(updatedUser);
+    AsyncStorage.setItem('@cityfix_auth_user', JSON.stringify(updatedUser)).catch(() => {});
   };
 
   const handleOpenTicket = (ticketId: string, ticketObj?: ReportedTicket) => {
@@ -85,8 +128,20 @@ export default function AppNavigator() {
   };
 
   const handleNavigate = (screen: string) => {
+    if (['home', 'my-reports', 'profile', 'staff-tickets'].includes(screen)) {
+      setVisitedTabs((prev) => ({ ...prev, [screen]: true }));
+    }
     setCurrentScreen(screen);
   };
+
+  // Màn hình khởi động nhanh khi kiểm tra phiên đăng nhập
+  if (initializing) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#f97316" />
+      </View>
+    );
+  }
 
   if (currentScreen === 'register') {
     return (
@@ -157,25 +212,40 @@ export default function AppNavigator() {
       );
     }
 
-    if (currentScreen === 'my-reports' || currentScreen === 'staff-tickets') {
+    const isStaffTab = ['home', 'my-reports', 'staff-tickets', 'profile'].includes(currentScreen);
+    if (isStaffTab) {
       return (
-        <StaffTicketsScreen
-          navigate={handleNavigate}
-          authUser={user}
-          openTicket={handleOpenTicket}
-        />
-      );
-    }
+        <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, display: currentScreen === 'home' ? 'flex' : 'none' }}>
+            <StaffHomeScreen
+              navigate={handleNavigate}
+              authUser={user}
+              openTicket={handleOpenTicket}
+            />
+          </View>
 
-    if (currentScreen === 'profile') {
-      return (
-        <StaffProfileScreen
-          navigate={handleNavigate}
-          authUser={user}
-          onLogout={handleLogout}
-          onUpdateUser={handleUpdateUser}
-          openTicket={handleOpenTicket}
-        />
+          {(visitedTabs['my-reports'] || visitedTabs['staff-tickets'] || currentScreen === 'my-reports' || currentScreen === 'staff-tickets') && (
+            <View style={{ flex: 1, display: (currentScreen === 'my-reports' || currentScreen === 'staff-tickets') ? 'flex' : 'none' }}>
+              <StaffTicketsScreen
+                navigate={handleNavigate}
+                authUser={user}
+                openTicket={handleOpenTicket}
+              />
+            </View>
+          )}
+
+          {(visitedTabs['profile'] || currentScreen === 'profile') && (
+            <View style={{ flex: 1, display: currentScreen === 'profile' ? 'flex' : 'none' }}>
+              <StaffProfileScreen
+                navigate={handleNavigate}
+                authUser={user}
+                onLogout={handleLogout}
+                onUpdateUser={handleUpdateUser}
+                openTicket={handleOpenTicket}
+              />
+            </View>
+          )}
+        </View>
       );
     }
 
@@ -295,25 +365,41 @@ export default function AppNavigator() {
     );
   }
 
-  if (currentScreen === 'my-reports') {
+  // Resident main tabs (Home, MyReports, Profile) giữ trạng thái mượt mà 0ms
+  const isResidentTab = ['home', 'my-reports', 'profile'].includes(currentScreen);
+  if (isResidentTab) {
     return (
-      <MyReportsScreen
-        navigate={handleNavigate}
-        authUser={user}
-        openTicket={handleOpenTicket}
-      />
-    );
-  }
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, display: currentScreen === 'home' ? 'flex' : 'none' }}>
+          <HomeScreen
+            navigate={handleNavigate}
+            authUser={user}
+            openTicket={handleOpenTicket}
+          />
+        </View>
 
-  if (currentScreen === 'profile') {
-    return (
-      <ProfileScreen
-        navigate={handleNavigate}
-        authUser={user}
-        onLogout={handleLogout}
-        onUpdateUser={handleUpdateUser}
-        openTicket={handleOpenTicket}
-      />
+        {(visitedTabs['my-reports'] || currentScreen === 'my-reports') && (
+          <View style={{ flex: 1, display: currentScreen === 'my-reports' ? 'flex' : 'none' }}>
+            <MyReportsScreen
+              navigate={handleNavigate}
+              authUser={user}
+              openTicket={handleOpenTicket}
+            />
+          </View>
+        )}
+
+        {(visitedTabs['profile'] || currentScreen === 'profile') && (
+          <View style={{ flex: 1, display: currentScreen === 'profile' ? 'flex' : 'none' }}>
+            <ProfileScreen
+              navigate={handleNavigate}
+              authUser={user}
+              onLogout={handleLogout}
+              onUpdateUser={handleUpdateUser}
+              openTicket={handleOpenTicket}
+            />
+          </View>
+        )}
+      </View>
     );
   }
 

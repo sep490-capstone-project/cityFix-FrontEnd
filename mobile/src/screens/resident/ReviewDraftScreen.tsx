@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
+  Alert,
   Text,
   TextInput,
   TouchableOpacity,
@@ -200,10 +201,9 @@ export default function ReviewDraftScreen({
     } catch (error) {
       console.error('❌ CREATE TICKET ERROR:', error);
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'Không thể gửi báo cáo. Vui lòng thử lại.'
+      Alert.alert(
+        'Gửi báo cáo thất bại',
+        error instanceof Error ? error.message : 'Đã xảy ra lỗi khi gửi báo cáo tới hệ thống. Vui lòng kiểm tra kết nối mạng và thử lại.'
       );
     } finally {
       setSubmitting(false);

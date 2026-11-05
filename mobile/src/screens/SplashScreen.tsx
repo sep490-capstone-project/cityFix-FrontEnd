@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { AuthUser } from './LoginScreen';
+import { Haptics } from '../utils/haptics';
 
 const { width, height } = Dimensions.get('window');
 
@@ -27,20 +28,20 @@ export default function SplashScreen({ user, onFinish }: Props) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // 1. Logo Scale & Fade in
+    // 1. Logo Scale & Fade in: 700ms
     Animated.parallel([
       Animated.timing(logoScale, {
         toValue: 1,
-        duration: 800,
+        duration: 700,
         useNativeDriver: true,
       }),
       Animated.timing(logoOpacity, {
         toValue: 1,
-        duration: 800,
+        duration: 700,
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // 2. Text Fade in & Translate Up
+      // 2. Text Fade in & Translate Up: 600ms
       Animated.parallel([
         Animated.timing(textOpacity, {
           toValue: 1,
@@ -71,10 +72,10 @@ export default function SplashScreen({ user, onFinish }: Props) {
       ).start();
     });
 
-    // Auto transition to Home after 2.5s
+    // Chuyển sang màn hình chính sau 2.2 giây (đủ để người dùng đọc thông điệp và cảm nhận nhận diện thương hiệu)
     const timer = setTimeout(() => {
       onFinish();
-    }, 2500);
+    }, 2200);
 
     return () => clearTimeout(timer);
   }, []);
@@ -98,13 +99,12 @@ export default function SplashScreen({ user, onFinish }: Props) {
               },
             ]}
           />
-
           <Animated.View
             style={[
               styles.logoBox,
               {
-                opacity: logoOpacity,
                 transform: [{ scale: logoScale }],
+                opacity: logoOpacity,
               },
             ]}
           >
@@ -127,23 +127,29 @@ export default function SplashScreen({ user, onFinish }: Props) {
           ]}
         >
           <Text style={styles.brandTitle}>
-            City<Text style={styles.brandTitleAccent}>Fix</Text>
+            CITY<Text style={styles.brandAccent}>FIX</Text>
           </Text>
-          <Text style={styles.tagline}>Hệ Thống Phản Ánh & Quản Lý Đô Thị</Text>
-
-          {/* Welcome User Badge */}
-          <View style={styles.welcomeBadge}>
-            <Text style={styles.welcomeLabel}>Xin chào,</Text>
-            <Text style={styles.userName}>{user?.fullName || user?.phone || 'Cư dân CityFix'}</Text>
+          <View style={styles.taglineBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.brandSubtitle}>HỆ THỐNG ĐÔ THỊ THÔNG MINH</Text>
           </View>
+          <Text style={styles.welcomeText}>
+            {user?.fullName ? `Xin chào, ${user.fullName}!` : 'Đang kết nối hệ thống đô thị...'}
+          </Text>
+        </Animated.View>
+
+        {/* Loading Indicator */}
+        <Animated.View style={[styles.loadingWrapper, { opacity: textOpacity }]}>
+          <ActivityIndicator size="small" color="#EA580C" />
+          <Text style={styles.loadingText}>Sẵn sàng tiếp nhận báo cáo...</Text>
         </Animated.View>
       </View>
 
-      {/* Footer Loader */}
-      <Animated.View style={[styles.footer, { opacity: textOpacity }]}>
-        <ActivityIndicator size="small" color="#f97316" />
-        <Text style={styles.loadingText}>Đang chuẩn bị bảng điều khiển...</Text>
-      </Animated.View>
+      {/* Bottom Footer Info */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>ỨNG DỤNG BÁO CÁO & XỬ LÝ SỰ CỐ ĐÔ THỊ</Text>
+        <Text style={styles.versionText}>Phiên bản 1.0.0 · Nền tảng Thành phố Thông minh</Text>
+      </View>
     </View>
   );
 }
@@ -151,117 +157,142 @@ export default function SplashScreen({ user, onFinish }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
-    paddingVertical: 50,
+    justifyContent: 'center',
   },
   bgCircleTop: {
     position: 'absolute',
-    top: -100,
-    right: -80,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'rgba(249, 115, 22, 0.06)',
+    top: -height * 0.15,
+    right: -width * 0.2,
+    width: width * 0.8,
+    height: width * 0.8,
+    borderRadius: width * 0.4,
+    backgroundColor: 'rgba(234, 88, 12, 0.05)',
   },
   bgCircleBottom: {
     position: 'absolute',
-    bottom: -120,
-    left: -100,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: 'rgba(249, 115, 22, 0.05)',
+    bottom: -height * 0.1,
+    left: -width * 0.2,
+    width: width * 0.7,
+    height: width * 0.7,
+    borderRadius: width * 0.35,
+    backgroundColor: 'rgba(234, 88, 12, 0.03)',
   },
   content: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 24,
   },
   logoWrapper: {
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 28,
+    justifyContent: 'center',
+    width: 140,
+    height: 140,
+    marginBottom: 24,
   },
   pulseRing: {
     position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(249, 115, 22, 0.12)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(249, 115, 22, 0.25)',
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    borderWidth: 2,
+    borderColor: 'rgba(234, 88, 12, 0.2)',
+    backgroundColor: 'rgba(234, 88, 12, 0.04)',
   },
   logoBox: {
-    width: 110,
-    height: 110,
-    borderRadius: 28,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
+    width: 100,
+    height: 100,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
-    shadowColor: '#f97316',
-    shadowOffset: { width: 0, height: 8 },
+    justifyContent: 'center',
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.18,
-    shadowRadius: 16,
+    shadowRadius: 18,
     elevation: 8,
     borderWidth: 1,
-    borderColor: '#ffedd5',
+    borderColor: 'rgba(234, 88, 12, 0.15)',
   },
   logoImage: {
-    width: 80,
-    height: 80,
+    width: 70,
+    height: 70,
   },
   textContainer: {
     alignItems: 'center',
+    marginTop: 8,
   },
   brandTitle: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.5,
-    marginBottom: 4,
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: 1.5,
   },
-  brandTitleAccent: {
-    color: '#f97316',
+  brandAccent: {
+    color: '#EA580C',
   },
-  tagline: {
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '500',
-    letterSpacing: 0.2,
-    marginBottom: 24,
-  },
-  welcomeBadge: {
+  taglineBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff7ed',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: '#FFF7ED',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 20,
+    marginTop: 8,
     borderWidth: 1,
-    borderColor: '#ffedd5',
+    borderColor: '#FED7AA',
     gap: 6,
   },
-  welcomeLabel: {
-    fontSize: 13,
-    color: '#9a3412',
-    fontWeight: '400',
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EA580C',
   },
-  userName: {
-    fontSize: 14,
-    color: '#ea580c',
+  brandSubtitle: {
+    fontSize: 11,
     fontWeight: '700',
+    color: '#C2410C',
+    letterSpacing: 0.8,
   },
-  footer: {
+  welcomeText: {
+    fontSize: 14,
+    color: '#475569',
+    marginTop: 14,
+    fontWeight: '500',
+  },
+  loadingWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 32,
     gap: 8,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   loadingText: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#64748B',
     fontWeight: '500',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 30,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.6,
+  },
+  versionText: {
+    fontSize: 10,
+    color: '#CBD5E1',
+    marginTop: 4,
   },
 });

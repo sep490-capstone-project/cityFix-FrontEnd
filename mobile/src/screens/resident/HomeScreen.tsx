@@ -14,6 +14,7 @@ import {
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
 import { getMyReportedTickets, ReportedTicket, mapBackendStatus, getUnreadNotificationCount } from '../../api';
+import { Haptics } from '../../utils/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -62,6 +63,15 @@ const TRENDING = [
   },
 ];
 
+
+function formatSeverity(sev?: string): string {
+  const upper = (sev || '').toUpperCase();
+  if (upper === 'CRITICAL') return 'KHẨN CẤP';
+  if (upper === 'HIGH' || upper === 'CAO') return 'CAO';
+  if (upper === 'MEDIUM' || upper === 'TRUNG BÌNH') return 'TRUNG BÌNH';
+  if (upper === 'LOW' || upper === 'THẤP') return 'THẤP';
+  return upper || 'TRUNG BÌNH';
+}
 
 const COMMUNITY_FEED = [
   { time: '14 phút', user: 'Minh T.', action: 'báo cáo ổ gà', loc: 'Hoàng Diệu, Q.4', avatar: 'MT', report: true },
@@ -142,7 +152,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={() => navigate('notifications')}
+            onPress={() => { navigate('notifications'); }}
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={20} color="#475569" />
@@ -232,7 +242,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
               <TouchableOpacity
                 key={idx}
                 style={styles.catCard}
-                onPress={() => navigate('location')}
+                onPress={() => { navigate('location'); }}
                 activeOpacity={0.75}
               >
                 <View style={styles.catIconBox}>
@@ -306,7 +316,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
               <View key={t.id} style={styles.trendingCard}>
                 <Image source={{ uri: t.img }} style={styles.trendingImg} />
                 <View style={styles.trendingBadge}>
-                  <Text style={styles.trendingBadgeText}>{t.severity}</Text>
+                  <Text style={styles.trendingBadgeText}>{formatSeverity(t.severity)}</Text>
                 </View>
                 <View style={styles.upvoteBadge}>
                   <Feather name="thumbs-up" size={10} color="#f97316" />
@@ -486,15 +496,14 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           {[
             { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
             { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
-            { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+            { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
           ].map((tab) => {
-            const active = activeTab === tab.id;
+            const active = tab.id === 'home';
             return (
               <TouchableOpacity
                 key={tab.id}
                 style={styles.tabItem}
                 onPress={() => {
-                  setActiveTab(tab.id as any);
                   if (tab.id !== 'home') navigate(tab.id);
                 }}
               >

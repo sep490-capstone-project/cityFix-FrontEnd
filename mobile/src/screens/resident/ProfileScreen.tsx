@@ -13,8 +13,15 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { AuthUser } from './LoginScreen';
-import { getMyReportedTickets, ReportedTicket, mapBackendStatus } from '../api';
+import { AuthUser } from '../LoginScreen';
+import {
+  getMyReportedTickets,
+  ReportedTicket,
+  mapBackendStatus,
+  updateProfile,
+  getProfile,
+  ApiError,
+} from '../../api';
 
 interface Props {
   navigate: (screen: string) => void;
@@ -436,7 +443,7 @@ export default function ProfileScreen({
         {[
           { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
           { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
-          { id: 'profile', label: 'Hồ sơ', icon: 'person-outline' },
+          { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
         ].map((tab) => {
           const active = tab.id === 'profile';
           return (
@@ -474,10 +481,10 @@ export default function ProfileScreen({
                 <Ionicons name="log-out-outline" size={22} color="#dc2626" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Đăng xuất?</Text>
+                <Text style={styles.modalTitle}>Xác nhận đăng xuất</Text>
                 <Text style={styles.modalSubText}>
-                  Phiên làm việc và token sẽ bị xóa khỏi thiết bị. Bạn cần đăng nhập
-                  lại để tiếp tục.
+                  Bạn có chắc chắn muốn đăng xuất khỏi tài khoản CityFix? Bạn sẽ cần
+                  đăng nhập lại để tiếp tục gửi và theo dõi báo cáo phản ánh.
                 </Text>
               </View>
             </View>
@@ -487,7 +494,7 @@ export default function ProfileScreen({
                 style={styles.stayBtn}
                 onPress={() => setShowLogoutDialog(false)}
               >
-                <Text style={styles.stayBtnText}>Ở LẠI</Text>
+                <Text style={styles.stayBtnText}>Ở lại</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.confirmLogoutBtn}
@@ -496,7 +503,7 @@ export default function ProfileScreen({
                   onLogout();
                 }}
               >
-                <Text style={styles.confirmLogoutBtnText}>XÁC NHẬN ĐĂNG XUẤT</Text>
+                <Text style={styles.confirmLogoutBtnText}>Đăng xuất</Text>
               </TouchableOpacity>
             </View>
           </View>

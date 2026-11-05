@@ -5,6 +5,7 @@ import { uploadReportImage } from '../../api';
 
 import {
   View,
+  Alert,
   Text,
   TouchableOpacity,
   ScrollView,
@@ -59,8 +60,9 @@ export default function PhotoScreen({
         await ImagePicker.requestCameraPermissionsAsync();
 
       if (!permission.granted) {
-        alert(
-          'CityFix cần quyền Camera để chụp ảnh sự cố.'
+        Alert.alert(
+          'Yêu cầu quyền Máy ảnh',
+          'Vui lòng cấp quyền mở máy ảnh để chụp hình ảnh hiện trường sự cố.'
         );
         return;
       }
@@ -81,7 +83,8 @@ export default function PhotoScreen({
       const photo = result.assets[0];
 
       if (!photo?.uri) {
-        alert('Không lấy được ảnh từ Camera.');
+        Alert.alert(
+          'Không thể chụp ảnh', 'Không lấy được hình ảnh từ máy ảnh. Vui lòng thử lại.');
         return;
       }
 
@@ -92,8 +95,9 @@ export default function PhotoScreen({
         await AsyncStorage.getItem('accessToken');
 
       if (!accessToken) {
-        alert(
-          'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.'
+        Alert.alert(
+          'Phiên làm việc hết hạn',
+          'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.'
         );
         return;
       }
@@ -130,10 +134,11 @@ console.log('================================');
         error
       );
 
-      alert(
+      Alert.alert(
+        'Tải ảnh thất bại',
         error instanceof Error
           ? error.message
-          : 'Không thể chụp hoặc tải ảnh lên.'
+          : 'Không thể chụp hoặc tải ảnh hiện trường. Vui lòng thử lại.'
       );
     } finally {
       setUploading(false);
@@ -161,8 +166,9 @@ console.log('================================');
         await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
-        alert(
-          'CityFix cần quyền thư viện ảnh để chọn ảnh sự cố.'
+        Alert.alert(
+          'Yêu cầu quyền Thư viện ảnh',
+          'Vui lòng cấp quyền truy cập album để chọn ảnh hiện trường sự cố.'
         );
         return;
       }
@@ -197,8 +203,9 @@ console.log('================================');
         await AsyncStorage.getItem('accessToken');
 
       if (!accessToken) {
-        alert(
-          'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.'
+        Alert.alert(
+          'Phiên làm việc hết hạn',
+          'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.'
         );
         return;
       }
@@ -253,10 +260,11 @@ console.log('================================');
         error
       );
 
-      alert(
+      Alert.alert(
+        'Tải ảnh thất bại',
         error instanceof Error
           ? error.message
-          : 'Không thể chọn hoặc tải ảnh lên.'
+          : 'Không thể chọn hoặc tải ảnh hiện trường. Vui lòng thử lại.'
       );
     } finally {
       setUploading(false);

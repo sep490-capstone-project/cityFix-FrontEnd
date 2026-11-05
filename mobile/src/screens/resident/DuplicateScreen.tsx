@@ -1,6 +1,7 @@
 // import React, { useState } from 'react';
 // import {
 //   View,
+//   Alert,
 //   Text,
 //   TouchableOpacity,
 //   ScrollView,
@@ -90,7 +91,7 @@
 //       navigate('success');
 //     } catch (err: any) {
 //       console.error('Create ticket anyway error:', err);
-//       alert(err instanceof Error ? err.message : 'Không thể tạo hồ sơ báo cáo mới.');
+//       Alert.alert('Không thể tạo báo cáo', err instanceof Error ? err.message : 'Không thể tạo hồ sơ báo cáo mới.');
 //     } finally {
 //       setCreatingAnyway(false);
 //     }
@@ -143,7 +144,7 @@
 //         </View>
 
 //         <View style={styles.contentPadding}>
-//           <Text style={styles.sectionHeaderTitle}>CHỌN BÁO CÁO ĐỂ BÌNH CHỌN (ĐỒNG TÌNH)</Text>
+//           <Text style={styles.sectionHeaderTitle}>CHỌN BÁO CÁO ĐÃ CÓ ĐỂ ĐỒNG TÌNH</Text>
 
 //           {displayList.map((item, idx) => {
 //             const itemId = item.id || item.ticketId || `ticket-${idx}`;
@@ -243,7 +244,7 @@
 //         {upvoteState === 'done' ? (
 //           <View style={styles.upvoteSuccessBox}>
 //             <Ionicons name="checkmark-circle" size={20} color="#ea580c" />
-//             <Text style={styles.upvoteSuccessText}>ĐÃ BÌNH CHỌN THÀNH CÔNG!</Text>
+//             <Text style={styles.upvoteSuccessText}>ĐÃ GỬI ĐỒNG TÌNH THÀNH CÔNG!</Text>
 //           </View>
 //         ) : (
 //           <View style={{ gap: 8 }}>
@@ -308,7 +309,7 @@
 //               <View style={{ flex: 1 }}>
 //                 <Text style={styles.modalTitle}>Hủy báo cáo?</Text>
 //                 <Text style={styles.modalSubText}>
-//                   Bạn chưa gửi báo cáo. Bạn có chắc muốn hủy và thoát khỏi quá trình tạo báo cáo?
+//                   Thông tin và hình ảnh bạn vừa chụp muốn hủy và thoát khỏi quá trình tạo báo cáo?
 //                 </Text>
 //               </View>
 //             </View>
@@ -685,6 +686,7 @@ import React, { useState } from 'react';
 
 import {
   View,
+  Alert,
   Text,
   TouchableOpacity,
   ScrollView,
@@ -829,10 +831,11 @@ export default function DuplicateScreen({
 
       setUpvoteState('idle');
 
-      alert(
+      Alert.alert(
+        'Không thể gửi đồng tình',
         err instanceof Error
           ? err.message
-          : 'Không thể đồng tình báo cáo này.'
+          : 'Đã có lỗi xảy ra khi gửi xác nhận đồng tình. Vui lòng thử lại sau.'
       );
     }
   };
@@ -935,7 +938,7 @@ export default function DuplicateScreen({
         ================================= */}
         <View style={styles.contentPadding}>
           <Text style={styles.sectionHeaderTitle}>
-            CHỌN BÁO CÁO ĐỂ BÌNH CHỌN (ĐỒNG TÌNH)
+            CHỌN BÁO CÁO ĐÃ CÓ ĐỂ ĐỒNG TÌNH
           </Text>
 
           {displayList.length === 0 ? (
@@ -1152,7 +1155,7 @@ export default function DuplicateScreen({
             />
 
             <Text style={styles.upvoteSuccessText}>
-              ĐÃ BÌNH CHỌN THÀNH CÔNG!
+              ĐÃ GỬI ĐỒNG TÌNH THÀNH CÔNG!
             </Text>
           </View>
         ) : (
@@ -1241,13 +1244,13 @@ export default function DuplicateScreen({
 
               <View style={styles.modalTextContainer}>
                 <Text style={styles.modalTitle}>
-                  Hủy báo cáo?
+                  Dừng tạo báo cáo mới?
                 </Text>
 
                 <Text style={styles.modalSubText}>
-                  Bạn chưa gửi báo cáo. Bạn có chắc
-                  muốn hủy và thoát khỏi quá trình
-                  tạo báo cáo?
+                  Thông tin và hình ảnh bạn vừa chụp
+                  sẽ không được lưu. Bạn có chắc muốn
+                  hủy và quay về trang chủ?
                 </Text>
               </View>
             </View>
@@ -1261,7 +1264,7 @@ export default function DuplicateScreen({
                 activeOpacity={0.85}
               >
                 <Text style={styles.keepGoingText}>
-                  Tiếp tục báo cáo
+                  Tiếp tục chỉnh sửa
                 </Text>
               </TouchableOpacity>
 
@@ -1273,7 +1276,7 @@ export default function DuplicateScreen({
                 <Text
                   style={styles.confirmCancelText}
                 >
-                  Hủy & Thoát
+                  Hủy và thoát
                 </Text>
               </TouchableOpacity>
             </View>

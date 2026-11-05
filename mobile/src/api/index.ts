@@ -35,11 +35,16 @@ export interface UpdateProfilePayload {
 }
 
 export interface UserProfile {
+  userId?: string;
+  email?: string;
   fullName: string;
   phoneNumber: string;
   address: string;
   province: string;
   ward: string;
+  roleName?: string;
+  departmentId?: string;
+  status?: string;
 }
 
 export function decodeJwt(token: string): Record<string, any> | null {
@@ -82,6 +87,9 @@ export interface RegisterPayload {
   phoneNumber: string;
   province: string;
   ward: string;
+  roleName?: string;
+  departmentId?: string;
+  status?: string;
   address: string;
 }
 
@@ -1566,50 +1574,6 @@ export async function getTicketRatings(
   return payload.data;
 }
 
-// 5. Xóa mềm đánh giá
-// DELETE /api/v1/user/tickets/{ticketId}/ratings/{ratingId}
-export async function deleteRating(
-  ticketId: string,
-  ratingId: string,
-  accessToken?: string | null
-): Promise<string> {
-  let token = accessToken;
-  if (!token) {
-    token = await AsyncStorage.getItem('accessToken');
-  }
-  if (!token) {
-    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
-  }
-
-  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/${ratingId}`;
-  console.log('⭐ DELETE RATING URL:', url);
-
-  const response = await fetch(url, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const text = await response.text();
-  console.log('⭐ DELETE RATING STATUS:', response.status);
-
-  let payload: any = null;
-  try {
-    payload = JSON.parse(text);
-  } catch {}
-
-  if (!response.ok || !payload?.success) {
-    throw new ApiError(
-      payload?.message || `Không thể xóa đánh giá (${response.status})`,
-      response.status
-    );
-  }
-
-  return payload.data;
-}
-
 /* =========================================================
    STAFF WORKFLOW APIS (HỒ SƠ TIẾP NHẬN & GIẢI QUYẾT STEP)
    ========================================================= */
@@ -2026,4 +1990,48 @@ export async function createStaffRequest(
   }
 
   return payload?.data || payload;
+}
+
+// 5. Xóa mềm đánh giá
+// DELETE /api/v1/user/tickets/{ticketId}/ratings/{ratingId}
+export async function deleteRating(
+  ticketId: string,
+  ratingId: string,
+  accessToken?: string | null
+): Promise<string> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  if (!token) {
+    throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
+  }
+
+  const url = `${API_BASE_URL}/api/v1/user/tickets/${ticketId}/ratings/${ratingId}`;
+  console.log('⭐ DELETE RATING URL:', url);
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const text = await response.text();
+  console.log('⭐ DELETE RATING STATUS:', response.status);
+
+  let payload: any = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok || !payload?.success) {
+    throw new ApiError(
+      payload?.message || `Không thể xóa đánh giá (${response.status})`,
+      response.status
+    );
+  }
+
+  return payload.data;
 }
