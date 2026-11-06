@@ -16,6 +16,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
@@ -31,6 +32,8 @@ import {
   deleteRating,
 } from '../../api';
 import { AuthUser } from '../LoginScreen';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const RATING_LABELS: Record<number, { text: string; color: string }> = {
   1: { text: 'Rất tệ', color: '#ef4444' },
@@ -348,6 +351,22 @@ export default function TicketDetailScreen({
   const [isAnonymousRating, setIsAnonymousRating] = useState<boolean>(false);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [editingRatingId, setEditingRatingId] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Evidences modal
   const [showEvidencesModal, setShowEvidencesModal] = useState(false);
@@ -1028,7 +1047,17 @@ export default function TicketDetailScreen({
               style={styles.keyboardAvoidContainer}
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-                <View style={styles.ratingModalCard}>
+                <View
+                  style={[
+                    styles.ratingModalCard,
+                    {
+                      maxHeight: keyboardHeight > 0
+                        ? (SCREEN_HEIGHT - keyboardHeight - (Platform.OS === 'ios' ? 70 : 40))
+                        : (SCREEN_HEIGHT * 0.85),
+                      marginTop: Platform.OS === 'ios' ? 56 : 30,
+                    },
+                  ]}
+                >
                   <View style={styles.sheetDragHandle} />
                   <View style={styles.ratingModalHeader}>
                     <View style={styles.ratingModalHeaderLeft}>
@@ -1049,9 +1078,11 @@ export default function TicketDetailScreen({
                   </View>
 
                   <ScrollView
+                    style={{ flexShrink: 1 }}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ paddingBottom: 10 }}
+                    keyboardDismissMode="on-drag"
+                    contentContainerStyle={{ paddingBottom: 16 }}
                   >
                     <Text style={styles.ratingPromptText}>
                       Bạn cảm thấy thế nào về kết quả và tốc độ giải quyết sự cố này?

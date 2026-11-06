@@ -19,7 +19,7 @@ import {
 } from '../../api';
 
 interface Props {
-  navigate: (screen: string) => void;
+  navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   openTicket?: (id: string, ticketObj?: ReportedTicket) => void;
 }
@@ -133,15 +133,24 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.userInfoContainer}>
+          {/* Lời chào thời gian */}
           <View style={styles.greetingRow}>
             <View style={styles.pingDot} />
-            <Text style={styles.greetingText}>
-              {getGreeting()} · NHÂN VIÊN XỬ LÝ HIỆN TRƯỜNG
+            <Text style={styles.greetingText}>{getGreeting()}</Text>
+          </View>
+
+          {/* Tên nhân viên kỹ thuật to rõ ở trên */}
+          <Text style={styles.userName} numberOfLines={1}>
+            {authUser?.fullName ?? 'Đội ngũ Kỹ thuật Đô thị'}
+          </Text>
+
+          {/* Vai trò định danh ở dưới */}
+          <View style={styles.locationRow}>
+            <Ionicons name="shield-checkmark" size={11} color="#ea580c" />
+            <Text style={styles.locationText} numberOfLines={1}>
+              Đội ngũ Kỹ thuật Đô thị
             </Text>
           </View>
-          <Text style={styles.userName} numberOfLines={1}>
-            {authUser?.fullName ?? 'Nhân viên CityFix'}
-          </Text>
         </View>
 
         <View style={styles.headerRight}>
@@ -181,24 +190,36 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
         {/* Stats Grid */}
         <View style={styles.paddingHorizontal}>
           <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigate('staff-tickets', { filter: 'all' })}
+              activeOpacity={0.75}
+            >
               <Ionicons name="briefcase-outline" size={18} color="#f97316" />
               <Text style={styles.statValue}>{totalCount}</Text>
               <Text style={styles.statLabel}>Hồ sơ tiếp nhận</Text>
               <Text style={styles.statSub}>{receivedCount} chờ bắt đầu</Text>
-            </View>
-            <View style={styles.statCard}>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigate('staff-tickets', { filter: 'processing' })}
+              activeOpacity={0.75}
+            >
               <Ionicons name="construct-outline" size={18} color="#f97316" />
               <Text style={styles.statValue}>{processingCount}</Text>
               <Text style={styles.statLabel}>Đang xử lý</Text>
               <Text style={styles.statSub}>cần nộp ảnh hiện trường</Text>
-            </View>
-            <View style={styles.statCard}>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigate('staff-tickets', { filter: 'done' })}
+              activeOpacity={0.75}
+            >
               <Ionicons name="checkmark-circle-outline" size={18} color="#16a34a" />
               <Text style={[styles.statValue, { color: '#16a34a' }]}>{doneCount}</Text>
               <Text style={styles.statLabel}>Đã hoàn thành</Text>
               <Text style={[styles.statSub, { color: '#16a34a' }]}>Tỷ lệ {completionPct}%</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -455,12 +476,14 @@ const styles = StyleSheet.create({
   },
   userInfoContainer: {
     flex: 1,
+    justifyContent: 'center',
+    paddingRight: 8,
   },
   greetingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    gap: 5,
+    marginBottom: 2,
   },
   pingDot: {
     width: 6,
@@ -469,17 +492,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#f97316',
   },
   greetingText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: '#ea580c',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    letterSpacing: 0.2,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
-    letterSpacing: 0.3,
+    letterSpacing: -0.2,
+    marginBottom: 3,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#64748b',
+    letterSpacing: 0.1,
   },
   headerRight: {
     flexDirection: 'row',

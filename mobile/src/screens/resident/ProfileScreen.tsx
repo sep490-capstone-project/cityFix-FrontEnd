@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
@@ -24,7 +25,7 @@ import {
 } from '../../api';
 
 interface Props {
-  navigate: (screen: string) => void;
+  navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   onLogout: () => void;
   onUpdateUser: (updated: AuthUser) => void;
@@ -51,6 +52,7 @@ export default function ProfileScreen({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
   const [totalReportsCount, setTotalReportsCount] = useState<number>(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     getProfile()
@@ -68,7 +70,7 @@ export default function ProfileScreen({
       })
       .catch((e) => console.log('Profile fetch note:', e?.message));
 
-    getMyReportedTickets(null, 0, 10)
+    getMyReportedTickets(null, 0, 100, 'createdAt,desc')
       .then((res) => {
         if (res && Array.isArray(res.content)) {
           setRealTickets(res.content);
@@ -85,7 +87,7 @@ export default function ProfileScreen({
     .join('')
     .toUpperCase();
 
-  const totalTickets = totalReportsCount || realTickets.length;
+  const totalTickets = (totalReportsCount && totalReportsCount > realTickets.length) ? totalReportsCount : realTickets.length;
   const processingCount = realTickets.filter(
     (t) => mapBackendStatus(t.status).statusKey === 'processing'
   ).length;
@@ -94,9 +96,9 @@ export default function ProfileScreen({
   ).length;
 
   const stats = [
-    { value: String(totalTickets), label: 'Báo cáo đã gửi' },
-    { value: String(processingCount), label: 'Đang xử lý' },
-    { value: String(doneCount), label: 'Hoàn thành' },
+    { value: String(totalTickets), label: 'Báo cáo đã gửi', filterKey: 'all' as const },
+    { value: String(processingCount), label: 'Đang xử lý', filterKey: 'processing' as const },
+    { value: String(doneCount), label: 'Hoàn thành', filterKey: 'done' as const },
   ];
 
   function startEdit() {
@@ -172,7 +174,28 @@ export default function ProfileScreen({
       <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollArea}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              getMyReportedTickets(null, 0, 100, 'createdAt,desc')
+                .then((res) => {
+                  if (res && Array.isArray(res.content)) {
+                    setRealTickets(res.content);
+                    setTotalReportsCount(res.totalElements ?? res.content.length);
+                  }
+                })
+                .finally(() => setRefreshing(false));
+            }}
+            colors={['#ea580c']}
+            tintColor="#ea580c"
+          />
+        }
+      >
         {/* Profile Hero Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroMain}>
@@ -186,7 +209,13 @@ export default function ProfileScreen({
               </Text>
               <Text style={styles.userPhone}>{authUser?.phone || '—'}</Text>
               <Text style={styles.userWard}>
-                {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') || '—'}
+                {(() => {
+                  const w = (authUser?.ward || '').trim();
+                  const p = (authUser?.province || '').trim();
+                  let fw = w ? (/^(phường|xa|xã|phuong)/i.test(w) ? w : `Phường ${w}`) : '';
+                  if (fw && p) return `${fw}, ${p}`;
+                  return fw || p || '—';
+                })()}
               </Text>
             </View>
           </View>
@@ -194,10 +223,15 @@ export default function ProfileScreen({
           {/* Stats Bar */}
           <View style={styles.statsGrid}>
             {stats.map((s, idx) => (
-              <View key={idx} style={styles.statBox}>
+              <TouchableOpacity
+                key={idx}
+                style={styles.statBox}
+                onPress={() => navigate('my-reports', { filter: s.filterKey })}
+                activeOpacity={0.75}
+              >
                 <Text style={styles.statValue}>{s.value}</Text>
                 <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -606,6 +640,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 2,
   },
+
 
   /* Section Card */
   sectionCard: {

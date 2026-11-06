@@ -15,10 +15,14 @@ import {
   getStaffAssignedTickets,
   ReportedTicket,
   mapBackendStatus,
+  updateProfile,
+  getProfile,
+  ApiError,
 } from '../../api';
+import { Alert, ActivityIndicator, RefreshControl } from 'react-native';
 
 interface Props {
-  navigate: (screen: string) => void;
+  navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   onLogout: () => void;
   onUpdateUser: (updated: AuthUser) => void;
@@ -34,7 +38,10 @@ export default function StaffProfileScreen({
 }: Props) {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [editFullName, setEditFullName] = useState(authUser?.fullName ?? '');
+  const [editPhone, setEditPhone] = useState(authUser?.phone ?? '');
   const [editEmail, setEditEmail] = useState(authUser?.email ?? '');
   const [editWard, setEditWard] = useState(authUser?.ward ?? '');
   const [editAddress, setEditAddress] = useState(authUser?.address ?? '');
@@ -43,15 +50,46 @@ export default function StaffProfileScreen({
   const [assignedTickets, setAssignedTickets] = useState<ReportedTicket[]>([]);
   const [totalAssignedCount, setTotalAssignedCount] = useState<number>(0);
 
-  useEffect(() => {
-    getStaffAssignedTickets(null, 'all', 0, 50)
-      .then((res) => {
-        if (res && Array.isArray(res.content)) {
-          setAssignedTickets(res.content);
-          setTotalAssignedCount(res.totalElements ?? res.content.length);
+  const loadStaffProfileData = React.useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      const [profileRes, ticketsRes] = await Promise.allSettled([
+        getProfile(),
+        getStaffAssignedTickets(null, 'all', 0, 50),
+      ]);
+
+      if (profileRes.status === 'fulfilled' && profileRes.value) {
+        const p = profileRes.value;
+        if (authUser) {
+          onUpdateUser({
+            ...authUser,
+            fullName: p.fullName || authUser.fullName,
+            phone: p.phoneNumber || authUser.phone,
+            address: p.address ?? authUser.address,
+            province: p.province ?? authUser.province,
+            ward: p.ward ?? authUser.ward,
+          });
         }
-      })
-      .catch((e) => console.log('StaffProfile tickets fetch note:', e?.message));
+        setEditFullName(p.fullName || authUser?.fullName || '');
+        setEditPhone(p.phoneNumber || authUser?.phone || '');
+        setEditAddress(p.address ?? authUser?.address ?? '');
+        setEditProvince(p.province ?? authUser?.province ?? '');
+        setEditWard(p.ward ?? authUser?.ward ?? '');
+      }
+
+      if (ticketsRes.status === 'fulfilled' && ticketsRes.value && Array.isArray(ticketsRes.value.content)) {
+        setAssignedTickets(ticketsRes.value.content);
+        setTotalAssignedCount(ticketsRes.value.totalElements ?? ticketsRes.value.content.length);
+      }
+    } catch (e: any) {
+      console.log('StaffProfile data load note:', e?.message);
+    } finally {
+      if (isRefresh) setRefreshing(false);
+    }
+  }, [authUser, onUpdateUser]);
+
+  useEffect(() => {
+    loadStaffProfileData(false);
   }, []);
 
   const initials = (authUser?.fullName?.trim() || 'NV')
@@ -70,13 +108,14 @@ export default function StaffProfileScreen({
   ).length;
 
   const stats = [
-    { value: String(totalTickets), label: 'Hồ sơ tiếp nhận' },
-    { value: String(processingCount), label: 'Đang xử lý' },
-    { value: String(doneCount), label: 'Đã hoàn thành' },
+    { value: String(totalTickets), label: 'Hồ sơ tiếp nhận', filterKey: 'all' as const },
+    { value: String(processingCount), label: 'Đang xử lý', filterKey: 'processing' as const },
+    { value: String(doneCount), label: 'Đã hoàn thành', filterKey: 'done' as const },
   ];
 
   function startEdit() {
     setEditFullName(authUser?.fullName ?? '');
+    setEditPhone(authUser?.phone ?? '');
     setEditEmail(authUser?.email ?? '');
     setEditWard(authUser?.ward ?? '');
     setEditAddress(authUser?.address ?? '');
@@ -85,19 +124,57 @@ export default function StaffProfileScreen({
     setSaveSuccess(false);
   }
 
-  function saveEdit() {
-    if (!authUser) return;
-    onUpdateUser({
-      ...authUser,
-      fullName: editFullName.trim(),
-      email: editEmail.trim(),
-      ward: editWard.trim(),
-      address: editAddress.trim(),
-      province: editProvince.trim(),
-    });
-    setEditMode(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+  async function saveEdit() {
+    if (!authUser || saving) return;
+
+    const trimmedFullName = editFullName.trim();
+    if (!trimmedFullName) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập họ và tên nhân viên.');
+      return;
+    }
+
+    const cleanPhone = (editPhone || authUser.phone || '').replace(/[\s-]/g, '');
+    const phoneRegex = /^\d{10,11}$/;
+    if (cleanPhone && !phoneRegex.test(cleanPhone)) {
+      Alert.alert(
+        'Số điện thoại không hợp lệ',
+        'Vui lòng nhập số điện thoại gồm 10 đến 11 chữ số.'
+      );
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updatedProfile = await updateProfile({
+        fullName: trimmedFullName,
+        phoneNumber: cleanPhone,
+        address: editAddress.trim(),
+        province: editProvince.trim(),
+        ward: editWard.trim(),
+      });
+
+      const updatedUser: AuthUser = {
+        ...authUser,
+        fullName: updatedProfile.fullName || trimmedFullName,
+        phone: updatedProfile.phoneNumber || cleanPhone,
+        address: updatedProfile.address ?? editAddress.trim(),
+        province: updatedProfile.province ?? editProvince.trim(),
+        ward: updatedProfile.ward ?? editWard.trim(),
+      };
+
+      onUpdateUser(updatedUser);
+      setEditMode(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err?.message || 'Không thể cập nhật thông tin nhân viên vào hệ thống. Vui lòng thử lại.';
+      Alert.alert('Cập nhật thất bại', msg);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -105,7 +182,18 @@ export default function StaffProfileScreen({
       <StatusBar barStyle="dark-content" />
       <View style={styles.topAccentBar} />
 
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollArea}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadStaffProfileData(true)}
+            colors={['#ea580c']}
+            tintColor="#ea580c"
+          />
+        }
+      >
         {/* Profile Hero Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroMain}>
@@ -116,10 +204,10 @@ export default function StaffProfileScreen({
             <View style={styles.heroInfo}>
               <View style={styles.roleBadge}>
                 <Ionicons name="shield-checkmark" size={11} color="#ea580c" />
-                <Text style={styles.roleBadgeText}>NHÂN VIÊN XỬ LÝ HIỆN TRƯỜNG</Text>
+                <Text style={styles.roleBadgeText}>ĐỘI NGŨ KỸ THUẬT ĐÔ THỊ</Text>
               </View>
               <Text style={styles.userName} numberOfLines={1}>
-                {authUser?.fullName ?? 'Nhân viên CityFix'}
+                {authUser?.fullName ?? 'Đội ngũ Kỹ thuật Đô thị'}
               </Text>
               <Text style={styles.userPhone}>{authUser?.email || authUser?.phone || '—'}</Text>
             </View>
@@ -128,10 +216,15 @@ export default function StaffProfileScreen({
           {/* Stats Bar */}
           <View style={styles.statsGrid}>
             {stats.map((s, idx) => (
-              <View key={idx} style={styles.statBox}>
+              <TouchableOpacity
+                key={idx}
+                style={styles.statBox}
+                onPress={() => navigate('staff-tickets', { filter: s.filterKey })}
+                activeOpacity={0.75}
+              >
                 <Text style={styles.statValue}>{s.value}</Text>
                 <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -154,8 +247,16 @@ export default function StaffProfileScreen({
                   >
                     <Text style={styles.cancelBtnText}>Hủy</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={saveEdit} style={styles.saveBtn}>
-                    <Text style={styles.saveBtnText}>Lưu</Text>
+                  <TouchableOpacity
+                    onPress={saveEdit}
+                    style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.saveBtnText}>Lưu</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               )}
@@ -185,46 +286,83 @@ export default function StaffProfileScreen({
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Vai trò</Text>
                 <Text style={[styles.infoValue, { color: '#ea580c' }]}>
-                  Nhân viên xử lý 
+                  Đội ngũ Kỹ thuật Đô thị
                 </Text>
               </View>
 
+              {/* Email (Cố định tài khoản) */}
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Email</Text>
                 {editMode ? (
-                  <TextInput
-                    style={styles.infoInput}
-                    value={editEmail}
-                    onChangeText={setEditEmail}
-                    keyboardType="email-address"
-                    placeholder="email@example.com"
-                  />
+                  <View style={styles.disabledInputWrapper}>
+                    <Text style={styles.disabledInputText}>{authUser?.email || '—'}</Text>
+                    <View style={styles.readOnlyBadge}>
+                      <Text style={styles.readOnlyBadgeText}>Cố định</Text>
+                    </View>
+                  </View>
                 ) : (
-                  <Text style={styles.infoValue}>
-                    {authUser?.email || 'Chưa cập nhật'}
-                  </Text>
+                  <Text style={styles.infoValue}>{authUser?.email || 'Chưa cập nhật'}</Text>
                 )}
               </View>
 
+              {/* SĐT (Có thể sửa) */}
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>SĐT</Text>
-                <Text style={styles.infoValue}>{authUser?.phone || '—'}</Text>
+                {editMode ? (
+                  <TextInput
+                    style={styles.infoInput}
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    keyboardType="phone-pad"
+                    placeholder="0912345678"
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.phone || '—'}</Text>
+                )}
               </View>
 
+              {/* Phường / Xã */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Khu vực</Text>
+                <Text style={styles.infoLabel}>Phường/Xã</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
                     value={editWard}
                     onChangeText={setEditWard}
-                    placeholder="Phường / Quận phụ trách"
+                    placeholder="Phường / Xã phụ trách"
                   />
                 ) : (
-                  <Text style={styles.infoValue}>
-                    {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') ||
-                      'TP.HCM'}
-                  </Text>
+                  <Text style={styles.infoValue}>{authUser?.ward || '—'}</Text>
+                )}
+              </View>
+
+              {/* Địa chỉ chi tiết */}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Địa chỉ</Text>
+                {editMode ? (
+                  <TextInput
+                    style={styles.infoInput}
+                    value={editAddress}
+                    onChangeText={setEditAddress}
+                    placeholder="Số nhà, đường"
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.address || '—'}</Text>
+                )}
+              </View>
+
+              {/* Tỉnh / Thành phố */}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Tỉnh/TP</Text>
+                {editMode ? (
+                  <TextInput
+                    style={styles.infoInput}
+                    value={editProvince}
+                    onChangeText={setEditProvince}
+                    placeholder="Tỉnh / Thành phố"
+                  />
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.province || 'TP. Hồ Chí Minh'}</Text>
                 )}
               </View>
             </View>
@@ -486,6 +624,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 2,
   },
+
   sectionCard: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -795,6 +934,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#ffffff',
+  },
+  disabledInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  disabledInputText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+    flex: 1,
+  },
+  readOnlyBadge: {
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  readOnlyBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748b',
   },
 });
 

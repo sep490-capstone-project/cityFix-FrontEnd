@@ -431,7 +431,7 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
 
           <View style={styles.taglineBadge}>
             <View style={styles.liveDot} />
-            <Text style={styles.taglineText}>NỀN TẢNG HẠ TẦNG ĐÔ THỊ THÔNG MINH</Text>
+            <Text style={styles.taglineText}>PHẢN ÁNH ĐÔ THỊ THÔNG MINH</Text>
           </View>
 
           {/* Feature Highlight Pills */}
@@ -466,7 +466,7 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
               <Text style={styles.formTitle}>ĐĂNG NHẬP</Text>
             </View>
             <Text style={styles.formSubtitle}>
-              Chào mừng trở lại! Đăng nhập để gửi và theo dõi phản ánh đô thị.
+              Đăng nhập để gửi và theo dõi tiến độ xử lý sự cố.
             </Text>
           </Animated.View>
 
@@ -741,7 +741,7 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
                 ) : (
                   <View style={styles.btnContentBetween}>
                     <View style={{ width: 28 }} />
-                    <Text style={styles.btnText}>ĐĂNG NHẬP HỆ THỐNG</Text>
+                    <Text style={styles.btnText}>ĐĂNG NHẬP</Text>
                     <View style={styles.btnArrowCircle}>
                       <Ionicons name="arrow-forward" size={16} color="#ea580c" />
                     </View>
@@ -795,7 +795,7 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
         >
           <Ionicons name="lock-closed" size={12} color="#94a3b8" />
           <Text style={styles.trustFooterText}>
-            Kết nối được mã hóa bảo mật · Hệ thống Phản ánh Đô thị
+            Kết nối bảo mật · Hệ thống Phản ánh & Xử lý Sự cố Đô thị CityFix
           </Text>
         </Animated.View>
       </ScrollView>

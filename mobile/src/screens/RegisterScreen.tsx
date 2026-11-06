@@ -577,11 +577,11 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
 
           <View style={styles.brandRow}>
             <View style={styles.orangeIndicator} />
-            <Text style={styles.brandTag}>THÀNH VIÊN ĐÔ THỊ THÔNG MINH</Text>
+            <Text style={styles.brandTag}>THÀNH VIÊN CỘNG ĐỒNG CITYFIX</Text>
           </View>
           <Text style={styles.mainTitle}>TẠO TÀI KHOẢN MỚI</Text>
           <Text style={styles.subTitle}>
-            Tham gia cộng đồng CityFix để phản ánh và theo dõi tiến độ xử lý sự cố hạ tầng ngay tại khu vực của bạn.
+            Chung tay phản ánh và giám sát xử lý sự cố hạ tầng ngay tại khu vực của bạn.
           </Text>
         </Animated.View>
 
@@ -1025,6 +1025,14 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
               <TouchableOpacity onPress={goBack} activeOpacity={0.7}>
                 <Text style={styles.loginLink}>Đăng nhập ngay →</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Trust Footer */}
+            <View style={styles.trustFooter}>
+              <Ionicons name="lock-closed" size={12} color="#94a3b8" />
+              <Text style={styles.trustFooterText}>
+                Kết nối bảo mật · Hệ thống Phản ánh & Xử lý Sự cố Đô thị CityFix
+              </Text>
             </View>
           </Animated.View>
         </Animated.View>
@@ -1523,5 +1531,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#ea580c',
+  },
+  trustFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  trustFooterText: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
   },
 });

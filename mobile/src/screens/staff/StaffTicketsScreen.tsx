@@ -20,9 +20,13 @@ import {
 } from '../../api';
 
 interface Props {
-  navigate: (screen: string) => void;
+  navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   openTicket: (id: string, ticketObj?: ReportedTicket) => void;
+  filterRequest?: {
+    filter: FilterKey;
+    timestamp: number;
+  };
 }
 
 type FilterKey = 'all' | 'processing' | 'received' | 'done' | 'cancelled';
@@ -60,7 +64,7 @@ function getCategoryIcon(catName?: string): any {
   return 'alert-circle-outline';
 }
 
-export default function StaffTicketsScreen({ navigate, authUser, openTicket }: Props) {
+export default function StaffTicketsScreen({ navigate, authUser, openTicket, filterRequest }: Props) {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [tickets, setTickets] = useState<ReportedTicket[]>([]);
@@ -93,6 +97,12 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket }: P
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  useEffect(() => {
+    if (filterRequest?.filter) {
+      setFilter(filterRequest.filter);
+    }
+  }, [filterRequest]);
 
   const filtered = useMemo(() => {
     let list = tickets;
