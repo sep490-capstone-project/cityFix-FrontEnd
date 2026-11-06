@@ -229,7 +229,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
           </span>
-          <span className="text-slate-700 font-bold uppercase tracking-wider text-[10px]">Cổng Quản Trị Đô Thị TP.HCM</span>
+          <span className="text-slate-700 font-bold uppercase tracking-wider text-[10px]">CityFix · Cổng Điều Phối & Quản Trị Đô Thị</span>
           <span className="text-slate-300">|</span>
           <span className="font-mono-cf text-[10px] text-slate-500">Hệ thống Trực tuyến 24/7</span>
         </div>
@@ -310,7 +310,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
             className="w-36 h-28 object-contain -mb-3 drop-shadow-2xs"
           />
           <h2 className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">
-            STAFF / ADMIN PORTAL — ĐĂNG NHẬP
+            CỔNG ĐIỀU PHỐI & QUẢN TRỊ — ĐĂNG NHẬP
           </h2>
         </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,27 +10,58 @@ import {
   Dimensions,
   Platform,
   Alert,
+  Animated,
+  Easing,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
-import { getMyReportedTickets, ReportedTicket, mapBackendStatus, getUnreadNotificationCount } from '../../api';
-import { Haptics } from '../../utils/haptics';
+import {
+  getMyReportedTickets,
+  ReportedTicket,
+  mapBackendStatus,
+  getUnreadNotificationCount,
+} from '../../api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Props {
-  navigate: (screen: string) => void;
+  navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   openTicket?: (id: string, ticketObj?: any) => void;
 }
 
 const QUICK_CATS = [
-  { label: 'Ổ gà', icon: 'road-variant' as const },
-  { label: 'Đèn đường', icon: 'lightbulb-outline' as const },
-  { label: 'Cây đổ', icon: 'tree' as const },
-  { label: 'Ngập úng', icon: 'water-outline' as const },
-  { label: 'Vỉa hè', icon: 'walk' as const },
-  { label: 'Khác', icon: 'dots-horizontal-circle-outline' as const },
+  {
+    label: 'Ổ gà',
+    sub: 'Hư hỏng mặt đường',
+    icon: 'road-variant' as const,
+  },
+  {
+    label: 'Đèn đường',
+    sub: 'Mất điện, chập chờn',
+    icon: 'lightbulb-outline' as const,
+  },
+  {
+    label: 'Cây đổ',
+    sub: 'Gãy cành, chắn lối',
+    icon: 'tree' as const,
+  },
+  {
+    label: 'Ngập úng',
+    sub: 'Tắc cống, ngập nước',
+    icon: 'water-outline' as const,
+  },
+  {
+    label: 'Vỉa hè',
+    sub: 'Sụt lún, lấn chiếm',
+    icon: 'walk' as const,
+  },
+  {
+    label: 'Khác',
+    sub: 'Sự cố hạ tầng khác',
+    icon: 'dots-horizontal-circle-outline' as const,
+  },
 ];
 
 const TRENDING = [
@@ -63,6 +94,12 @@ const TRENDING = [
   },
 ];
 
+const PERFORMANCE_ROWS = [
+  { label: 'Ổ gà / Mặt đường', pct: 72, count: '18/25', color: '#ea580c' },
+  { label: 'Đèn đường hỏng', pct: 60, count: '9/15', color: '#d97706' },
+  { label: 'Cây xanh đô thị', pct: 88, count: '7/8', color: '#16a34a' },
+  { label: 'Ngập úng / Thoát nước', pct: 40, count: '4/10', color: '#0284c7' },
+];
 
 function formatSeverity(sev?: string): string {
   const upper = (sev || '').toUpperCase();
@@ -75,12 +112,20 @@ function formatSeverity(sev?: string): string {
 
 const COMMUNITY_FEED = [
   { time: '14 phút', user: 'Minh T.', action: 'báo cáo ổ gà', loc: 'Hoàng Diệu, Q.4', avatar: 'MT', report: true },
-  { time: '32 phút', user: 'Lan N.', action: 'ủng hộ sự cố ngập úng', loc: 'Bình Thạnh', avatar: 'LN', report: false },
+  { time: '32 phút', user: 'Lan N.', action: 'đồng tình sự cố ngập úng', loc: 'Bình Thạnh', avatar: 'LN', report: false },
   { time: '1 giờ', user: 'Hùng P.', action: 'báo cáo đèn hỏng', loc: 'Lê Văn Sỹ, Q.3', avatar: 'HP', report: true },
-  { time: '2 giờ', user: 'Thu M.', action: 'ủng hộ sự cố mặt đường', loc: 'Q.5', avatar: 'TM', report: false },
+  { time: '2 giờ', user: 'Thu M.', action: 'đồng tình sự cố mặt đường', loc: 'Q.5', avatar: 'TM', report: false },
 ];
 
-function SectionLabel({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+function SectionLabel({
+  title,
+  action,
+  onAction,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+}) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
@@ -88,7 +133,7 @@ function SectionLabel({ title, action, onAction }: { title: string; action?: str
         <Text style={styles.sectionTitle}>{title}</Text>
       </View>
       {action ? (
-        <TouchableOpacity onPress={onAction} style={styles.actionBtn}>
+        <TouchableOpacity onPress={onAction} style={styles.actionBtn} activeOpacity={0.75}>
           <Text style={styles.actionBtnText}>{action}</Text>
         </TouchableOpacity>
       ) : null}
@@ -103,25 +148,129 @@ function getGreeting() {
   return 'Chào buổi tối';
 }
 
+function formatLocation(ward?: string, province?: string): string {
+  let w = (ward || '').trim();
+  let p = (province || '').trim();
+
+  // Bỏ chữ "Phường" / "Phuong" / "P." theo yêu cầu người dùng
+  if (w) {
+    w = w.replace(/^(phường|phuong|p\.)\s*/i, '').trim();
+    if (w.toLowerCase() === 'ben nghe') {
+      w = 'Bến Nghé';
+    }
+  }
+
+  // Chuẩn hóa Tỉnh / TP
+  const lowerP = p.toLowerCase();
+  if (
+    lowerP.includes('ho chi minh') ||
+    lowerP === 'hcm' ||
+    lowerP === 'tp hcm' ||
+    lowerP === 'hồ chí minh' ||
+    lowerP === 'tp. hcm'
+  ) {
+    p = 'TP. Hồ Chí Minh';
+  } else if (lowerP.includes('ha noi') || lowerP === 'hà nội') {
+    p = 'Hà Nội';
+  } else if (lowerP.includes('da nang') || lowerP === 'đà nẵng') {
+    p = 'Đà Nẵng';
+  } else if (lowerP.includes('can tho') || lowerP === 'cần thơ') {
+    p = 'Cần Thơ';
+  } else if (lowerP.includes('hai phong') || lowerP === 'hải phòng') {
+    p = 'Hải Phòng';
+  }
+
+  if (w && p) {
+    return `${w}, ${p}`;
+  }
+  if (w) return w;
+  if (p) return p;
+  return 'Bến Nghé, TP. Hồ Chí Minh';
+}
+
 export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'my-reports' | 'profile'>('home');
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
+  const [totalMyReports, setTotalMyReports] = useState<number>(0);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Animations
+  const pinPulseAnim = useRef(new Animated.Value(1)).current;
+  const heroScaleAnim = useRef(new Animated.Value(1)).current;
+  const progressBarAnim = useRef(new Animated.Value(0)).current;
+  const entranceAnim = useRef(new Animated.Value(0)).current;
+
+  const loadHomeData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      const [ticketsRes, unread] = await Promise.allSettled([
+        getMyReportedTickets(null, 0, 100),
+        getUnreadNotificationCount(),
+      ]);
+
+      if (
+        ticketsRes.status === 'fulfilled' &&
+        ticketsRes.value &&
+        Array.isArray(ticketsRes.value.content)
+      ) {
+        setRealTickets(ticketsRes.value.content.slice(0, 3));
+        setTotalMyReports(
+          ticketsRes.value.totalElements ?? ticketsRes.value.content.length
+        );
+      }
+
+      if (unread.status === 'fulfilled') {
+        setUnreadCount(unread.value);
+      }
+    } catch (e: any) {
+      console.log('HomeScreen data load note:', e?.message);
+    } finally {
+      if (isRefresh) setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    getMyReportedTickets(null, 0, 3)
-      .then((res) => {
-        if (res && Array.isArray(res.content)) {
-          setRealTickets(res.content.slice(0, 3));
-        }
-      })
-      .catch((e) => console.log('HomeScreen tickets load note:', e?.message));
+    loadHomeData(false);
 
-    getUnreadNotificationCount()
-      .then((c) => setUnreadCount(c))
-      .catch((e) => console.log('HomeScreen unread count note:', e?.message));
-  }, []);
+    // Entrance & Fluid Progress Bar animation
+    Animated.parallel([
+      Animated.timing(entranceAnim, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(progressBarAnim, {
+        toValue: 1,
+        duration: 950,
+        delay: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start();
+
+    // Map Radar Pin Pulse Loop
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pinPulseAnim, {
+          toValue: 1.45,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pinPulseAnim, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+
+    return () => pulseLoop.stop();
+  }, [loadHomeData]);
 
   const initials = (authUser?.fullName?.trim() || '?')
     .split(/\s+/)
@@ -138,60 +287,164 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.userInfoContainer}>
+          {/* Lời chào thời gian */}
           <View style={styles.greetingRow}>
             <View style={styles.pingDot} />
-            <Text style={styles.greetingText}>
-              {getGreeting()} · {[authUser?.ward, authUser?.province].filter(Boolean).join(', ') || 'TP.HCM'}
+            <Text style={styles.greetingText}>{getGreeting()}</Text>
+          </View>
+
+          {/* Tên cư dân to rõ ở trên */}
+          <Text style={styles.userName} numberOfLines={1}>
+            {authUser?.fullName ?? 'Cư dân CityFix'}
+          </Text>
+
+          {/* Địa chỉ hành chính trọn vẹn ở dưới */}
+          <View style={styles.locationRow}>
+            <Ionicons name="location-sharp" size={11} color="#ea580c" />
+            <Text style={styles.locationText} numberOfLines={1}>
+              {formatLocation(authUser?.ward, authUser?.province)}
             </Text>
           </View>
-          <Text style={styles.userName} numberOfLines={1}>
-            {authUser?.fullName ?? 'CityFix'}
-          </Text>
         </View>
 
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={() => { navigate('notifications'); }}
+            onPress={() => navigate('notifications')}
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={20} color="#475569" />
             {unreadCount > 0 && (
               <View style={styles.notificationBadge}>
                 <Text style={styles.notificationBadgeText}>
-                  {unreadCount > 9 ? '9+' : unreadCount}
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </Text>
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.avatarBtn} onPress={() => navigate('profile')}>
+          <TouchableOpacity
+            style={styles.avatarBtn}
+            onPress={() => navigate('profile')}
+            activeOpacity={0.8}
+          >
             <Text style={styles.avatarText}>{initials}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Scrollable Body */}
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
-        {/* Stats Grid */}
+      {/* Scrollable Body with Pull-to-Refresh */}
+      <ScrollView
+        style={styles.scrollArea}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadHomeData(true)}
+            colors={['#ea580c']}
+            tintColor="#ea580c"
+          />
+        }
+      >
+        {/* 1. AI Smart Report Hero Banner */}
+        <Animated.View
+          style={[
+            styles.paddingHorizontal,
+            {
+              opacity: entranceAnim,
+              transform: [
+                {
+                  translateY: entranceAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [14, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: heroScaleAnim }] }}>
+            <TouchableOpacity
+              style={styles.aiHeroCard}
+              onPress={() => navigate('location')}
+              onPressIn={() =>
+                Animated.spring(heroScaleAnim, {
+                  toValue: 0.97,
+                  useNativeDriver: true,
+                }).start()
+              }
+              onPressOut={() =>
+                Animated.spring(heroScaleAnim, {
+                  toValue: 1,
+                  useNativeDriver: true,
+                }).start()
+              }
+              activeOpacity={0.92}
+            >
+              <View style={styles.aiHeroOrb1} />
+              <View style={styles.aiHeroOrb2} />
+
+              <View style={styles.aiHeroLeft}>
+                <View style={styles.aiBadgePill}>
+                  <Ionicons name="sparkles" size={11} color="#ea580c" />
+                  <Text style={styles.aiBadgePillText}>AI NHẬN DIỆN TỰ ĐỘNG</Text>
+                </View>
+                <Text style={styles.aiHeroTitle}>Phát hiện sự cố quanh bạn?</Text>
+                <Text style={styles.aiHeroSub}>
+                  Chụp ảnh hiện trường để AI tự động phân loại & định vị GPS trong 30 giây.
+                </Text>
+
+                <View style={styles.aiHeroCtaBtn}>
+                  <Ionicons name="camera" size={14} color="#ffffff" />
+                  <Text style={styles.aiHeroCtaText}>Báo cáo sự cố ngay</Text>
+                  <Ionicons name="arrow-forward" size={13} color="#ffffff" />
+                </View>
+              </View>
+
+              <View style={styles.aiHeroIconBox}>
+                <View style={styles.aiHeroIconInner}>
+                  <Ionicons name="scan-circle" size={44} color="#ea580c" />
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+
+        {/* 2. Enhanced Duotone Stats Grid */}
         <View style={styles.paddingHorizontal}>
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
-              <Ionicons name="warning-outline" size={18} color="#f97316" />
-              <Text style={styles.statValue}>34</Text>
+              <View style={[styles.statIconWrap, { backgroundColor: '#fff7ed' }]}>
+                <Ionicons name="warning" size={16} color="#ea580c" />
+              </View>
+              <Text style={[styles.statValue, { color: '#ea580c' }]}>34</Text>
               <Text style={styles.statLabel}>Sự cố hôm nay</Text>
-              <Text style={styles.statSub}>↑12% tuần</Text>
+              <Text style={[styles.statSub, { color: '#ea580c' }]}>↑12% tuần này</Text>
             </View>
+
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigate('my-reports')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.statIconWrap, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="document-text" size={16} color="#2563eb" />
+              </View>
+              <Text style={[styles.statValue, { color: '#2563eb' }]}>
+                {totalMyReports}
+              </Text>
+              <Text style={styles.statLabel}>Hồ sơ của bạn</Text>
+              <Text style={[styles.statSub, { color: '#2563eb' }]}>Chạm để xem →</Text>
+            </TouchableOpacity>
+
             <View style={styles.statCard}>
-              <Ionicons name="construct-outline" size={18} color="#f97316" />
-              <Text style={styles.statValue}>1</Text>
-              <Text style={styles.statLabel}>Đang xử lý</Text>
-              <Text style={styles.statSub}>khu vực bạn</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#16a34a" />
+              <View style={[styles.statIconWrap, { backgroundColor: '#f0fdf4' }]}>
+                <Ionicons name="checkmark-done-circle" size={16} color="#16a34a" />
+              </View>
               <Text style={[styles.statValue, { color: '#16a34a' }]}>127</Text>
-              <Text style={styles.statLabel}>Hoàn thành</Text>
-              <Text style={[styles.statSub, { color: '#16a34a' }]}>{`Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`}</Text>
+              <Text style={styles.statLabel}>Đã khắc phục</Text>
+              <Text style={[styles.statSub, { color: '#16a34a' }]}>
+                {`Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`}
+              </Text>
             </View>
           </View>
         </View>
@@ -206,12 +459,12 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
               <TouchableOpacity
                 style={styles.alertContent}
                 onPress={() => {
-                Alert.alert(
-                  'Cảnh báo khu vực',
-                  'Khu vực Đinh Tiên Hoàng, Bình Thạnh đang ghi nhận tình trạng ngập úng nghiêm trọng do triều cường. Đội thoát nước đô thị đang khẩn trương xử lý. Vui lòng chú ý an toàn khi di chuyển.',
-                  [{ text: 'Đã hiểu' }]
-                );
-              }}
+                  Alert.alert(
+                    'Cảnh báo khu vực',
+                    'Khu vực Đinh Tiên Hoàng, Bình Thạnh đang ghi nhận tình trạng ngập úng nghiêm trọng do triều cường. Đội thoát nước đô thị đang khẩn trương xử lý. Vui lòng chú ý an toàn khi di chuyển.',
+                    [{ text: 'Đã hiểu' }]
+                  );
+                }}
               >
                 <View style={styles.alertTagRow}>
                   <Text style={styles.alertTagText}>CẢNH BÁO KHU VỰC</Text>
@@ -219,59 +472,72 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                 </View>
                 <Text style={styles.alertTitle}>Ngập úng nghiêm trọng · Đinh Tiên Hoàng</Text>
                 <Text style={styles.alertSub}>
-                  11 người đồng tình · Bình Thạnh · <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xem chi tiết →</Text>
+                  11 người đồng tình · Bình Thạnh ·{' '}
+                  <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xem chi tiết →</Text>
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setAlertDismissed(true)}>
+              <TouchableOpacity
+                onPress={() => setAlertDismissed(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <Ionicons name="close" size={18} color="#94a3b8" />
               </TouchableOpacity>
             </View>
           </View>
         ) : null}
 
-        {/* Decorative Tape Divider Accent */}
-        <View style={[styles.paddingHorizontal, { marginVertical: 14 }]}>
-          <View style={styles.tapeDivider} />
-        </View>
-
-        {/* Quick Categories */}
-        <View style={styles.paddingHorizontal}>
-          <SectionLabel title="BÁO CÁO NHANH" />
+        {/* 3. Quick Categories (Unified Brand Style like Staff) */}
+        <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
+          <SectionLabel title="DANH MỤC BÁO CÁO NHANH" />
           <View style={styles.catsGrid}>
             {QUICK_CATS.map((cat, idx) => (
               <TouchableOpacity
                 key={idx}
                 style={styles.catCard}
-                onPress={() => { navigate('location'); }}
+                onPress={() => navigate('location')}
                 activeOpacity={0.75}
               >
                 <View style={styles.catIconBox}>
                   <MaterialCommunityIcons name={cat.icon as any} size={22} color="#f97316" />
                 </View>
                 <Text style={styles.catLabel}>{cat.label}</Text>
+                <Text style={styles.catSub} numberOfLines={1}>
+                  {cat.sub}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Area Map Preview */}
-        <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
-          <SectionLabel title="BẢN ĐỒ KHU VỰC" />
+        {/* 4. Area Map Preview with Pulsing Live Radar Pins */}
+        <View style={[styles.paddingHorizontal, { marginTop: 22 }]}>
+          <SectionLabel title="BẢN ĐỒ GIÁM SÁT KHU VỰC" />
           <View style={styles.mapContainer}>
             <Image
-              source={{ uri: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800&h=400&fit=crop&auto=format' }}
+              source={{
+                uri: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800&h=400&fit=crop&auto=format',
+              }}
               style={styles.mapImage}
             />
             <View style={styles.mapOverlay} />
 
-            {/* Pins */}
+            {/* Live Pulsing Pins */}
             {[
-              { x: '38%', y: '35%', color: '#ef4444', count: '11' },
-              { x: '63%', y: '25%', color: '#f97316', count: '7' },
-              { x: '24%', y: '55%', color: '#f97316', count: '4' },
-              { x: '72%', y: '50%', color: '#eab308', count: '2' },
+              { x: '36%', y: '34%', color: '#ef4444', count: '11' },
+              { x: '62%', y: '25%', color: '#f97316', count: '7' },
+              { x: '22%', y: '56%', color: '#f97316', count: '4' },
+              { x: '72%', y: '52%', color: '#eab308', count: '2' },
             ].map((pin, i) => (
               <View key={i} style={[styles.mapPin, { left: pin.x as any, top: pin.y as any }]}>
+                <Animated.View
+                  style={[
+                    styles.pinPulseRing,
+                    {
+                      backgroundColor: pin.color + '45',
+                      transform: [{ scale: pinPulseAnim }],
+                    },
+                  ]}
+                />
                 <View style={[styles.pinBadge, { backgroundColor: pin.color }]}>
                   <Text style={styles.pinText}>{pin.count}</Text>
                 </View>
@@ -286,23 +552,23 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#f97316' }]} />
-                <Text style={styles.legendText}>Xử lý</Text>
+                <Text style={styles.legendText}>Đang xử lý</Text>
               </View>
             </View>
 
             {/* Total Counter */}
             <View style={styles.mapTotalBadge}>
               <Text style={styles.totalNumber}>24</Text>
-              <Text style={styles.totalSub}>sự cố 5km</Text>
+              <Text style={styles.totalSub}>sự cố bán kính 5km</Text>
             </View>
           </View>
         </View>
 
         {/* Trending Horizontal Scroll */}
-        <View style={{ marginTop: 20 }}>
+        <View style={{ marginTop: 22 }}>
           <View style={styles.paddingHorizontal}>
             <SectionLabel
-              title="ĐANG ĐƯỢC QUAN TÂM"
+              title="SỰ CỐ ĐANG ĐƯỢC QUAN TÂM"
               action="Tất cả →"
               onAction={() => navigate('my-reports')}
             />
@@ -355,26 +621,35 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           </ScrollView>
         </View>
 
-        {/* Processing Performance Progress */}
-        <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
+        {/* 5. Animated Fluid Processing Performance Progress */}
+        <View style={[styles.paddingHorizontal, { marginTop: 22 }]}>
           <SectionLabel title="HIỆU SUẤT XỬ LÝ THEO LOẠI" />
           <View style={styles.progressBox}>
-            {[
-              { label: 'Ổ gà / Mặt đường', pct: 72, count: '18/25' },
-              { label: 'Đèn đường hỏng', pct: 60, count: '9/15' },
-              { label: 'Cây xanh', pct: 88, count: '7/8' },
-              { label: 'Ngập úng / Thoát nước', pct: 40, count: '4/10' },
-            ].map((row, idx) => (
+            {PERFORMANCE_ROWS.map((row, idx) => (
               <View key={idx} style={styles.progressRow}>
                 <View style={styles.progressHeader}>
-                  <Text style={styles.progressLabel}>{row.label}</Text>
+                  <View style={styles.progressLabelWrap}>
+                    <View style={[styles.progressColorDot, { backgroundColor: row.color }]} />
+                    <Text style={styles.progressLabel}>{row.label}</Text>
+                  </View>
                   <View style={styles.progressRight}>
                     <Text style={styles.progressCount}>{row.count}</Text>
-                    <Text style={styles.progressPct}>{row.pct}%</Text>
+                    <Text style={[styles.progressPct, { color: row.color }]}>{row.pct}%</Text>
                   </View>
                 </View>
                 <View style={styles.progressBarTrack}>
-                  <View style={[styles.progressBarFill, { width: `${row.pct}%` }]} />
+                  <Animated.View
+                    style={[
+                      styles.progressBarFill,
+                      {
+                        backgroundColor: row.color,
+                        width: progressBarAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0%', `${row.pct}%`],
+                        }),
+                      },
+                    ]}
+                  />
                 </View>
               </View>
             ))}
@@ -382,7 +657,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         </View>
 
         {/* My Recent Tickets */}
-        <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
+        <View style={[styles.paddingHorizontal, { marginTop: 22 }]}>
           <SectionLabel
             title="HỒ SƠ BÁO CÁO GẦN ĐÂY CỦA TÔI"
             action="Xem tất cả →"
@@ -392,8 +667,15 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
             {realTickets.length > 0 ? (
               realTickets.slice(0, 3).map((t) => {
                 const st = mapBackendStatus(t.status);
-                const catName = t.categoryName || t.subCategories?.[0]?.name || t.description || 'Sự cố';
-                const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleDateString('vi-VN') : '';
+                const catName =
+                  t.categoryName ||
+                  t.subCategories?.[0]?.name ||
+                  t.description ||
+                  'Sự cố đô thị';
+                const timeStr = t.createdAt
+                  ? new Date(t.createdAt).toLocaleDateString('vi-VN')
+                  : '';
+                const isDone = st.statusKey === 'done';
                 return (
                   <TouchableOpacity
                     key={t.id}
@@ -414,6 +696,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                       <Text style={styles.ticketAddress} numberOfLines={1}>
                         {t.address || 'Chưa xác định vị trí'}
                       </Text>
+                      <Text style={styles.ticketTime}>{timeStr}</Text>
                     </View>
                     <View style={styles.ticketStatusCol}>
                       <View
@@ -429,7 +712,12 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                           {st.statusText}
                         </Text>
                       </View>
-                      <Text style={styles.ticketTime}>{timeStr}</Text>
+                      {isDone ? (
+                        <View style={styles.homeRateBadge}>
+                          <Ionicons name="star" size={10} color="#f59e0b" />
+                          <Text style={styles.homeRateBadgeText}>Chi tiết & Đánh giá</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </TouchableOpacity>
                 );
@@ -447,7 +735,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         </View>
 
         {/* Community Feed */}
-        <View style={[styles.paddingHorizontal, { marginTop: 20, marginBottom: 24 }]}>
+        <View style={[styles.paddingHorizontal, { marginTop: 22, marginBottom: 24 }]}>
           <SectionLabel title="HOẠT ĐỘNG CỘNG ĐỒNG" />
           <View style={styles.feedCard}>
             {COMMUNITY_FEED.map((item, i) => (
@@ -547,12 +835,14 @@ const styles = StyleSheet.create({
   },
   userInfoContainer: {
     flex: 1,
+    justifyContent: 'center',
+    paddingRight: 8,
   },
   greetingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    gap: 5,
+    marginBottom: 2,
   },
   pingDot: {
     width: 6,
@@ -561,17 +851,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#f97316',
   },
   greetingText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: '#ea580c',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    letterSpacing: 0.2,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
-    letterSpacing: 0.3,
+    letterSpacing: -0.2,
+    marginBottom: 3,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#64748b',
+    letterSpacing: 0.1,
   },
   headerRight: {
     flexDirection: 'row',
@@ -632,6 +933,107 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
 
+  /* AI Smart Report Hero Banner */
+  aiHeroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    marginTop: 14,
+    borderWidth: 1.2,
+    borderColor: '#fed7aa',
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#ea580c',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  aiHeroOrb1: {
+    position: 'absolute',
+    top: -30,
+    right: -25,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+  },
+  aiHeroOrb2: {
+    position: 'absolute',
+    bottom: -35,
+    right: 40,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(251, 146, 60, 0.06)',
+  },
+  aiHeroLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  aiBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    marginBottom: 6,
+  },
+  aiBadgePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ea580c',
+    letterSpacing: 0.6,
+  },
+  aiHeroTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  aiHeroSub: {
+    fontSize: 11.5,
+    color: '#64748b',
+    lineHeight: 16.5,
+    marginTop: 3,
+  },
+  aiHeroCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#f97316',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    marginTop: 10,
+  },
+  aiHeroCtaText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  aiHeroIconBox: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#ffedd5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiHeroIconInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   /* Section Header */
   sectionHeader: {
     flexDirection: 'row',
@@ -654,18 +1056,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#0f172a',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
   actionBtn: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#fff7ed',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#fed7aa',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
   },
   actionBtnText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -689,21 +1091,27 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  statIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   statValue: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '800',
-    color: '#f97316',
-    marginTop: 4,
+    marginTop: 6,
   },
   statLabel: {
-    fontSize: 9,
-    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#475569',
     marginTop: 2,
   },
   statSub: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '700',
-    color: '#ea580c',
     marginTop: 2,
   },
 
@@ -720,8 +1128,8 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   alertIconBox: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
     justifyContent: 'center',
@@ -736,10 +1144,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   alertTagText: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: '800',
     color: '#dc2626',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
   alertDot: {
     width: 6,
@@ -748,21 +1156,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc2626',
   },
   alertTitle: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
     color: '#0f172a',
     marginTop: 2,
   },
   alertSub: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: '#7f1d1d',
     marginTop: 2,
-  },
-
-  tapeDivider: {
-    height: 6,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 3,
   },
 
   /* Quick Categories Grid */
@@ -778,8 +1180,8 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     borderRadius: 16,
     paddingVertical: 14,
+    paddingHorizontal: 6,
     alignItems: 'center',
-    gap: 8,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
@@ -787,23 +1189,30 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   catIconBox: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 7,
   },
   catLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#334155',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  catSub: {
+    fontSize: 9.5,
+    color: '#64748b',
+    marginTop: 2,
+    textAlign: 'center',
   },
 
   /* Area Map */
   mapContainer: {
-    height: 180,
-    borderRadius: 16,
+    height: 185,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e2e8f0',
@@ -823,14 +1232,27 @@ const styles = StyleSheet.create({
   },
   mapPin: {
     position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinPulseRing: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   pinBadge: {
+    minWidth: 22,
+    height: 22,
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
   },
   pinText: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '800',
     color: '#ffffff',
   },
@@ -844,11 +1266,11 @@ const styles = StyleSheet.create({
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
   },
   legendDot: {
     width: 6,
@@ -856,7 +1278,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   legendText: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '700',
     color: '#0f172a',
   },
@@ -865,7 +1287,7 @@ const styles = StyleSheet.create({
     top: 12,
     right: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
     alignItems: 'center',
@@ -876,8 +1298,9 @@ const styles = StyleSheet.create({
     color: '#ea580c',
   },
   totalSub: {
-    fontSize: 8,
+    fontSize: 8.5,
     color: '#64748b',
+    fontWeight: '600',
   },
 
   /* Trending Horizontal Scroll */
@@ -887,7 +1310,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   trendingCard: {
-    width: 210,
+    width: 215,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
@@ -901,7 +1324,7 @@ const styles = StyleSheet.create({
   },
   trendingImg: {
     width: '100%',
-    height: 110,
+    height: 112,
   },
   trendingBadge: {
     position: 'absolute',
@@ -910,7 +1333,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef2f2',
     borderWidth: 1,
     borderColor: '#fca5a5',
-    borderRadius: 4,
+    borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
@@ -926,7 +1349,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -939,19 +1362,14 @@ const styles = StyleSheet.create({
   trendingBody: {
     padding: 12,
   },
-  trendingId: {
-    fontSize: 9,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: '#94a3b8',
-  },
   trendingCategory: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
     color: '#0f172a',
     marginTop: 2,
   },
   trendingAddress: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: '#64748b',
     marginTop: 2,
   },
@@ -962,20 +1380,20 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   trendingDelta: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '700',
     color: '#16a34a',
   },
   upvoteBtn: {
-    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+    backgroundColor: '#fff7ed',
     borderWidth: 1,
-    borderColor: 'rgba(249, 115, 22, 0.25)',
+    borderColor: '#fed7aa',
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
   upvoteBtnText: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -1002,9 +1420,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  progressLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressColorDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
   progressLabel: {
-    fontSize: 11,
-    color: '#475569',
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#334155',
   },
   progressRight: {
     flexDirection: 'row',
@@ -1017,9 +1446,8 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   progressPct: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#ea580c',
+    fontSize: 11,
+    fontWeight: '800',
   },
   progressBarTrack: {
     height: 6,
@@ -1029,7 +1457,6 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#f97316',
     borderRadius: 3,
   },
 
@@ -1044,7 +1471,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     borderRadius: 16,
-    padding: 12,
+    padding: 13,
     position: 'relative',
     overflow: 'hidden',
     shadowColor: '#0f172a',
@@ -1058,32 +1485,32 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: 3,
+    width: 3.5,
     backgroundColor: '#f97316',
   },
   ticketBody: {
     flex: 1,
     paddingLeft: 8,
-  },
-  ticketId: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    paddingRight: 8,
   },
   ticketCategory: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
-    marginTop: 2,
   },
   ticketAddress: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#64748b',
     marginTop: 2,
   },
+  ticketTime: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 3,
+  },
   ticketStatusCol: {
     alignItems: 'flex-end',
-    gap: 4,
+    gap: 5,
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -1091,25 +1518,25 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
   },
-  statusProcessing: {
-    backgroundColor: 'rgba(249, 115, 22, 0.08)',
-    borderColor: 'rgba(249, 115, 22, 0.25)',
-  },
-  statusDone: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
-  },
-  statusReceived: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#e2e8f0',
-  },
   statusText: {
     fontSize: 9,
     fontWeight: '800',
   },
-  ticketTime: {
-    fontSize: 9,
-    color: '#94a3b8',
+  homeRateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+  },
+  homeRateBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#ea580c',
   },
 
   /* Community Feed */

@@ -38,6 +38,13 @@ const INITIAL_DRAFT: ReportDraft = {
   userDescription: '',
 };
 
+export type TicketFilterKey = 'all' | 'processing' | 'received' | 'done' | 'cancelled';
+
+export interface FilterRequestConfig {
+  filter: TicketFilterKey;
+  timestamp: number;
+}
+
 export default function AppNavigator() {
   const [initializing, setInitializing] = useState<boolean>(true);
   const [currentScreen, setCurrentScreen] = useState<string>('login');
@@ -50,6 +57,14 @@ export default function AppNavigator() {
   const [duplicateTickets, setDuplicateTickets] = useState<any[]>([]);
   const [createdTicket, setCreatedTicket] = useState<any | null>(null);
   const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ home: true });
+  const [residentReportsFilter, setResidentReportsFilter] = useState<FilterRequestConfig>({
+    filter: 'all',
+    timestamp: Date.now(),
+  });
+  const [staffTicketsFilter, setStaffTicketsFilter] = useState<FilterRequestConfig>({
+    filter: 'all',
+    timestamp: Date.now(),
+  });
 
   // Tự động khôi phục phiên đăng nhập khi khởi động ứng dụng
   useEffect(() => {
@@ -64,7 +79,7 @@ export default function AppNavigator() {
         if (isMounted && token && savedUserStr) {
           const parsedUser = JSON.parse(savedUserStr);
           setUser(parsedUser);
-          setCurrentScreen('home');
+          setCurrentScreen('splash');
         }
       } catch (err) {
         console.warn('Lỗi kiểm tra phiên đăng nhập:', err);
@@ -127,9 +142,19 @@ export default function AppNavigator() {
     setCurrentScreen('home');
   };
 
-  const handleNavigate = (screen: string) => {
+  const handleNavigate = (
+    screen: string,
+    params?: { filter?: TicketFilterKey; [key: string]: any }
+  ) => {
     if (['home', 'my-reports', 'profile', 'staff-tickets'].includes(screen)) {
       setVisitedTabs((prev) => ({ ...prev, [screen]: true }));
+    }
+    if (params?.filter) {
+      if (screen === 'my-reports') {
+        setResidentReportsFilter({ filter: params.filter, timestamp: Date.now() });
+      } else if (screen === 'staff-tickets') {
+        setStaffTicketsFilter({ filter: params.filter, timestamp: Date.now() });
+      }
     }
     setCurrentScreen(screen);
   };
@@ -230,6 +255,7 @@ export default function AppNavigator() {
                 navigate={handleNavigate}
                 authUser={user}
                 openTicket={handleOpenTicket}
+                filterRequest={staffTicketsFilter}
               />
             </View>
           )}
@@ -384,6 +410,7 @@ export default function AppNavigator() {
               navigate={handleNavigate}
               authUser={user}
               openTicket={handleOpenTicket}
+              filterRequest={residentReportsFilter}
             />
           </View>
         )}

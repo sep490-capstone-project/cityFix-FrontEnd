@@ -17,6 +17,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
@@ -31,6 +32,8 @@ import {
   getMyRating,
   TicketRating,
 } from '../../api';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const RATING_LABELS: Record<number, { text: string; color: string }> = {
   1: { text: 'Rất tệ', color: '#ef4444' },
@@ -98,9 +101,13 @@ const CONSTRUCTIVE_FEEDBACK_TAGS = [
 ];
 
 interface Props {
-  navigate: (screen: string) => void;
+  navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   openTicket: (id: string, ticketObj?: ReportedTicket) => void;
+  filterRequest?: {
+    filter: FilterKey;
+    timestamp: number;
+  };
 }
 
 type TabKey = 'my_reports' | 'upvoted';
@@ -161,7 +168,7 @@ function ReportCardSkeleton() {
   );
 }
 
-export default function MyReportsScreen({ navigate, authUser, openTicket }: Props) {
+export default function MyReportsScreen({ navigate, authUser, openTicket, filterRequest }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('my_reports');
   const [filter, setFilter] = useState<FilterKey>('all');
   const [tickets, setTickets] = useState<ReportedTicket[]>([]);
@@ -178,6 +185,22 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
   const [submittingRating, setSubmittingRating] = useState<boolean>(false);
   const [editingRatingId, setEditingRatingId] = useState<string | null>(null);
   const [ratedTicketIds, setRatedTicketIds] = useState<Set<string>>(new Set());
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvt, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const fetchTickets = useCallback(async (isRefresh = false) => {
     try {
@@ -235,6 +258,13 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  useEffect(() => {
+    if (filterRequest?.filter) {
+      setActiveTab('my_reports');
+      setFilter(filterRequest.filter);
+    }
+  }, [filterRequest]);
 
   const handleToggleTag = (tag: string) => {
     const current = ratingFeedback.trim();
@@ -651,7 +681,17 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
               style={styles.keyboardAvoidContainer}
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-                <View style={styles.modalBox}>
+                <View
+                  style={[
+                    styles.modalBox,
+                    {
+                      maxHeight: keyboardHeight > 0
+                        ? (SCREEN_HEIGHT - keyboardHeight - (Platform.OS === 'ios' ? 70 : 40))
+                        : (SCREEN_HEIGHT * 0.85),
+                      marginTop: Platform.OS === 'ios' ? 56 : 30,
+                    },
+                  ]}
+                >
                   <View style={styles.sheetDragHandle} />
                   <View style={styles.modalHeader}>
                     <View style={styles.modalTitleRow}>
@@ -682,9 +722,11 @@ export default function MyReportsScreen({ navigate, authUser, openTicket }: Prop
                   </View>
 
                   <ScrollView
+                    style={{ flexShrink: 1 }}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ paddingBottom: 10 }}
+                    keyboardDismissMode="on-drag"
+                    contentContainerStyle={{ paddingBottom: 16 }}
                   >
                     {/* Stars selection row */}
                     <View style={styles.modalRatingRow}>
