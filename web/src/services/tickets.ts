@@ -33,7 +33,7 @@ export interface PageTicketResponse {
   number: number;
 }
 
-const API_URL = 'https://cityfix-backend-80ar.onrender.com';
+const API_URL = 'http://180.93.125.111';
 
 async function ticketRequest<T>(
   endpoint: string,
