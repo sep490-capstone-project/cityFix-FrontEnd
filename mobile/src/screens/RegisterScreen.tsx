@@ -1148,13 +1148,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   mainTitle: {
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: '900',
     color: '#0f172a',
     letterSpacing: 0.4,
   },
   subTitle: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: '#64748b',
     marginTop: 4,
     lineHeight: 18,
@@ -1184,7 +1184,7 @@ const styles = StyleSheet.create({
   },
   formErrorText: {
     color: '#dc2626',
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
     flex: 1,
   },
@@ -1230,7 +1230,7 @@ const styles = StyleSheet.create({
     borderColor: '#fed7aa',
   },
   syncShowPwText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -1248,7 +1248,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   label: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     color: '#475569',
     letterSpacing: 0.8,
@@ -1377,7 +1377,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   errorText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#dc2626',
     fontWeight: '600',
   },
@@ -1443,7 +1443,7 @@ const styles = StyleSheet.create({
     borderColor: '#bbf7d0',
   },
   secChipText: {
-    fontSize: 10.5,
+    fontSize: 11,
     color: '#64748b',
     fontWeight: '600',
   },
@@ -1463,7 +1463,7 @@ const styles = StyleSheet.create({
   },
   termsText: {
     flex: 1,
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#475569',
     lineHeight: 17,
   },

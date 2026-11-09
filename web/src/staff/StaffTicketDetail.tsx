@@ -1,6 +1,19 @@
 import { useState, useEffect } from 'react';
 import { User, getCat, getDept, statusInfo, sevInfo, priorityInfo } from '../data';
 import {
+  MapPinIcon,
+  PlayIcon,
+  CameraIcon,
+  SlidersIcon,
+  SendIcon,
+  ZoomInIcon,
+  PhoneIcon,
+  AlertTriangleIcon,
+  MessageSquareIcon,
+  PaperclipIcon,
+  InfoIcon,
+} from './StaffIcons';
+import {
   StaffTicketItem,
   StaffTicketStepEvidence,
   createStaffRequest,
@@ -411,7 +424,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               )}
             </div>
             <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
-              📍 {ticket.address || 'Chưa xác định địa chỉ hiện trường'}
+              <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket.address || 'Chưa xác định địa chỉ hiện trường'}</span>
             </p>
           </div>
         </div>
@@ -425,7 +438,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               disabled={submitting}
               className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-[12px] uppercase tracking-wide transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
             >
-              <span>🚀</span> Bắt đầu xử lý
+              <PlayIcon className="w-3.5 h-3.5 text-white" /> Bắt đầu xử lý
             </button>
           )}
 
@@ -434,7 +447,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             onClick={() => openEvidenceModal()}
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
           >
-            <span>📸</span> Gửi bằng chứng
+            <CameraIcon className="w-3.5 h-3.5 text-white" /> Gửi bằng chứng
           </button>
 
           <button
@@ -442,7 +455,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             onClick={() => openStatusModal()}
             className="px-3.5 py-2 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
           >
-            <span>⚙</span> Đổi trạng thái
+            <SlidersIcon className="w-3.5 h-3.5 text-gray-700" /> Đổi trạng thái
           </button>
 
           {/* Nút gửi yêu cầu tới Quản lý (thay thế chuyển giao & từ chối) */}
@@ -452,7 +465,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             className="px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[12px] transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
             title="Nhân viên tạo yêu cầu gửi tới người quản lý phụ trách phòng ban"
           >
-            <span>📨</span> Gửi yêu cầu tới Quản lý
+            <SendIcon className="w-3.5 h-3.5 text-indigo-700" /> Gửi yêu cầu tới Quản lý
           </button>
         </div>
       </div>
@@ -480,7 +493,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <span>📸</span> Hiện trường phản ánh
+                Hiện trường phản ánh
               </h3>
               <span className="font-mono-cf text-[11px] text-gray-400">
                 {ticket.createdAt ? ticket.createdAt.replace('T', ' ').slice(0, 16) : '—'}
@@ -499,7 +512,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                  🔍 Bấm để phóng to
+                  <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Bấm để phóng to</span>
                 </div>
               </div>
             ) : (
@@ -520,7 +533,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <div>
               <span className="text-[11px] font-bold text-gray-400 block mb-1">Địa điểm:</span>
               <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-gray-50/70 border border-gray-200 rounded-xl p-3">
-                <span className="text-orange-500 flex-shrink-0 mt-0.5">📍</span>
+                <MapPinIcon className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
                 <span className="font-medium">{ticket.address || '—'}</span>
               </div>
             </div>
@@ -556,10 +569,10 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             {/* Thông tin người báo cáo */}
             {(ticket.creatorFullName || ticket.reporterName || ticket.creatorPhoneNumber || ticket.reporterPhone) && (
               <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
-                <span className="font-bold text-gray-700 block mb-1">👤 Người phản ánh:</span>
+                <span className="font-bold text-gray-700 block mb-1">Người phản ánh:</span>
                 <p className="text-gray-800 font-semibold">{ticket.creatorFullName || ticket.reporterName || 'Người dân'}</p>
                 {(ticket.creatorPhoneNumber || ticket.reporterPhone) && (
-                  <p className="font-mono-cf text-gray-500">📞 {ticket.creatorPhoneNumber || ticket.reporterPhone}</p>
+                  <p className="font-mono-cf text-gray-500 flex items-center gap-1"><PhoneIcon className="w-3 h-3 text-gray-400" /> {ticket.creatorPhoneNumber || ticket.reporterPhone}</p>
                 )}
               </div>
             )}
@@ -573,7 +586,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
               <div>
                 <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>📋</span> Quy trình xử lý theo từng bước ({ticket.steps?.length || 0})
+                  Quy trình xử lý theo từng bước ({ticket.steps?.length || 0})
                 </h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   Cập nhật trạng thái tiến độ và đính kèm bằng chứng nghiệm thu cho từng bước
@@ -639,7 +652,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                             {/* Người giải quyết & Khả năng làm ngay tức thì / Chờ bước phụ thuộc */}
                             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                               <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white border border-gray-200 text-[10px] shadow-2xs">
-                                <span className="text-gray-500 font-medium">👤 Người giải quyết:</span>
+                                <span className="text-gray-500 font-medium">Người giải quyết:</span>
                                 <span className="font-extrabold text-gray-900">
                                   {readiness.assigneeName}
                                 </span>
@@ -649,14 +662,14 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                               {!isDone && (
                                 readiness.canDoNow ? (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold shadow-2xs">
-                                    <span>⚡ Có thể làm ngay tức thì</span>
+                                    <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Có thể làm ngay tức thì</span>
                                     <span className="font-normal opacity-85">
                                       ({readiness.hasDependencies ? 'Các bước tiền đề đã xong' : 'Bước độc lập'})
                                     </span>
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-[10px] font-bold shadow-2xs">
-                                    <span>⏳ Phải chờ bước phụ thuộc</span>
+                                    <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Phải chờ bước phụ thuộc</span>
                                     <span className="font-normal opacity-85">
                                       ({readiness.pendingDependencies.length} bước chưa xong)
                                     </span>
@@ -669,7 +682,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                             {!isDone && !readiness.canDoNow && readiness.pendingDependencies.length > 0 && (
                               <div className="mt-1.5 p-2 bg-amber-50/70 border border-amber-200 rounded-xl text-[10px] text-amber-900 flex items-center gap-1.5 flex-wrap">
                                 <span className="font-bold text-amber-950 flex items-center gap-1">
-                                  <span>⚠️</span> Phải chờ hoàn tất bước:
+                                  <span className="inline-flex items-center gap-1"><AlertTriangleIcon className="w-3 h-3 text-amber-700 flex-shrink-0" /> Phải chờ hoàn tất bước:</span>
                                 </span>
                                 {readiness.pendingDependencies.map((pd, pidx) => (
                                   <span
@@ -717,7 +730,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                             className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
                             title="Tải ảnh/video kết quả xử lý cho riêng bước này"
                           >
-                            <span>📸</span>
+                            <CameraIcon className="w-3.5 h-3.5 text-white" />
                             <span>Tải bằng chứng</span>
                           </button>
 
@@ -728,7 +741,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                             className="px-2.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
                             title="Gửi yêu cầu hoặc báo cáo vấn đề của bước này lên Quản lý"
                           >
-                            <span>💬</span>
+                            <MessageSquareIcon className="w-3.5 h-3.5 text-indigo-700" />
                             <span>Báo cáo bước</span>
                           </button>
                         </div>
@@ -738,7 +751,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                       {st.evidences && st.evidences.length > 0 && (
                         <div className="pt-2 border-t border-gray-200/60 space-y-1.5">
                           <p className="text-[10px] font-bold text-gray-500 flex items-center gap-1">
-                            <span>📎</span> Minh chứng đã nộp cho bước ({st.evidences.length}):
+                            <span className="inline-flex items-center gap-1"><PaperclipIcon className="w-3.5 h-3.5 text-gray-500" /> Minh chứng đã nộp cho bước</span> ({st.evidences.length}):
                           </p>
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
                             {st.evidences.map((ev, evIdx) => (
@@ -754,7 +767,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                 />
                                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-bold">
-                                  🔍 Xem
+                                  <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3 h-3 text-white" /> Xem</span>
                                 </div>
                               </div>
                             ))}
@@ -773,7 +786,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
               <div>
                 <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>🖼️</span> Kho bằng chứng & hình ảnh tổng hợp ({evidencesList.length})
+                  Kho bằng chứng & hình ảnh tổng hợp ({evidencesList.length})
                 </h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   Toàn bộ hình ảnh, video nghiệm thu đã tải lên của hồ sơ
@@ -810,7 +823,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                       <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
-                        🔍 Phóng to
+                        <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Phóng to</span>
                       </div>
                     </div>
                     <div className="p-2 space-y-0.5">
@@ -837,7 +850,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 text-sm">
-                  📨
+                  <SendIcon className="w-4 h-4 text-indigo-600" />
                 </span>
                 <div>
                   <h3 className="text-[15px] font-bold text-gray-900">Gửi yêu cầu tới Quản lý phòng ban</h3>
@@ -861,22 +874,22 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               <div className="flex flex-wrap gap-1.5">
                 {[
                   {
-                    label: '↗ Chuyển giao phòng ban',
+                    label: 'Chuyển giao phòng ban',
                     title: 'Đề xuất chuyển giao hồ sơ sang phòng ban khác',
                     content: 'Kính gửi Quản lý: Hồ sơ này không thuộc chuyên môn xử lý của phòng ban hiện tại. Đề xuất xem xét chuyển giao sang phòng ban phụ trách phù hợp.',
                   },
                   {
-                    label: '✕ Đề xuất từ chối vé',
+                    label: 'Đề xuất từ chối vé',
                     title: 'Đề xuất từ chối tiếp nhận hồ sơ do không hợp lệ',
                     content: 'Kính gửi Quản lý: Qua khảo sát thực tế, sự cố không tồn tại hoặc phản ánh không đúng sự thật. Đề xuất Quản lý xem xét từ chối hồ sơ.',
                   },
                   {
-                    label: '⏱️ Đề xuất gia hạn deadline',
+                    label: 'Đề xuất gia hạn deadline',
                     title: 'Đề xuất gia hạn thời gian xử lý sự cố',
                     content: 'Kính gửi Quản lý: Do điều kiện khách quan (thời tiết / vật tư chưa về kịp), bước xử lý cần thêm thời gian để hoàn thành đúng tiêu chuẩn. Đề xuất gia hạn deadline.',
                   },
                   {
-                    label: '🛠️ Xin hỗ trợ nhân lực/vật tư',
+                    label: 'Xin hỗ trợ nhân lực/vật tư',
                     title: 'Đề xuất xin hỗ trợ thêm thiết bị và nhân lực',
                     content: 'Kính gửi Quản lý: Quy mô sự cố phức tạp hơn dự kiến, kính đề nghị Quản lý điều phối thêm nhân lực và thiết bị hỗ trợ xử lý hiện trường.',
                   },
@@ -972,7 +985,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                   </>
                 ) : (
                   <>
-                    <span>📨</span>
+                    <SendIcon className="w-3.5 h-3.5 text-white" />
                     <span>Gửi yêu cầu tới Quản lý</span>
                   </>
                 )}
@@ -987,7 +1000,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-gray-200 max-w-md w-full p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-gray-900">⚙ Cập nhật trạng thái hồ sơ</h3>
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5"><SlidersIcon className="w-4 h-4 text-gray-700" /> Cập nhật trạng thái hồ sơ</h3>
               <button onClick={() => setModalType(null)} className="text-gray-400 hover:text-gray-700 cursor-pointer">✕</button>
             </div>
             {/* Chọn bước áp dụng nếu vé có steps */}
@@ -1056,7 +1069,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-gray-200 max-w-lg w-full p-6 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-gray-900">📸 Tải lên bằng chứng xử lý</h3>
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5"><CameraIcon className="w-4 h-4 text-gray-700" /> Tải lên bằng chứng xử lý</h3>
               <button onClick={() => setModalType(null)} className="text-gray-400 hover:text-gray-700 cursor-pointer">✕</button>
             </div>
 
@@ -1080,7 +1093,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               </div>
             ) : (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[12px] text-amber-800 flex items-start gap-2">
-                <span>⚠️</span>
+                <AlertTriangleIcon className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-bold">Hồ sơ chưa có bước quy trình (step)</p>
                   <p className="text-[11px] text-amber-700 mt-0.5">
@@ -1136,7 +1149,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
 
             {/* Hướng dẫn quy trình xử lý */}
             <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl text-[12px] text-blue-900 flex items-start gap-2.5">
-              <span className="text-sm">ℹ️</span>
+              <InfoIcon className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="space-y-0.5">
                 <p className="font-bold text-[12px] text-blue-950">Quy trình nghiệm thu:</p>
                 <p className="text-[11px] text-blue-800 leading-relaxed">

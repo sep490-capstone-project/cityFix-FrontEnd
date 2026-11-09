@@ -1045,6 +1045,7 @@ export default function TicketDetailScreen({
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={styles.keyboardAvoidContainer}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                 <View
@@ -1054,7 +1055,6 @@ export default function TicketDetailScreen({
                       maxHeight: keyboardHeight > 0
                         ? (SCREEN_HEIGHT - keyboardHeight - (Platform.OS === 'ios' ? 70 : 40))
                         : (SCREEN_HEIGHT * 0.85),
-                      marginTop: Platform.OS === 'ios' ? 56 : 30,
                     },
                   ]}
                 >
@@ -1372,6 +1372,7 @@ export default function TicketDetailScreen({
 const styles = StyleSheet.create({
   keyboardAvoidContainer: {
     width: '100%',
+    maxHeight: '100%',
     justifyContent: 'flex-end',
     alignItems: 'center',
   },
@@ -2201,10 +2202,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
     alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 56 : 30, // Khóa an toàn: không bao giờ tràn lấn status bar (00:09)
   },
   ratingModalCard: {
     width: '100%',
     maxWidth: 500,
+    maxHeight: '100%',
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

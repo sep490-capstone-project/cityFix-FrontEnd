@@ -679,6 +679,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket, filter
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={styles.keyboardAvoidContainer}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                 <View
@@ -688,7 +689,6 @@ export default function MyReportsScreen({ navigate, authUser, openTicket, filter
                       maxHeight: keyboardHeight > 0
                         ? (SCREEN_HEIGHT - keyboardHeight - (Platform.OS === 'ios' ? 70 : 40))
                         : (SCREEN_HEIGHT * 0.85),
-                      marginTop: Platform.OS === 'ios' ? 56 : 30,
                     },
                   ]}
                 >
@@ -909,6 +909,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket, filter
 const styles = StyleSheet.create({
   keyboardAvoidContainer: {
     width: '100%',
+    maxHeight: '100%',
     justifyContent: 'flex-end',
     alignItems: 'center',
   },
@@ -1037,7 +1038,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
     letterSpacing: 0.5,
@@ -1485,6 +1486,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
     alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 56 : 30, // Khóa an toàn: không bao giờ tràn lấn status bar (00:09)
   },
   modalBox: {
     backgroundColor: '#ffffff',
@@ -1494,6 +1496,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 0,
     width: '100%',
     maxWidth: 500,
+    maxHeight: '100%',
     paddingHorizontal: 22,
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 38 : 26,
