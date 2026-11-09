@@ -15,6 +15,7 @@ export { default as AIAnalysisScreen } from './resident/AIAnalysisScreen';
 export { default as ReviewDraftScreen } from './resident/ReviewDraftScreen';
 export { default as DuplicateScreen } from './resident/DuplicateScreen';
 export { default as SuccessScreen } from './resident/SuccessScreen';
+export { default as ResidentChatModal } from './resident/ResidentChatModal';
 
 // Staff Screens
 export { default as StaffHomeScreen } from './staff/StaffHomeScreen';

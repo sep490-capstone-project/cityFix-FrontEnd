@@ -141,6 +141,8 @@ export default function ReviewDraftScreen({
           draft.aiAnalysis.description ||
           '',
         imageUrl: draft.imageUrls[0],
+        imageUrls: draft.imageUrls,
+        images: draft.imageUrls,
         categoryId: finalCategoryId,
         subCategoryIds: uniqueSubCatIds,
         severity: (draft.aiAnalysis.severity || effectivePriority || 'LOW').toUpperCase(),

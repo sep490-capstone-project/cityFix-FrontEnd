@@ -3,6 +3,7 @@ import { Ticket, User, getCat, getDept, statusInfo, sevInfo, priorityInfo } from
 import {
   getTicketSteps,
   getTicketById,
+  extractTicketImages,
   updateTicketStepStatus,
   updateStepDeadline,
   deleteTicketStep,
@@ -38,6 +39,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
 
   // Modal xem ảnh phóng to
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
+  const [selectedImageIdx, setSelectedImageIdx] = useState<number>(0);
 
   // Chỉnh sửa hạn chót (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)
   const [editingStepDeadline, setEditingStepDeadline] = useState<{
@@ -324,25 +326,56 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             </div>
 
             {/* Ảnh hiện trường ban đầu */}
-            {ticket?.imageUrl || (ticket?.evidenceUrls && ticket.evidenceUrls.length > 0) ? (
-              <div
-                onClick={() => setZoomImageUrl(ticket.imageUrl || ticket.evidenceUrls[0])}
-                className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-100 aspect-video group cursor-pointer shadow-2xs"
-              >
-                <img
-                  src={ticket?.imageUrl || ticket?.evidenceUrls?.[0]}
-                  alt="Hiện trường"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                  🔍 Bấm để phóng to
+            {(() => {
+              const ticketImages = extractTicketImages(ticket);
+              const activeImg = ticketImages[selectedImageIdx] || ticketImages[0] || '';
+              if (!activeImg) {
+                return (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400 text-xs bg-gray-50/50">
+                    Không có ảnh chụp hiện trường
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2">
+                  <div
+                    onClick={() => setZoomImageUrl(activeImg)}
+                    className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-100 aspect-video group cursor-pointer shadow-2xs"
+                  >
+                    <img
+                      src={activeImg}
+                      alt="Hiện trường"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                      🔍 Bấm để phóng to
+                    </div>
+                    <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
+                      📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
+                    </span>
+                  </div>
+
+                  {ticketImages.length > 1 && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                      {ticketImages.map((imgUrl, idx) => (
+                        <button
+                          key={`${imgUrl}-${idx}`}
+                          type="button"
+                          onClick={() => setSelectedImageIdx(idx)}
+                          className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all cursor-pointer ${
+                            idx === selectedImageIdx
+                              ? 'border-orange-500 ring-2 ring-orange-500/25 scale-[1.02]'
+                              : 'border-gray-200 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={imgUrl} alt={`Hiện trường ${idx + 1}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400 text-xs bg-gray-50/50">
-                Không có ảnh chụp hiện trường
-              </div>
-            )}
+              );
+            })()}
 
             {/* Nội dung phản ánh */}
             <div>
