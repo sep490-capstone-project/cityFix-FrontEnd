@@ -30,6 +30,9 @@ import {
   getWardsForProvince2025,
   findProvince2025ByName,
   removeVietnameseTones,
+  formatWardName,
+  formatProvinceName,
+  formatStandardAddress,
 } from '../../constants/vnProvinces2025';
 
 interface Props {
@@ -110,8 +113,9 @@ export default function StaffProfileScreen({
 
   const handleSelectProvince = (prov: Province2025, autoOpenWard = false) => {
     Keyboard.dismiss();
-    const isDifferent = prov.name !== editProvince;
-    setEditProvince(prov.name);
+    const formatted = formatProvinceName(prov.name);
+    const isDifferent = formatted !== editProvince;
+    setEditProvince(formatted);
     if (isDifferent) {
       setEditWard('');
     }
@@ -125,7 +129,8 @@ export default function StaffProfileScreen({
 
   const handleSelectWard = (w: string) => {
     Keyboard.dismiss();
-    setEditWard(w);
+    const formatted = formatWardName(w);
+    setEditWard(formatted);
     setPickerSearch('');
     setPickerMode(null);
   };
@@ -225,21 +230,25 @@ export default function StaffProfileScreen({
 
     setSaving(true);
     try {
+      const finalProvince = formatProvinceName(editProvince.trim());
+      const finalWard = formatWardName(editWard.trim());
+      const finalAddress = formatStandardAddress(editAddress.trim());
+
       const updatedProfile = await updateProfile({
         fullName: trimmedFullName,
         phoneNumber: cleanPhone,
-        address: editAddress.trim(),
-        province: editProvince.trim(),
-        ward: editWard.trim(),
+        address: finalAddress,
+        province: finalProvince,
+        ward: finalWard,
       });
 
       const updatedUser: AuthUser = {
         ...authUser,
         fullName: updatedProfile.fullName || trimmedFullName,
         phone: updatedProfile.phoneNumber || cleanPhone,
-        address: updatedProfile.address ?? editAddress.trim(),
-        province: updatedProfile.province ?? editProvince.trim(),
-        ward: updatedProfile.ward ?? editWard.trim(),
+        address: updatedProfile.address ?? finalAddress,
+        province: updatedProfile.province ?? finalProvince,
+        ward: updatedProfile.ward ?? finalWard,
       };
 
       onUpdateUser(updatedUser);

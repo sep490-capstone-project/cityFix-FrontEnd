@@ -18,11 +18,13 @@ import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
 import {
   getMyReportedTickets,
+  getLifeThreateningTickets,
   ReportedTicket,
   mapBackendStatus,
   getUnreadNotificationCount,
 } from '../../api';
 import ResidentChatModal from './ResidentChatModal';
+import SOSTicketDetailModal from './SOSTicketDetailModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -193,6 +195,9 @@ function formatLocation(ward?: string, province?: string): string {
 
 export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const [lifeThreateningTickets, setLifeThreateningTickets] = useState<ReportedTicket[]>([]);
+  const [selectedSosTicket, setSelectedSosTicket] = useState<ReportedTicket | null>(null);
+  const [sosDetailVisible, setSosDetailVisible] = useState<boolean>(false);
   const [allMyTickets, setAllMyTickets] = useState<ReportedTicket[]>([]);
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
   const [totalMyReports, setTotalMyReports] = useState<number>(0);
@@ -209,9 +214,10 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const loadHomeData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [ticketsRes, unread] = await Promise.allSettled([
+      const [ticketsRes, unread, sosRes] = await Promise.allSettled([
         getMyReportedTickets(null, 0, 100),
         getUnreadNotificationCount(),
+        getLifeThreateningTickets(null, 0, 10),
       ]);
 
       if (
@@ -228,6 +234,19 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
 
       if (unread.status === 'fulfilled') {
         setUnreadCount(unread.value);
+      }
+
+      if (
+        sosRes.status === 'fulfilled' &&
+        sosRes.value &&
+        Array.isArray(sosRes.value.content)
+      ) {
+        console.log('🚨 SOS TICKETS FOUND:', sosRes.value.content.length);
+        setLifeThreateningTickets(sosRes.value.content);
+        // Reset alert dismissed when new emergency tickets arrive
+        if (sosRes.value.content.length > 0) {
+          setAlertDismissed(false);
+        }
       }
     } catch (e: any) {
       console.log('HomeScreen data load note:', e?.message);
@@ -480,36 +499,59 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           </View>
         </View>
 
-        {/* Priority Alert */}
-        {!alertDismissed ? (
+        {/* Priority Alert - Sự cố nguy hiểm đến tính mạng (SOS) cùng Phường */}
+        {!alertDismissed && lifeThreateningTickets.length > 0 ? (
           <View style={styles.paddingHorizontal}>
             <View style={styles.alertCard}>
               <View style={styles.alertIconBox}>
-                <Ionicons name="alert-circle" size={20} color="#dc2626" />
+                <Ionicons name="warning" size={20} color="#dc2626" />
               </View>
               <TouchableOpacity
                 style={styles.alertContent}
+                activeOpacity={0.85}
                 onPress={() => {
-                  Alert.alert(
-                    'Cảnh báo khu vực',
-                    'Khu vực Đinh Tiên Hoàng, Bình Thạnh đang ghi nhận tình trạng ngập úng nghiêm trọng do triều cường. Đội thoát nước đô thị đang khẩn trương xử lý. Vui lòng chú ý an toàn khi di chuyển.',
-                    [{ text: 'Đã hiểu' }]
-                  );
+                  setSelectedSosTicket(lifeThreateningTickets[0]);
+                  setSosDetailVisible(true);
                 }}
               >
                 <View style={styles.alertTagRow}>
-                  <Text style={styles.alertTagText}>CẢNH BÁO KHU VỰC</Text>
+                  <Text style={styles.alertTagText}>CẢNH BÁO NGUY HIỂM (SOS) · CÙNG PHƯỜNG</Text>
                   <View style={styles.alertDot} />
+                  {lifeThreateningTickets.length > 1 && (
+                    <View style={styles.alertCountBadgeWrap}>
+                      <Text style={styles.alertCountBadgeText}>
+                        +{lifeThreateningTickets.length - 1} sự cố khác
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.alertTitle}>Ngập úng nghiêm trọng · Đinh Tiên Hoàng</Text>
-                <Text style={styles.alertSub}>
-                  11 người đồng tình · Bình Thạnh ·{' '}
-                  <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xem chi tiết →</Text>
+                <Text style={styles.alertTitle} numberOfLines={1}>
+                  {lifeThreateningTickets[0].categories?.[0]?.categoryName ||
+                    lifeThreateningTickets[0].subCategories?.[0]?.name ||
+                    'Sự cố nguy hiểm tính mạng'} · {lifeThreateningTickets[0].address || 'Cùng khu vực Phường'}
                 </Text>
+                <Text style={styles.alertSub} numberOfLines={2}>
+                  {lifeThreateningTickets[0].description}
+                </Text>
+                <View style={styles.alertActionRow}>
+                  <View style={styles.alertStatusPill}>
+                    <Text style={styles.alertStatusPillText}>
+                      {lifeThreateningTickets[0].status === 'IN_PROGRESS'
+                        ? 'Đang xử lý khẩn cấp'
+                        : lifeThreateningTickets[0].status === 'ASSIGNED'
+                        ? 'Đã điều phối nhân lực'
+                        : 'Đang khắc phục'}
+                    </Text>
+                  </View>
+                  <Text style={styles.alertActionLink}>
+                    Xem chi tiết & Bản đồ vị trí →
+                  </Text>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setAlertDismissed(true)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.alertCloseBtn}
               >
                 <Ionicons name="close" size={18} color="#94a3b8" />
               </TouchableOpacity>
@@ -872,6 +914,12 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         navigate={navigate}
         userName={authUser?.fullName}
       />
+
+      <SOSTicketDetailModal
+        visible={sosDetailVisible}
+        ticket={selectedSosTicket}
+        onClose={() => setSosDetailVisible(false)}
+      />
     </View>
   );
 }
@@ -1222,6 +1270,47 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#7f1d1d',
     marginTop: 2,
+    lineHeight: 16,
+  },
+  alertCountBadgeWrap: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  alertCountBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#dc2626',
+  },
+  alertActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    gap: 8,
+  },
+  alertStatusPill: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  alertStatusPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
+  alertActionLink: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#dc2626',
+  },
+  alertCloseBtn: {
+    padding: 4,
+    alignSelf: 'flex-start',
   },
 
   /* Quick Categories Grid */

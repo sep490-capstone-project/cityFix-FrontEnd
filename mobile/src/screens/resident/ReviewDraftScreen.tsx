@@ -16,6 +16,7 @@ import { ReportDraft, CATEGORIES } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createTicket, checkDuplicates, DuplicateTicketItem } from '../../api';
 import { AuthUser } from '../LoginScreen';
+import { formatStandardAddress } from '../../constants/vnProvinces2025';
 
 interface Props {
   navigate: (s: string) => void;
@@ -150,7 +151,7 @@ export default function ReviewDraftScreen({
         priority: effectivePriority.toUpperCase(),
         priorityReasoning: draft.aiAnalysis.priorityReasoning || '',
         locationMethod: draft.locationMethod || 'AUTO_GPS',
-        address: draft.address || '',
+        address: formatStandardAddress(draft.address) || '',
         latitude: draft.location.lat,
         longitude: draft.location.lng,
         confidenceScore: draft.aiAnalysis.confidenceScore || 0,

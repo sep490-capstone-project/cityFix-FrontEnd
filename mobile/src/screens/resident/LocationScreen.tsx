@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import * as Location from 'expo-location';
 import {
   View,
@@ -12,10 +12,24 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  FlatList,
+  Pressable,
+  ScrollView,
 } from 'react-native';
 import MapView, { Marker, MapPressEvent, MarkerDragStartEndEvent } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft } from '../../types';
+import {
+  VN_PROVINCES_2025,
+  Province2025,
+  getWardsForProvince2025,
+  findProvince2025ByName,
+  formatStandardAddress,
+  formatWardName,
+  formatProvinceName,
+  detectProvinceFromCoords,
+  removeVietnameseTones,
+} from '../../constants/vnProvinces2025';
 
 type Mode =
   | 'idle'
@@ -58,6 +72,65 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
   const [showManualModal, setShowManualModal] = useState(false);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
 
+  // State nhập thủ công nâng cao: Chọn TP., Chọn P. và tự gõ số nhà / tên đường
+  const [manualProvince, setManualProvince] = useState<string>('TP. Hồ Chí Minh');
+  const [manualWard, setManualWard] = useState<string>('');
+  const [manualStreet, setManualStreet] = useState<string>('');
+  const [manualAvailableWards, setManualAvailableWards] = useState<string[]>([]);
+  const [loadingManualWards, setLoadingManualWards] = useState<boolean>(false);
+  const [subPickerMode, setSubPickerMode] = useState<'province' | 'ward' | null>(null);
+  const [subPickerSearch, setSubPickerSearch] = useState<string>('');
+
+  const selectedManualProvObj = useMemo<Province2025 | undefined>(
+    () => findProvince2025ByName(manualProvince),
+    [manualProvince]
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedManualProvObj) {
+      setManualAvailableWards([]);
+      return;
+    }
+    setManualAvailableWards(selectedManualProvObj.defaultWards);
+    setLoadingManualWards(true);
+    getWardsForProvince2025(selectedManualProvObj)
+      .then((wards) => {
+        if (active) setManualAvailableWards(wards);
+      })
+      .finally(() => {
+        if (active) setLoadingManualWards(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedManualProvObj]);
+
+  const filteredManualProvinces = useMemo(() => {
+    const q = removeVietnameseTones(subPickerSearch.trim());
+    if (!q) return VN_PROVINCES_2025;
+    return VN_PROVINCES_2025.filter(
+      (p) =>
+        removeVietnameseTones(p.name).includes(q) ||
+        (p.mergedFrom && removeVietnameseTones(p.mergedFrom).includes(q))
+    );
+  }, [subPickerSearch]);
+
+  const filteredManualWards = useMemo(() => {
+    const q = removeVietnameseTones(subPickerSearch.trim());
+    if (!q) return manualAvailableWards;
+    return manualAvailableWards.filter((w) => removeVietnameseTones(w).includes(q));
+  }, [manualAvailableWards, subPickerSearch]);
+
+  const manualPreviewAddress = useMemo(() => {
+    const parts = [
+      manualStreet.trim(),
+      manualWard.trim(),
+      manualProvince.trim(),
+    ].filter(Boolean);
+    return formatStandardAddress(parts.join(', '));
+  }, [manualStreet, manualWard, manualProvince]);
+
   const hasLocation =
     (mode === 'gps-done' || mode === 'manual-done' || mode === 'map-done') &&
     draft.location !== null;
@@ -72,22 +145,65 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
       const results = await Location.reverseGeocodeAsync({ latitude, longitude });
       if (results && results.length > 0) {
         const addr = results[0];
-        const formatted = [
-          addr.name,
-          addr.street,
-          addr.subregion || addr.district,
-          addr.city || addr.region,
+
+        // 1. Số nhà & Tên đường
+        const namePart = addr.name && addr.name !== addr.street ? addr.name.trim() : '';
+        const streetPart = (addr.street || '').trim();
+        const streetFull = [namePart, streetPart]
+          .filter(Boolean)
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .join(' ');
+
+        // 2. Tìm Phường / Xã và Quận / Huyện từ district và subregion
+        const adminCandidates = [addr.district, addr.subregion].filter(Boolean).map((s) => s!.trim());
+        let wardStr = '';
+        let distStr = '';
+
+        for (const item of adminCandidates) {
+          if (/^(phường|p\.)\s+/i.test(item) || /^phường\b/i.test(item)) {
+            wardStr = formatWardName(item);
+          } else if (/^(xã|x\.|thị trấn|tt\.)\s+/i.test(item)) {
+            wardStr = item;
+          } else if (/^(quận|q\.|huyện|h\.|thị xã|tx\.)\s+/i.test(item)) {
+            distStr = item;
+          } else if (!wardStr) {
+            wardStr = formatWardName(item);
+          } else if (!distStr) {
+            distStr = item;
+          }
+        }
+
+        if (wardStr && !/^(P\.|Xã|Thị trấn)/i.test(wardStr)) {
+          wardStr = formatWardName(wardStr);
+        }
+
+        // 3. Tỉnh / Thành phố: Dùng bộ nhận diện thông minh kết hợp cả tên địa phương & tọa độ GPS -> 100% luôn có TP.
+        const cityStr = detectProvinceFromCoords(latitude, longitude, addr);
+
+        const components = [
+          streetFull,
+          wardStr,
+          distStr,
+          cityStr,
         ]
           .filter(Boolean)
           // Loại bỏ phần tử trùng lặp liên tiếp
-          .filter((item, idx, arr) => arr.indexOf(item) === idx)
-          .join(', ');
-        if (formatted) return formatted;
+          .filter((item, idx, arr) => arr.indexOf(item) === idx);
+
+        let joined = components.join(', ');
+
+        // Đảm bảo 100% địa chỉ luôn có tiền tố TP. hoặc Tỉnh
+        if (!joined.includes('TP.') && !joined.includes('Tỉnh')) {
+          joined = `${joined}, ${cityStr}`;
+        }
+
+        return formatStandardAddress(joined);
       }
     } catch (err) {
       console.warn('Reverse geocode warning:', err);
     }
-    return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+    const fallbackCity = detectProvinceFromCoords(latitude, longitude);
+    return formatStandardAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}, ${fallbackCity}`);
   };
 
   const animateMapTo = (latitude: number, longitude: number) => {
@@ -216,18 +332,54 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
 
   const handleOpenManual = () => {
     setLocationConfirmed(false);
-    setManualText(draft.locationSource === 'MANUAL' ? draft.address : '');
+    if (draft.address) {
+      const parts = draft.address.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length >= 3) {
+        const potentialCity = parts[parts.length - 1];
+        const potentialWard = parts[parts.length - 2];
+        const potentialStreet = parts.slice(0, parts.length - 2).join(', ');
+
+        const foundProv = findProvince2025ByName(potentialCity);
+        if (foundProv) {
+          setManualProvince(foundProv.name);
+          setManualWard(formatWardName(potentialWard));
+          setManualStreet(potentialStreet);
+        } else {
+          setManualStreet(draft.address);
+        }
+      } else if (parts.length === 2) {
+        const potentialCity = parts[1];
+        const foundProv = findProvince2025ByName(potentialCity);
+        if (foundProv) {
+          setManualProvince(foundProv.name);
+        }
+        setManualStreet(parts[0]);
+      } else {
+        setManualStreet(draft.address);
+      }
+    }
     setManualError(false);
+    setSubPickerMode(null);
+    setSubPickerSearch('');
     setShowManualModal(true);
   };
 
   const handleConfirmManual = async () => {
-    const trimmed = manualText.trim();
-
-    if (!trimmed) {
-      setManualError(true);
+    if (!manualProvince.trim()) {
+      Alert.alert('Chưa chọn Tỉnh / Thành phố', 'Vui lòng chọn Tỉnh / Thành phố.');
       return;
     }
+    if (!manualWard.trim()) {
+      Alert.alert('Chưa chọn Phường / Xã', 'Vui lòng chọn Phường / Xã.');
+      return;
+    }
+    if (!manualStreet.trim()) {
+      setManualError(true);
+      Alert.alert('Chưa nhập tên đường', 'Vui lòng nhập số nhà và tên đường cụ thể.');
+      return;
+    }
+
+    const finalAddress = manualPreviewAddress;
 
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
@@ -235,14 +387,26 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
         await Location.requestForegroundPermissionsAsync();
       }
 
-      console.log('📍 GEOCODING ADDRESS:', trimmed);
-      const results = await Location.geocodeAsync(trimmed);
-      console.log('📍 GEOCODING RESULTS:', results);
+      console.log('📍 GEOCODING MANUAL ADDRESS:', finalAddress);
+      // Thử geocode địa chỉ đầy đủ trước
+      let results = await Location.geocodeAsync(finalAddress);
+
+      // Nếu địa chỉ cụ thể (số nhà hẻm) không có trên bản đồ -> Fallback về Phường + Thành phố
+      if (!results || results.length === 0) {
+        console.log('📍 FALLBACK GEOCODING TO WARD + PROVINCE:', `${manualWard}, ${manualProvince}`);
+        results = await Location.geocodeAsync(`${manualWard}, ${manualProvince}`);
+      }
+
+      // Nếu vẫn chưa có -> Fallback về Tỉnh / Thành phố
+      if (!results || results.length === 0) {
+        console.log('📍 FALLBACK GEOCODING TO PROVINCE:', manualProvince);
+        results = await Location.geocodeAsync(manualProvince);
+      }
 
       if (!results || results.length === 0) {
         Alert.alert(
-          'Không tìm thấy địa chỉ',
-          'Không tìm thấy vị trí tương ứng. Vui lòng nhập chi tiết số nhà, tên đường, phường/xã.'
+          'Không tìm thấy tọa độ',
+          'Không tìm thấy tọa độ tương ứng với khu vực này. Vui lòng kiểm tra lại hoặc chọn trực tiếp trên bản đồ.'
         );
         return;
       }
@@ -256,10 +420,17 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
           lat: latitude,
           lng: longitude,
         },
-        address: trimmed,
+        address: finalAddress,
         locationMethod: 'MANUAL_ENTRY',
         locationSource: 'MANUAL',
       });
+
+      console.log('==============================');
+      console.log('📍 LOCATION FOR SWAGGER (MANUAL PICK)');
+      console.log('📍 location.lat:', latitude);
+      console.log('📍 location.lng:', longitude);
+      console.log('📍 address:', finalAddress);
+      console.log('==============================');
 
       setMode('manual-done');
       setShowManualModal(false);
@@ -579,52 +750,331 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
         visible={showManualModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowManualModal(false)}
+        onRequestClose={() => {
+          if (subPickerMode) {
+            setSubPickerMode(null);
+          } else {
+            setShowManualModal(false);
+          }
+        }}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoidingView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Ionicons name="location-outline" size={20} color="#f97316" />
-                <Text style={styles.modalTitle}>Nhập địa chỉ thủ công</Text>
-              </View>
+            <View style={[styles.modalContent, subPickerMode ? styles.modalContentPicker : null]}>
+              {subPickerMode ? (
+                /* Sub-picker: Danh sách Tỉnh/TP hoặc Phường/Xã */
+                <View style={styles.pickerViewContainer}>
+                  <View style={styles.pickerHeaderRow}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSubPickerMode(null);
+                        setSubPickerSearch('');
+                      }}
+                      style={styles.pickerBackBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="arrow-back" size={20} color="#0f172a" />
+                    </TouchableOpacity>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pickerHeaderTitle}>
+                        {subPickerMode === 'province'
+                          ? 'Chọn Tỉnh / Thành phố'
+                          : `Chọn Phường / Xã (${selectedManualProvObj?.name || manualProvince})`}
+                      </Text>
+                      <Text style={styles.pickerHeaderSubtitle}>
+                        {subPickerMode === 'province'
+                          ? '34 Đơn vị hành chính cấp tỉnh sau sáp nhập 2025'
+                          : `${filteredManualWards.length} phường/xã trực thuộc`}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSubPickerMode(null);
+                        setSubPickerSearch('');
+                      }}
+                      style={styles.pickerCloseBtn}
+                    >
+                      <Ionicons name="close" size={20} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
 
-              <TextInput
-                style={[styles.modalInput, manualError && styles.modalInputError]}
-                placeholder="Số nhà, tên đường, phường, quận..."
-                placeholderTextColor="#9ca3af"
-                value={manualText}
-                onChangeText={(t) => {
-                  setManualText(t);
-                  setManualError(false);
-                }}
-                autoFocus
-              />
+                  {/* Search Bar */}
+                  <View style={styles.pickerSearchBar}>
+                    <Ionicons name="search-outline" size={17} color="#94a3b8" />
+                    <TextInput
+                      style={styles.pickerSearchInput}
+                      placeholder={
+                        subPickerMode === 'province'
+                          ? 'Tìm Tỉnh / TP (VD: Hồ Chí Minh, Hà Nội...)'
+                          : 'Tìm Phường / Xã (VD: Bến Thành, Cống Vị...)'
+                      }
+                      placeholderTextColor="#94a3b8"
+                      value={subPickerSearch}
+                      onChangeText={setSubPickerSearch}
+                      autoFocus
+                    />
+                    {subPickerSearch ? (
+                      <TouchableOpacity onPress={() => setSubPickerSearch('')}>
+                        <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
 
-              {manualError ? (
-                <Text style={styles.errorHintText}>
-                  Vui lòng nhập địa chỉ trước khi xác nhận.
-                </Text>
-              ) : null}
-
-              <View style={styles.modalActionRow}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => setShowManualModal(false)}
+                  {/* List items */}
+                  {subPickerMode === 'province' ? (
+                    <FlatList
+                      data={filteredManualProvinces}
+                      keyExtractor={(item) => item.code.toString()}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={styles.pickerListContent}
+                      renderItem={({ item }) => {
+                        const isSelected = item.name === manualProvince;
+                        const isCity = item.name.startsWith('TP.');
+                        return (
+                          <TouchableOpacity
+                            style={[
+                              styles.pickerItemRow,
+                              isSelected && styles.pickerItemRowSelected,
+                            ]}
+                            onPress={() => {
+                              setManualProvince(item.name);
+                              setManualWard('');
+                              setSubPickerMode(null);
+                              setSubPickerSearch('');
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.pickerItemIconWrap}>
+                              <Ionicons
+                                name={isCity ? 'business-outline' : 'map-outline'}
+                                size={18}
+                                color={isSelected ? '#ea580c' : '#64748b'}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={[
+                                  styles.pickerItemName,
+                                  isSelected && styles.pickerItemNameSelected,
+                                ]}
+                              >
+                                {item.name}
+                              </Text>
+                              {item.mergedFrom ? (
+                                <Text style={styles.pickerItemSub}>
+                                  Sáp nhập từ: {item.mergedFrom}
+                                </Text>
+                              ) : null}
+                            </View>
+                            {isSelected ? (
+                              <Ionicons name="checkmark-circle" size={20} color="#ea580c" />
+                            ) : null}
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  ) : (
+                    loadingManualWards ? (
+                      <View style={styles.pickerLoadingWrap}>
+                        <ActivityIndicator size="small" color="#f97316" />
+                        <Text style={styles.pickerLoadingText}>Đang tải danh sách phường / xã...</Text>
+                      </View>
+                    ) : filteredManualWards.length === 0 ? (
+                      <View style={styles.pickerEmptyWrap}>
+                        <Ionicons name="search-outline" size={32} color="#cbd5e1" />
+                        <Text style={styles.pickerEmptyText}>Không tìm thấy phường/xã nào</Text>
+                      </View>
+                    ) : (
+                      <FlatList
+                        data={filteredManualWards}
+                        keyExtractor={(item, idx) => `${item}-${idx}`}
+                        keyboardShouldPersistTaps="handled"
+                        contentContainerStyle={styles.pickerListContent}
+                        renderItem={({ item }) => {
+                          const isSelected = item === manualWard;
+                          return (
+                            <TouchableOpacity
+                              style={[
+                                styles.pickerItemRow,
+                                isSelected && styles.pickerItemRowSelected,
+                              ]}
+                              onPress={() => {
+                                setManualWard(item);
+                                setSubPickerMode(null);
+                                setSubPickerSearch('');
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.pickerItemIconWrap}>
+                                <Ionicons
+                                  name="location-outline"
+                                  size={18}
+                                  color={isSelected ? '#ea580c' : '#64748b'}
+                                />
+                              </View>
+                              <Text
+                                style={[
+                                  styles.pickerItemName,
+                                  isSelected && styles.pickerItemNameSelected,
+                                  { flex: 1 },
+                                ]}
+                              >
+                                {item}
+                              </Text>
+                              {isSelected ? (
+                                <Ionicons name="checkmark-circle" size={20} color="#ea580c" />
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        }}
+                      />
+                    )
+                  )}
+                </View>
+              ) : (
+                /* Main Form: 3 mục Tỉnh/TP + Phường/Xã + Số nhà tên đường */
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ gap: 14 }}
                 >
-                  <Text style={styles.modalCancelText}>Hủy</Text>
-                </TouchableOpacity>
+                  {/* Title & Close */}
+                  <View style={styles.modalHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <Ionicons name="location-outline" size={22} color="#f97316" />
+                      <View>
+                        <Text style={styles.modalTitle}>Nhập địa chỉ thủ công</Text>
+                        <Text style={styles.modalSubtitle}>Định dạng chuẩn hóa P. và TP.</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setShowManualModal(false)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="close" size={22} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
 
-                <TouchableOpacity
-                  style={styles.modalSubmitBtn}
-                  onPress={handleConfirmManual}
-                >
-                  <Text style={styles.modalSubmitText}>Xác nhận địa chỉ</Text>
-                </TouchableOpacity>
-              </View>
+                  {/* Field 1: Chọn Tỉnh / Thành phố */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>
+                      TỈNH / THÀNH PHỐ <Text style={styles.requiredStar}>*</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.pickerTriggerBtn}
+                      onPress={() => {
+                        setSubPickerSearch('');
+                        setSubPickerMode('province');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="business-outline" size={18} color="#ea580c" />
+                      <Text style={styles.pickerTriggerValue} numberOfLines={1}>
+                        {manualProvince || 'Chọn Tỉnh / Thành phố...'}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={17} color="#94a3b8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Field 2: Chọn Phường / Xã */}
+                  <View style={styles.formGroup}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.formLabel}>
+                        PHƯỜNG / XÃ (SAU SÁP NHẬP) <Text style={styles.requiredStar}>*</Text>
+                      </Text>
+                      {loadingManualWards ? (
+                        <ActivityIndicator size="small" color="#f97316" />
+                      ) : null}
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.pickerTriggerBtn,
+                        !manualProvince && styles.pickerTriggerBtnDisabled,
+                      ]}
+                      onPress={() => {
+                        if (!manualProvince) {
+                          Alert.alert('Chưa chọn Tỉnh / TP', 'Vui lòng chọn Tỉnh / Thành phố trước.');
+                          return;
+                        }
+                        setSubPickerSearch('');
+                        setSubPickerMode('ward');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="navigate-circle-outline" size={18} color="#ea580c" />
+                      <Text
+                        style={[
+                          styles.pickerTriggerValue,
+                          !manualWard ? { color: '#94a3b8', fontWeight: '500' } : null,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {manualWard || (loadingManualWards ? 'Đang tải danh sách...' : 'Chọn Phường / Xã (P.)...')}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={17} color="#94a3b8" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Field 3: Số nhà & Tên đường */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>
+                      SỐ NHÀ & TÊN ĐƯỜNG CỤ THỂ <Text style={styles.requiredStar}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, manualError && !manualStreet.trim() && styles.modalInputError]}
+                      placeholder="VD: 123 Lê Lợi hoặc Số 45 Nguyễn Huệ..."
+                      placeholderTextColor="#9ca3af"
+                      value={manualStreet}
+                      onChangeText={(t) => {
+                        setManualStreet(t);
+                        setManualError(false);
+                      }}
+                    />
+                  </View>
+
+                  {/* Address Preview Box */}
+                  {/* <View style={styles.addressPreviewBox}>
+                    <View style={styles.addressPreviewHeader}>
+                      <Ionicons
+                        name={manualWard && manualStreet.trim() ? 'checkmark-circle' : 'information-circle-outline'}
+                        size={16}
+                        color={manualWard && manualStreet.trim() ? '#16a34a' : '#ea580c'}
+                      />
+                      <Text style={styles.addressPreviewTitle}>ĐỊA CHỈ HOÀN CHỈNH SẼ LƯU:</Text>
+                    </View>
+                    <Text style={styles.addressPreviewText}>
+                      {manualPreviewAddress || 'Vui lòng chọn Phường / Xã và gõ số nhà, tên đường'}
+                    </Text>
+                    <Text style={styles.addressStandardHint}>
+                      ✅ Đảm bảo quy chuẩn đúng phường (<Text style={{ fontWeight: '700', color: '#ea580c' }}>P.</Text>) và thành phố (<Text style={{ fontWeight: '700', color: '#ea580c' }}>TP.</Text>)
+                    </Text>
+                  </View> */}
+
+                  {/* Modal Action Buttons */}
+                  <View style={styles.modalActionRow}>
+                    <TouchableOpacity
+                      style={styles.modalCancelBtn}
+                      onPress={() => setShowManualModal(false)}
+                    >
+                      <Text style={styles.modalCancelText}>Hủy</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.modalSubmitBtn,
+                        (!manualWard || !manualStreet.trim()) && styles.modalSubmitBtnDisabled,
+                      ]}
+                      onPress={handleConfirmManual}
+                    >
+                      <Ionicons name="checkmark-sharp" size={17} color="#ffffff" style={{ marginRight: 4 }} />
+                      <Text style={styles.modalSubmitText}>Xác nhận địa chỉ</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              )}
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -1022,7 +1472,7 @@ const styles = StyleSheet.create({
   /* Modal */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -1030,23 +1480,66 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 18,
     paddingBottom: 32,
-    gap: 14,
+    maxHeight: '90%',
+  },
+  modalContentPicker: {
+    height: 520,
+    paddingBottom: 16,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    paddingBottom: 6,
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
   },
+  modalSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  formGroup: {
+    gap: 6,
+  },
+  formLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    letterSpacing: 0.6,
+  },
+  requiredStar: {
+    color: '#ea580c',
+  },
+  pickerTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.2,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  pickerTriggerBtnDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#f1f5f9',
+  },
+  pickerTriggerValue: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
   modalInput: {
     backgroundColor: '#f8fafc',
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderColor: '#e2e8f0',
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -1057,6 +1550,38 @@ const styles = StyleSheet.create({
   modalInputError: {
     borderColor: '#fca5a5',
     backgroundColor: '#fef2f2',
+  },
+  addressPreviewBox: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+    marginTop: 2,
+  },
+  addressPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  addressPreviewTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9a3412',
+    letterSpacing: 0.5,
+  },
+  addressPreviewText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+    lineHeight: 19,
+  },
+  addressStandardHint: {
+    fontSize: 11,
+    color: '#7c2d12',
+    marginTop: 2,
+    lineHeight: 16,
   },
   errorHintText: {
     fontSize: 11,
@@ -1071,7 +1596,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f1f5f9',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
   },
   modalCancelText: {
@@ -1083,13 +1608,129 @@ const styles = StyleSheet.create({
     flex: 2,
     backgroundColor: '#f97316',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  modalSubmitBtnDisabled: {
+    opacity: 0.5,
   },
   modalSubmitText: {
     fontSize: 13,
     fontWeight: '800',
     color: '#ffffff',
+  },
+
+  /* Sub Picker */
+  pickerViewContainer: {
+    flex: 1,
+  },
+  pickerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  pickerBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pickerHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  pickerHeaderSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  pickerCloseBtn: {
+    padding: 6,
+  },
+  pickerSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 10,
+    marginBottom: 6,
+    gap: 8,
+  },
+  pickerSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0f172a',
+    padding: 0,
+  },
+  pickerListContent: {
+    paddingVertical: 4,
+  },
+  pickerItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8fafc',
+  },
+  pickerItemRowSelected: {
+    backgroundColor: '#fff7ed',
+  },
+  pickerItemIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerItemName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  pickerItemNameSelected: {
+    color: '#ea580c',
+    fontWeight: '800',
+  },
+  pickerItemSub: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  pickerLoadingWrap: {
+    padding: 30,
+    alignItems: 'center',
+    gap: 10,
+  },
+  pickerLoadingText: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  pickerEmptyWrap: {
+    padding: 40,
+    alignItems: 'center',
+    gap: 8,
+  },
+  pickerEmptyText: {
+    fontSize: 13,
+    color: '#94a3b8',
   },
   keyboardAvoidingView: {
     flex: 1,
