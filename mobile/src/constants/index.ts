@@ -1,13 +1,19 @@
 export const COLORS = {
-  primary: '#1a73e8',
-  secondary: '#34a853',
-  warning: '#fbbc04',
-  danger: '#ea4335',
-  background: '#f8f9fa',
-  text: '#202124',
+  primary: '#ea580c',
+  primaryLight: '#f97316',
+  secondary: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  background: '#f8fafc',
+  surface: '#ffffff',
+  text: '#0f172a',
+  textSecondary: '#64748b',
+  border: '#e2e8f0',
 };
 
 export const API_CONFIG = {
   BASE_URL: 'https://api.cityfix.local/v1',
   TIMEOUT: 10000,
 };
+
+export * from './typography';

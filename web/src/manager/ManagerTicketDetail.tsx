@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Ticket, User, getCat, getDept, statusInfo, sevInfo, priorityInfo } from '../data';
 import {
+  MapPinIcon,
+  ZoomInIcon,
+  TagIcon,
+  MessageSquareIcon,
+  AlertTriangleIcon,
+  ClockIcon,
+  PaperclipIcon,
+  CameraIcon,
+  CheckIcon,
+  InfoIcon,
+} from '../components/Icons';
+import {
   getTicketSteps,
   getTicketById,
   extractTicketImages,
@@ -279,7 +291,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               )}
             </div>
             <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
-              📍 {ticket?.address || 'Chưa xác định địa chỉ hiện trường'}
+              <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket?.address || 'Chưa xác định địa chỉ hiện trường'}</span>
             </p>
           </div>
         </div>
@@ -318,7 +330,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
           <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <span>📸</span> Thông tin hiện trường
+                Thông tin hiện trường
               </h3>
               <span className="font-mono-cf text-[11px] text-gray-400">
                 {ticket?.createdAt ? ticket.createdAt.replace('T', ' ').slice(0, 16) : '—'}
@@ -348,7 +360,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                      🔍 Bấm để phóng to
+                      <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Bấm để phóng to</span>
                     </div>
                     <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
                       📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
@@ -389,7 +401,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             <div>
               <span className="text-[11px] font-bold text-gray-400 block mb-1">Địa điểm:</span>
               <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-gray-50/70 border border-gray-200 rounded-xl p-3">
-                <span className="text-orange-500 flex-shrink-0 mt-0.5">📍</span>
+                <MapPinIcon className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
                 <span className="font-medium">{ticket?.address || '—'}</span>
               </div>
             </div>
@@ -433,7 +445,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                           key={idx}
                           className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md"
                         >
-                          🏷️ {n}
+                          <span className="inline-flex items-center gap-1"><TagIcon className="w-2.5 h-2.5 text-orange-500" /> {n}</span>
                         </span>
                       ))}
                     </div>
@@ -457,7 +469,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             {/* Ý kiến chỉ đạo của Quản lý */}
             {ticket?.reviewNote && (
               <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900">
-                <span className="font-bold block mb-0.5">💬 Ý kiến chỉ đạo điều phối:</span>
+                <span className="font-bold block mb-0.5">Ý kiến chỉ đạo điều phối:</span>
                 <p className="italic">{ticket.reviewNote}</p>
               </div>
             )}
@@ -470,7 +482,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
               <div>
                 <h3 className="font-display text-[13px] font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>📋</span> Quy trình xử lý & Nghiệm thu ({steps.length} bước)
+                  Quy trình xử lý & Nghiệm thu ({steps.length} bước)
                 </h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   Theo dõi tiến độ, xem ảnh bằng chứng giải quyết và quản lý trạng thái từng bước
@@ -483,7 +495,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between text-[11px] flex-wrap gap-1">
                   <span className="font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                    <span>🗺️</span> Tiến độ quy trình & Thứ tự phụ thuộc
+                    Tiến độ quy trình & Thứ tự phụ thuộc
                   </span>
                   <div className="flex items-center gap-2 text-[10px]">
                     <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
@@ -552,7 +564,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 {ticket?.status === 'IN_PROGRESS' ? (
                   <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between gap-2 shadow-2xs">
                     <div className="flex items-center gap-2">
-                      <span className="text-base flex-shrink-0">⏱️</span>
+                      <span className="text-base flex-shrink-0"><ClockIcon className="w-4 h-4 text-blue-600" /></span>
                       <p>
                         <span className="font-bold text-blue-950">Hồ sơ đang xử lý (IN_PROGRESS):</span> Quản lý có quyền gia hạn và điều chỉnh hạn chót (deadline) cho từng bước xử lý theo tiến độ thực tế.
                       </p>
@@ -560,7 +572,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                   </div>
                 ) : (
                   <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500 flex items-center gap-2">
-                    <span className="text-gray-400">ℹ️</span>
+                    <InfoIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                     <span>
                       Hạn chót bước chỉ được phép điều chỉnh khi hồ sơ ở trạng thái <strong className="text-gray-700">Đang xử lý (IN_PROGRESS)</strong>. (Trạng thái hiện tại: <strong className="text-orange-600">{ticket?.status || 'N/A'}</strong>)
                     </span>
@@ -611,11 +623,11 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                               </h4>
                               {isCompleted ? (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                                  <span>✓</span> Đã hoàn thành (Duyệt xong)
+                                  <span className="inline-flex items-center gap-1"><CheckIcon className="w-3 h-3 text-emerald-800" /> Đã hoàn thành (Duyệt xong)</span>
                                 </span>
                               ) : isResolved ? (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-300 inline-flex items-center gap-1">
-                                  <span>⏳</span> Đã giải quyết (Chờ duyệt)
+                                  <span className="inline-flex items-center gap-1"><ClockIcon className="w-3 h-3 text-blue-800" /> Đã giải quyết (Chờ duyệt)</span>
                                 </span>
                               ) : isInProgress ? (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 border border-orange-300">
@@ -631,7 +643,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                             {/* Người giải quyết & Khả năng làm ngay tức thì / Chờ bước phụ thuộc */}
                             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-white border border-gray-200 text-[11px] shadow-2xs">
-                                <span className="text-gray-500 font-medium">👤 Người giải quyết:</span>
+                                <span className="text-gray-500 font-medium">Người giải quyết:</span>
                                 <span className="font-extrabold text-gray-900">
                                   {readiness.assigneeName}
                                 </span>
@@ -641,14 +653,14 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                               {!isCompleted && !isResolved && (
                                 readiness.canDoNow ? (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold shadow-2xs">
-                                    <span>⚡ Có thể làm ngay tức thì</span>
+                                    <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Có thể làm ngay tức thì</span>
                                     <span className="font-normal opacity-85">
                                       ({readiness.hasDependencies ? 'Các bước tiền đề đã xong' : 'Bước độc lập'})
                                     </span>
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-[10px] font-bold shadow-2xs">
-                                    <span>⏳ Phải chờ bước phụ thuộc</span>
+                                    <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Phải chờ bước phụ thuộc</span>
                                     <span className="font-normal opacity-85">
                                       ({readiness.pendingDependencies.length} bước chưa xong)
                                     </span>
@@ -661,7 +673,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                             {!isCompleted && !isResolved && !readiness.canDoNow && readiness.pendingDependencies.length > 0 && (
                               <div className="mt-2 p-2 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-center gap-1.5 flex-wrap">
                                 <span className="font-bold text-amber-950 flex items-center gap-1">
-                                  <span>⚠️</span> Phải chờ hoàn tất bước:
+                                  <span className="inline-flex items-center gap-1"><AlertTriangleIcon className="w-3 h-3 text-amber-700 flex-shrink-0" /> Phải chờ hoàn tất bước:</span>
                                 </span>
                                 {readiness.pendingDependencies.map((pd, pidx) => (
                                   <span
@@ -690,7 +702,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1"
                               title="Bấm để phê duyệt hoàn thành bước này"
                             >
-                              <span>✓</span> Duyệt hoàn thành
+                              <CheckIcon className="w-3.5 h-3.5 text-white" /> Duyệt hoàn thành
                             </button>
                           ) : (
                             <button
@@ -738,7 +750,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                       {/* Chi tiết Hạn chót & Ghi chú của bước */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-600">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-gray-400 font-semibold">⏱️ Hạn chót:</span>
+                          <span className="text-gray-400 font-semibold">Hạn chót:</span>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono-cf font-semibold text-gray-800">
                               {st.deadline ? st.deadline.replace('T', ' ').slice(0, 16) : 'Chưa có hạn chót'}
@@ -763,7 +775,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                                 className="text-[10px] font-bold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs"
                                 title="Gia hạn hoặc cập nhật deadline cho bước này (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)"
                               >
-                                <span>⏱️</span>
+                                <ClockIcon className="w-3 h-3 text-blue-700" />
                                 <span>Đổi hạn</span>
                               </button>
                             )}
@@ -771,7 +783,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                         </div>
                         {st.notes && (
                           <div className="flex items-center gap-1.5 truncate">
-                            <span className="text-gray-400">📝 Nhiệm vụ:</span>
+                            <span className="text-gray-400">Nhiệm vụ:</span>
                             <span className="font-medium text-gray-700 truncate">{st.notes}</span>
                           </div>
                         )}
@@ -781,7 +793,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                       <div className="pt-2 border-t border-gray-200/50 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-bold text-gray-500 flex items-center gap-1">
-                            <span>📎</span> Bằng chứng nghiệm thu ({evidences.length} ảnh):
+                            <span className="inline-flex items-center gap-1"><PaperclipIcon className="w-3.5 h-3.5 text-gray-500" /> Bằng chứng nghiệm thu</span> ({evidences.length} ảnh):
                           </span>
 
                           {/* Nút Upload bằng chứng */}
@@ -823,7 +835,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                                 <div className="p-2 space-y-0.5">
                                   {ev.resolutionNote && (
                                     <p className="text-[10px] font-medium text-gray-800 truncate" title={ev.resolutionNote}>
-                                      💬 {ev.resolutionNote}
+                                      <span className="inline-flex items-center gap-1"><MessageSquareIcon className="w-3 h-3 text-gray-500" /> {ev.resolutionNote}</span>
                                     </p>
                                   )}
                                   <p className="font-mono-cf text-[9px] text-gray-400 truncate">
@@ -885,7 +897,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                     className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                   />
                   <div className="space-y-1">
-                    <span className="text-2xl block">📸</span>
+                    <CameraIcon className="w-8 h-8 text-gray-400 mx-auto block" />
                     <p className="text-[12px] font-bold text-gray-700">Bấm để chọn hoặc kéo thả nhiều ảnh vào đây</p>
                     <p className="text-[10px] text-gray-400">Hỗ trợ JPG, PNG, WEBP</p>
                   </div>
@@ -931,7 +943,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               </div>
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
-                ℹ️ <strong>Lưu ý:</strong> Sau khi tải lên bằng chứng thành công, Backend sẽ tự động cập nhật bước xử lý sang trạng thái <strong>Đã xử lý</strong>.
+                <span className="inline-flex items-center gap-1"><InfoIcon className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" /> <strong>Lưu ý:</strong></span> Sau khi tải lên bằng chứng thành công, Backend sẽ tự động cập nhật bước xử lý sang trạng thái <strong>Đã xử lý</strong>.
               </div>
             </div>
 
@@ -950,7 +962,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 onClick={handleSubmitEvidence}
                 className="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-[12px] transition-all shadow-md shadow-orange-600/25 disabled:opacity-50 cursor-pointer active:scale-95 flex items-center gap-1.5"
               >
-                <span>{uploading ? 'Đang tải lên...' : '✓ Xác nhận tải lên'}</span>
+                <span>{uploading ? 'Đang tải lên...' : 'Xác nhận tải lên'}</span>
               </button>
             </div>
           </div>
@@ -964,7 +976,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 text-sm">
-                  ⏱️
+                  <ClockIcon className="w-4 h-4 text-blue-600" />
                 </span>
                 <div>
                   <h3 className="text-[15px] font-bold text-gray-900">Điều chỉnh hạn chót (Deadline)</h3>

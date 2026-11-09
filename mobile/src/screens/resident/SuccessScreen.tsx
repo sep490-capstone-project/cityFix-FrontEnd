@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
     letterSpacing: 0.3,
@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   ticketIdText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#ea580c',
     letterSpacing: 0.8,

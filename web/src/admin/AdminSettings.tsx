@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { FileTextIcon } from '../components/Icons';
 import { CATEGORIES, DEPARTMENTS, ROUTING_RULES } from '../data';
 import {
   getAdminCategories,
@@ -261,7 +262,7 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-semibold transition-colors cursor-pointer"
                   title="Chuyển sang xem danh mục con của danh mục này"
                 >
-                  <span>📂</span>
+                  <FileTextIcon className="w-3.5 h-3.5 text-orange-600" />
                   <span>Xem danh mục con →</span>
                 </button>
               </td>

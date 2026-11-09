@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { BuildingIcon, MapPinIcon, TagIcon, TrashIcon, AlertTriangleIcon, InfoIcon, CheckIcon, XIcon, PaperclipIcon, SlidersIcon, ClockIcon } from '../components/Icons';
 import {
   priorityInfo,
 } from '../data';
@@ -1165,7 +1166,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     className="inline-flex items-center text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md max-w-[170px] truncate"
                                     title={sc.name}
                                   >
-                                    🏷️ {sc.name}
+                                    <span className="inline-flex items-center gap-1"><TagIcon className="w-2.5 h-2.5 text-orange-500" /> {sc.name}</span>
                                   </span>
                                 ))}
                                 {subs.length > 2 && (
@@ -1255,7 +1256,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     )}
                   </div>
                   <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
-                    📍 {selectedTicket.address || 'Chưa xác định địa chỉ hiện trường'}
+                    <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {selectedTicket.address || 'Chưa xác định địa chỉ hiện trường'}</span>
                   </p>
                 </div>
               </div>
@@ -1271,7 +1272,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         : 'text-gray-600 hover:text-gray-900'
                       }`}
                   >
-                    ⚡ Phân công & Tiếp nhận
+                    <span className="inline-flex items-center gap-1"><CheckIcon className="w-3.5 h-3.5" /> Phân công & Tiếp nhận</span>
                   </button>
                   <button
                     type="button"
@@ -1281,7 +1282,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         : 'text-gray-600 hover:text-gray-900'
                       }`}
                   >
-                    ✕ Từ chối
+                    <span className="inline-flex items-center gap-1"><XIcon className="w-3.5 h-3.5" /> Từ chối</span>
                   </button>
                   {steps.length > 0 && (
                     <button
@@ -1335,7 +1336,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     <div className="bg-slate-50/80 border border-slate-200/90 rounded-2xl p-4.5 space-y-3.5">
                       <div className="flex items-center justify-between">
                         <h4 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                          <span>📸</span> Thông tin phản ánh từ người dân
+                          Thông tin phản ánh từ người dân
                         </h4>
                         <span className="text-[11px] font-mono font-semibold text-slate-400">
                           {selectedTicket.createdAt ? new Date(selectedTicket.createdAt).toLocaleDateString('vi-VN') : 'Mới tiếp nhận'}
@@ -1426,7 +1427,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       <div>
                         <span className="text-[11px] font-bold text-slate-400 block mb-1">Địa điểm:</span>
                         <div className="flex items-start gap-2 text-[12px] text-slate-700 bg-white border border-slate-200 rounded-xl p-3 shadow-2xs">
-                          <span className="text-orange-500 flex-shrink-0 mt-0.5">📍</span>
+                          <MapPinIcon className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
                           <span className="font-medium">{selectedTicket.address || '—'}</span>
                         </div>
                       </div>
@@ -1460,7 +1461,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </span>
                                   {subs.length > 1 && (
                                     <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
-                                      ⚡ Đa sự cố ({subs.length})
+                                      Đa sự cố ({subs.length})
                                     </span>
                                   )}
                                 </div>
@@ -1471,7 +1472,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-800 bg-orange-50 border border-orange-200 px-2 py-1 rounded-lg"
                                       title={sc.name}
                                     >
-                                      <span className="text-orange-500">🏷️</span>
+                                      <TagIcon className="w-3 h-3 text-orange-500 inline mr-1" />
                                       {sc.name}
                                     </span>
                                   ))}
@@ -1500,7 +1501,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     <div className="bg-white border border-slate-200 rounded-2xl p-4.5 space-y-3 shadow-xs">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="text-orange-500">🏷️</span> Phân loại sự cố & Đơn vị phụ trách <span className="text-red-500">*</span>
+                          <TagIcon className="w-3 h-3 text-orange-500 inline mr-1" /> Phân loại sự cố & Đơn vị phụ trách <span className="text-red-500">*</span>
                         </label>
                         {loadingSteps && (
                           <span className="text-[11px] text-orange-600 font-semibold animate-pulse flex items-center gap-1">
@@ -1570,7 +1571,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       <div className="pt-2 border-t border-slate-100 space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wide flex items-center gap-1">
-                            <span>🤝</span> Đơn vị phối hợp hỗ trợ ({selectedSubCategoryIds.length > 1 ? selectedSubCategoryIds.length - 1 : 0})
+                            Đơn vị phối hợp hỗ trợ ({selectedSubCategoryIds.length > 1 ? selectedSubCategoryIds.length - 1 : 0})
                           </label>
                           <span className="text-[10px] text-slate-400">Điều phối liên phòng ban</span>
                         </div>
@@ -1587,7 +1588,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                               className="flex items-center justify-between bg-blue-50/70 border border-blue-200 rounded-xl px-3 py-1.5 text-xs text-blue-900"
                             >
                               <div className="flex items-center gap-1.5 font-bold truncate pr-2">
-                                <span className="text-blue-600">✓</span>
+                                <CheckIcon className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
                                 <span className="truncate">{displayName}</span>
                                 {catName && (
                                   <span className="text-[10px] bg-blue-100 text-blue-700 font-normal px-1.5 py-0.5 rounded">
@@ -1601,7 +1602,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                 className="text-red-500 hover:text-red-700 text-xs font-bold px-1.5 py-0.5 rounded hover:bg-red-50 cursor-pointer flex-shrink-0"
                                 title="Bỏ đơn vị phối hợp này"
                               >
-                                ✕ Bỏ chọn
+                                <span className="inline-flex items-center gap-1"><TrashIcon className="w-3 h-3 text-red-500" /> Bỏ chọn</span>
                               </button>
                             </div>
                           );
@@ -1640,7 +1641,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       {selectedSubCategoryIds.length > 0 && (
                         <div className="flex items-center justify-between text-[11px] bg-orange-50/60 border border-orange-200/80 rounded-xl px-3 py-2 text-orange-900">
                           <div className="flex items-center gap-1.5 font-bold truncate pr-2">
-                            <span className="text-orange-600">✓ Tổng {selectedSubCategoryIds.length} lĩnh vực:</span>
+                            <span className="text-orange-600">Tổng {selectedSubCategoryIds.length} lĩnh vực:</span>
                             <span className="truncate">
                               {selectedSubCategoryIds.map((id) => {
                                 const found = allSubCategories.find((s) => s.subCategoryId === id || (s as any).id === id);
@@ -1667,7 +1668,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold ${isLifeThreatening ? 'bg-red-600 text-white shadow-xs' : 'bg-slate-100 text-slate-400'
                           }`}>
-                          🚨
+                          <AlertTriangleIcon className="w-4 h-4 text-white" />
                         </div>
                         <div>
                           <span className={`text-[12px] font-bold block ${isLifeThreatening ? 'text-red-900' : 'text-slate-800'}`}>
@@ -1703,7 +1704,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       <div className="flex items-center justify-between">
                         <div>
                           <h4 className="text-[12px] font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
-                            <span>📋</span> Quy trình xử lý & Phân công cán bộ ({reviewSteps.length} bước)
+                            Quy trình xử lý & Phân công cán bộ ({reviewSteps.length} bước)
                           </h4>
                           <p className="text-[11px] text-slate-500 mt-0.5">
                             Mỗi bước có thể bắt đầu ngay từ đầu (chạy song song) hoặc chờ bước khác làm xong trước.
@@ -1724,7 +1725,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1">
-                              <span>🗺️</span> Sơ đồ trình tự thực hiện:
+                              Sơ đồ trình tự thực hiện:
                             </span>
                             <span className="text-[10px] text-slate-500 font-medium">
                               {reviewSteps.filter((s) => !s.dependsOnStepIds || s.dependsOnStepIds.length === 0).length} bước khởi đầu ngay
@@ -1792,7 +1793,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     </span>
                                     {st.duration && (
                                       <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                                        ⏱️ Dự kiến: {st.duration} giờ
+                                        Dự kiến: {st.duration} giờ
                                       </span>
                                     )}
                                   </div>
@@ -1805,7 +1806,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                         className="p-1 px-2 rounded-lg hover:bg-red-50 text-red-500 hover:text-red-700 cursor-pointer text-xs font-bold transition-colors"
                                         title="Xóa bước này khỏi quy trình"
                                       >
-                                        ✕ Xóa bước
+                                        <span className="inline-flex items-center gap-1"><TrashIcon className="w-3 h-3" /> Xóa bước</span>
                                       </button>
                                     )}
                                   </div>
@@ -1821,7 +1822,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       </label>
                                       {!isValidUuid(st.stepId) && (
                                         <span className="text-[10px] font-bold text-red-600">
-                                          ⚠️ Cần chọn bước
+                                          <span className="inline-flex items-center gap-1"><AlertTriangleIcon className="w-3 h-3 text-red-600" /> Cần chọn bước</span>
                                         </span>
                                       )}
                                     </div>
@@ -1853,7 +1854,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     </select>
                                     {allSystemSteps.length === 0 && (
                                       <p className="text-[10px] text-amber-600 mt-1">
-                                        ⚠️ Chưa có bước mẫu được tải từ hệ thống.
+                                        <span className="inline-flex items-center gap-1"><InfoIcon className="w-3.5 h-3.5 text-amber-600" /> Chưa có bước mẫu được tải từ hệ thống.</span>
                                       </p>
                                     )}
                                   </div>
@@ -1956,7 +1957,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                 <div className="p-3 bg-white border border-slate-200/90 rounded-xl space-y-2.5">
                                   <div className="flex items-center justify-between">
                                     <label className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                                      <span>⚡</span> Thời điểm kích hoạt bước này:
+                                      <span className="inline-flex items-center gap-1"><SlidersIcon className="w-3.5 h-3.5 text-slate-700" /> Thời điểm kích hoạt bước này:</span>
                                     </label>
                                     <span className="text-[10px] text-slate-400">
                                       {isParallel ? 'Chạy song song ngay' : `Chờ hoàn tất ${st.dependsOnStepIds?.length || 0} bước`}
@@ -1983,7 +1984,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       />
                                       <div>
                                         <span className="text-[11px] font-bold text-slate-900 block">
-                                          🟢 Bắt đầu ngay từ đầu
+                                          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Bắt đầu ngay từ đầu</span>
                                         </span>
                                         <span className="text-[10px] text-slate-500 block mt-0.5 leading-snug">
                                           Chạy song song, cán bộ có thể bắt đầu làm việc ngay khi hồ sơ được tiếp nhận.
@@ -2017,7 +2018,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       />
                                       <div>
                                         <span className="text-[11px] font-bold text-slate-900 block">
-                                          🟡 Chờ bước khác làm xong trước
+                                          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" /> Chờ bước khác làm xong trước</span>
                                         </span>
                                         <span className="text-[10px] text-slate-500 block mt-0.5 leading-snug">
                                           Chỉ bắt đầu khi các bước được chỉ định dưới đây đã hoàn thành xong.
@@ -2077,8 +2078,8 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       : 'bg-purple-50 text-purple-700 border border-purple-200'
                                   }`}>
                                     {isParallel
-                                      ? '🟢 Bắt đầu ngay từ đầu'
-                                      : `🟡 Chờ hoàn tất: ${st.dependsOnStepIds?.map(dId => {
+                                      ? '<span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Bắt đầu ngay từ đầu</span>'
+                                      : `Chờ hoàn tất: ${st.dependsOnStepIds?.map(dId => {
                                           const foundIdx = reviewSteps.findIndex(r => r.stepId === dId);
                                           return foundIdx >= 0 ? `Bước ${foundIdx + 1}` : 'Bước trước';
                                         }).join(', ')}`}
@@ -2098,7 +2099,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
               {modalView === 'reject' && (
                 <div className="max-w-2xl mx-auto space-y-4 py-4">
                   <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-[13px] text-red-800 font-medium leading-relaxed flex items-start gap-3">
-                    <span className="text-xl">⚠️</span>
+                    <AlertTriangleIcon className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="font-bold">Lưu ý khi từ chối hồ sơ phản ánh:</p>
                       <p className="text-[12px] text-red-700 mt-0.5">
@@ -2221,11 +2222,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     </span>
                                     {st.dependsOnStepIds && st.dependsOnStepIds.length > 0 ? (
                                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                                        🔗 Phụ thuộc ({st.dependsOnStepIds.length} bước)
+                                        <span className="inline-flex items-center gap-1"><ClockIcon className="w-3 h-3" /> Phụ thuộc ({st.dependsOnStepIds.length} bước)</span>
                                       </span>
                                     ) : (
                                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                        ⚡ Chạy song song
+                                        <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Chạy song song</span>
                                       </span>
                                     )}
                                   </div>
@@ -2262,7 +2263,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   className="px-2.5 py-1 text-[11px] font-semibold border border-purple-200 bg-purple-50/70 hover:bg-purple-100 text-purple-700 rounded-lg cursor-pointer transition-colors"
                                   title="Thiết lập thứ tự thực hiện"
                                 >
-                                  🔗 Thứ tự
+                                  Thứ tự
                                 </button>
 
                                 {/* Chỉnh sửa deadline */}
@@ -2344,7 +2345,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     }
                                     className="px-2 py-0.5 text-[10px] font-bold rounded bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer"
                                   >
-                                    ⚡ Bắt đầu ngay (Không chờ bước nào)
+                                    <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Bắt đầu ngay (Không chờ bước nào)</span>
                                   </button>
                                 </div>
 
@@ -2411,7 +2412,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             {st.evidences && st.evidences.length > 0 && (
                               <div className="pt-2 border-t border-slate-200/60">
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1.5">
-                                  📎 Bằng chứng nghiệm thu ({st.evidences.length} ảnh):
+                                  <span className="inline-flex items-center gap-1"><PaperclipIcon className="w-3.5 h-3.5 text-gray-500" /> Bằng chứng nghiệm thu</span> ({st.evidences.length} ảnh):
                                 </span>
                                 <div className="flex gap-2 flex-wrap">
                                   {st.evidences.map((ev, i) => (
@@ -2448,7 +2449,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                     onClick={() => setModalView('reject')}
                     className="px-4 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 text-[12px] font-bold transition-all cursor-pointer shadow-2xs hover:border-red-300"
                   >
-                    ✕ Từ chối tiếp nhận
+                    <span className="inline-flex items-center gap-1"><XIcon className="w-3.5 h-3.5" /> Từ chối</span> tiếp nhận
                   </button>
 
                   <div className="flex items-center gap-2.5">
@@ -2465,7 +2466,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       onClick={handleReviewSubmit}
                       className="px-6 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[12px] uppercase tracking-wider transition-all shadow-md shadow-orange-600/25 disabled:opacity-60 cursor-pointer active:scale-95 flex items-center gap-1.5"
                     >
-                      <span>{submitting ? 'Đang điều phối...' : '✓ Phê duyệt & Điều phối hồ sơ'}</span>
+                      <span>{submitting ? 'Đang điều phối...' : 'Phê duyệt & Điều phối hồ sơ'}</span>
                     </button>
                   </div>
                 </>

@@ -982,7 +982,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ea580c',
   },
   stage1PillText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '800',
     color: '#c2410c',
     letterSpacing: 1.4,
@@ -1028,7 +1028,7 @@ const styles = StyleSheet.create({
     minWidth: 220,
   },
   userGreetingSub: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '800',
     color: '#ffedd5',
     letterSpacing: 1.8,

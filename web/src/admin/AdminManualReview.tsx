@@ -1,4 +1,5 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
+import { CheckIcon, AlertTriangleIcon } from '../components/Icons';
 import { TICKETS, SEV_MAP, DANGER_MAP, getCat, getDept, Severity, DangerLevel, sevInfo, dangerInfo, ROUTING_RULES } from '../data';
 
 interface Props { onOpenTicket: (id: string) => void; }
@@ -103,7 +104,7 @@ export default function ManualReview({ onOpenTicket }: Props) {
                 <div>
                   <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-1">Đe dọa tính mạng</p>
                   <span className={`text-[11px] font-bold ${ticket.isLifeThreatening ? 'text-red-400' : 'text-green-400'}`}>
-                    {ticket.isLifeThreatening ? 'Có ⚠' : 'Không'}
+                    {ticket.isLifeThreatening ? 'Có (Khẩn cấp)' : 'Không'}
                   </span>
                 </div>
               </div>
@@ -285,13 +286,13 @@ export default function ManualReview({ onOpenTicket }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-[11px] font-bold ${t.isLifeThreatening ? 'text-red-400' : 'text-gray-400'}`}>
-                        {t.isLifeThreatening ? 'Có ⚠' : 'Không'}
+                        {t.isLifeThreatening ? 'Có (Khẩn cấp)' : 'Không'}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400 whitespace-nowrap">{t.createdAt}</td>
                     <td className="px-4 py-3">
                       {isDone
-                        ? <span className="text-[11px] text-green-400 font-semibold">✓ Đã xử lý</span>
+                        ? <span className="inline-flex items-center gap-1 text-[11px] text-green-400 font-semibold"><CheckIcon className="w-3 h-3 text-green-400" /> Đã xử lý</span>
                         : <button onClick={() => setSelected(t.ticketId)}
                             className="relative rounded-lg overflow-hidden px-3 py-1.5 active:scale-[0.97] transition-transform">
                             <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
