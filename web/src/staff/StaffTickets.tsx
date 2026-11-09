@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { message } from 'antd';
 import { User, statusInfo, sevInfo, priorityInfo } from '../data';
 import { getStaffAssignedTickets, StaffTicketItem, ApiError } from '../services';
+import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
 
 interface Props {
   currentUser: User;
@@ -29,11 +31,15 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
 
         const activeList: StaffTicketItem[] =
           activeRes.status === 'fulfilled'
-            ? (Array.isArray(activeRes.value) ? activeRes.value : activeRes.value?.content || (activeRes.value as any)?.data || [])
+            ? Array.isArray(activeRes.value)
+              ? activeRes.value
+              : activeRes.value?.content || (activeRes.value as any)?.data || []
             : [];
         const completedList: StaffTicketItem[] =
           completedRes.status === 'fulfilled'
-            ? (Array.isArray(completedRes.value) ? completedRes.value : completedRes.value?.content || (completedRes.value as any)?.data || [])
+            ? Array.isArray(completedRes.value)
+              ? completedRes.value
+              : completedRes.value?.content || (completedRes.value as any)?.data || []
             : [];
 
         const map = new Map<string, StaffTicketItem>();
@@ -95,6 +101,67 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
     setPriorityF('all');
   }
 
+  const handleExportCsv = () => {
+    downloadCsvFile(
+      'CityFix_Danh_Sach_Ho_So_Can_Bo',
+      [
+        'Mã hồ sơ',
+        'Danh mục',
+        'Địa chỉ hiện trường',
+        'Mức độ',
+        'Độ ưu tiên',
+        'Trạng thái',
+        'Người xử lý',
+        'Ngày tạo',
+      ],
+      filtered.map((t) => [
+        t.id || t.ticketId || '',
+        t.categoryName || 'Sự cố hạ tầng',
+        t.address || '—',
+        sevInfo(t.severity || 'LOW').label,
+        priorityInfo(t.priority || t.subCategories?.[0]?.priority).label,
+        statusInfo(t.status as any).label,
+        t.assigneeName || currentUser.fullName || 'Cán bộ đơn vị',
+        t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—',
+      ])
+    );
+    message.success(`Đã xuất ${filtered.length} hồ sơ ra file CSV!`);
+  };
+
+  const handleExportExcel = () => {
+    downloadExcelReport(
+      'CityFix_Ho_So_Duoc_Giao_Can_Bo',
+      `DANH SÁCH HỒ SƠ TIẾP NHẬN & XỬ LÝ — ${currentUser.fullName.toUpperCase()}`,
+      `Cán bộ kỹ thuật: ${currentUser.fullName} • Số lượng: ${filtered.length} hồ sơ`,
+      [
+        {
+          heading: 'Danh sách Hồ sơ theo Bộ lọc hiện tại',
+          headers: [
+            'Mã hồ sơ',
+            'Danh mục',
+            'Địa chỉ hiện trường',
+            'Mức độ',
+            'Độ ưu tiên',
+            'Trạng thái',
+            'Người xử lý',
+            'Ngày tạo',
+          ],
+          rows: filtered.map((t) => [
+            t.id || t.ticketId || '',
+            t.categoryName || 'Sự cố hạ tầng',
+            t.address || '—',
+            sevInfo(t.severity || 'LOW').label,
+            priorityInfo(t.priority || t.subCategories?.[0]?.priority).label,
+            statusInfo(t.status as any).label,
+            t.assigneeName || currentUser.fullName || 'Cán bộ đơn vị',
+            t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—',
+          ]),
+        },
+      ]
+    );
+    message.success(`Đã xuất ${filtered.length} hồ sơ ra Báo cáo Excel (.xls)!`);
+  };
+
   const STATUS_OPTS = [
     { value: 'all', label: 'Tất cả trạng thái' },
     { value: 'ASSIGNED', label: 'Đã phân công' },
@@ -106,34 +173,49 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
   ];
 
   return (
-    <div className="p-6 space-y-5">
-      {/* 1. Header khu vực nội dung chính: Typography thuần túy, không có icon minh họa lớn */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1">
+    <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
+      {/* 1. Header khu vực nội dung chính */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Hồ sơ tiếp nhận & xử lý</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Danh sách các phản ánh và sự cố kỹ thuật hạ tầng được phân công cho đơn vị xử lý
+          <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
+            Hồ sơ Tiếp nhận & Xử lý Hiện trường
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Danh sách các phản ánh và sự cố kỹ thuật hạ tầng được phân công xử lý
           </p>
         </div>
 
-        {/* Bộ đếm và nút làm mới trên cùng 1 hàng */}
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
-          <div className="inline-flex items-center h-10 px-3 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 font-medium">
-            <span>Hiển thị:</span>
-            <span className="font-semibold text-slate-900 ml-1">{filtered.length}</span>
-            <span className="text-slate-400 mx-1">/</span>
-            <span>{tickets.length} hồ sơ</span>
+        {/* Bộ đếm, xuất file và nút làm mới */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="inline-flex items-center px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-700 font-bold">
+            <span>Hiển thị: {filtered.length}/{tickets.length} hồ sơ</span>
           </div>
+
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold transition-colors cursor-pointer"
+          >
+            Xuất CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+          >
+            Xuất Excel (.xls)
+          </button>
 
           <button
             type="button"
             onClick={fetchAssignedTickets}
             disabled={loading}
-            className="h-10 px-3.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shadow-2xs active:scale-[0.98]"
+            className="px-3 py-1.5 inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60"
             title="Làm mới danh sách hồ sơ"
           >
             <svg
-              className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin text-orange-600' : ''}`}
+              className={`w-3.5 h-3.5 text-gray-500 ${loading ? 'animate-spin text-orange-600' : ''}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -150,7 +232,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
 
       {/* Thông báo lỗi nếu có */}
       {errorMessage && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center justify-between">
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg
               className="w-4 h-4 text-red-500 flex-shrink-0"
@@ -176,12 +258,11 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
         </div>
       )}
 
-      {/* 2. Thanh công cụ tìm kiếm và lọc dữ liệu (Toolbar gọn gàng, h-10 đồng nhất) */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2.5">
-        {/* Input tìm kiếm */}
+      {/* 2. Thanh công cụ tìm kiếm và lọc dữ liệu */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-3.5 flex flex-wrap items-center gap-2.5 shadow-xs">
         <div className="relative flex-1 min-w-[240px] sm:min-w-[280px]">
           <svg
-            className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -197,15 +278,14 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm theo mã hồ sơ, danh mục, địa chỉ, mô tả..."
-            className="w-full h-10 pl-9 pr-3 text-xs bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/15 transition-all font-medium"
+            className="w-full h-10 pl-9 pr-3 text-xs bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 focus:border-orange-500 rounded-xl text-gray-800 placeholder:text-gray-400 outline-none transition-all font-medium"
           />
         </div>
 
-        {/* Bộ lọc Trạng thái */}
         <select
           value={statusF}
           onChange={(e) => setStatusF(e.target.value)}
-          className="h-10 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg px-3 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/15 cursor-pointer transition-all"
+          className="h-10 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 focus:border-orange-500 rounded-xl px-3 text-xs text-gray-700 font-semibold outline-none cursor-pointer transition-all"
         >
           {STATUS_OPTS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -214,11 +294,10 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
           ))}
         </select>
 
-        {/* Bộ lọc Mức độ nghiêm trọng */}
         <select
           value={sevF}
           onChange={(e) => setSevF(e.target.value)}
-          className="h-10 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg px-3 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/15 cursor-pointer transition-all"
+          className="h-10 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 focus:border-orange-500 rounded-xl px-3 text-xs text-gray-700 font-semibold outline-none cursor-pointer transition-all"
         >
           <option value="all">Tất cả mức độ</option>
           <option value="CRITICAL">Cực kỳ nghiêm trọng</option>
@@ -227,11 +306,10 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
           <option value="LOW">Thấp</option>
         </select>
 
-        {/* Bộ lọc Độ ưu tiên */}
         <select
           value={priorityF}
           onChange={(e) => setPriorityF(e.target.value)}
-          className="h-10 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-orange-500 rounded-lg px-3 text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/15 cursor-pointer transition-all"
+          className="h-10 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 focus:border-orange-500 rounded-xl px-3 text-xs text-gray-700 font-semibold outline-none cursor-pointer transition-all"
         >
           <option value="all">Tất cả độ ưu tiên</option>
           <option value="CRITICAL">Khẩn cấp</option>
@@ -240,72 +318,59 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
           <option value="LOW">Thấp</option>
         </select>
 
-        {/* Nút xóa nhanh bộ lọc nếu đang có filter */}
         {isFiltered && (
           <button
             type="button"
             onClick={handleResetFilters}
-            className="h-10 px-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-orange-600 hover:bg-orange-50/80 rounded-lg transition-colors cursor-pointer"
+            className="h-10 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer"
             title="Khôi phục bộ lọc mặc định"
           >
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-            <span>Xóa lọc</span>
+            <span>✕ Xóa lọc</span>
           </button>
         )}
       </div>
 
-      {/* 3. Bảng dữ liệu hồ sơ (Data Table Enterprise) */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+      {/* 3. Bảng dữ liệu hồ sơ */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[920px]">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/80">
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              <tr className="border-b border-gray-100 bg-gray-50/80">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Mã hồ sơ
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Danh mục
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Địa chỉ
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Mức độ
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Độ ưu tiên
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Trạng thái
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Người xử lý
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Ngày tạo
                 </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider text-right">
+                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">
                   Thao tác
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-gray-100 text-xs">
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-14 text-center">
                     {loading ? (
-                      <div className="inline-flex items-center gap-2 text-slate-600 font-medium">
+                      <div className="inline-flex items-center gap-2 text-gray-600 font-medium">
                         <svg
                           className="w-4 h-4 animate-spin text-orange-600"
                           viewBox="0 0 24 24"
@@ -319,8 +384,8 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
                       </div>
                     ) : (
                       <div className="space-y-1">
-                        <p className="text-sm font-semibold text-slate-700">Không tìm thấy hồ sơ phù hợp</p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-sm font-bold text-gray-700">Không tìm thấy hồ sơ phù hợp</p>
+                        <p className="text-xs text-gray-400">
                           Thử thay đổi từ khóa tìm kiếm hoặc làm mới lại các bộ lọc phía trên
                         </p>
                       </div>
@@ -339,74 +404,68 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
                   <tr
                     key={ticketId}
                     onClick={() => onOpenTicket(t)}
-                    className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
+                    className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
                   >
-                    {/* Mã hồ sơ */}
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {t.isLifeThreatening && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="Khẩn cấp" />
+                          <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Khẩn cấp" />
                         )}
-                        <span className="font-mono-cf text-xs font-semibold text-slate-700 group-hover:text-orange-600 transition-colors">
+                        <span className="font-mono-cf text-xs font-bold text-gray-800 group-hover:text-orange-600 transition-colors">
                           #{ticketId.slice(0, 8)}
                         </span>
                       </div>
                     </td>
 
-                    {/* Danh mục */}
-                    <td className="px-4 py-3 font-medium text-slate-900 max-w-[160px] truncate">
-                      {t.categoryName || (Array.isArray(t.subCategories) && (t.subCategories[0]?.name || (t.subCategories[0] as any)?.subCategoryName)) || '—'}
+                    <td className="px-4 py-3.5 font-bold text-gray-900 max-w-[160px] truncate">
+                      {t.categoryName ||
+                        (Array.isArray(t.subCategories) &&
+                          (t.subCategories[0]?.name || (t.subCategories[0] as any)?.subCategoryName)) ||
+                        '—'}
                     </td>
 
-                    {/* Địa chỉ */}
-                    <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate" title={t.address || ''}>
+                    <td className="px-4 py-3.5 text-gray-600 max-w-[200px] truncate" title={t.address || ''}>
                       {t.address || '—'}
                     </td>
 
-                    {/* Mức độ */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded border ${sv.cls}`}>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sv.cls}`}>
                         {sv.label}
                       </span>
                     </td>
 
-                    {/* Độ ưu tiên */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded border ${pi.cls}`}>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-lg border ${pi.cls}`}>
                         {pi.label}
                       </span>
                     </td>
 
-                    {/* Trạng thái */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded border ${si.cls}`}>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${si.cls}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
                         {si.label}
                       </span>
                     </td>
 
-                    {/* Người xử lý */}
-                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap">
                       {t.assigneeName ? (
-                        <span className="font-medium text-slate-800">{t.assigneeName}</span>
+                        <span className="font-semibold text-gray-800">{t.assigneeName}</span>
                       ) : (
-                        <span className="text-slate-400 italic">Cán bộ đơn vị</span>
+                        <span className="text-gray-400 italic">Cán bộ đơn vị</span>
                       )}
                     </td>
 
-                    {/* Ngày tạo */}
-                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-[11px]">
+                    <td className="px-4 py-3.5 text-gray-400 font-mono text-[10px] whitespace-nowrap">
                       {t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—'}
                     </td>
 
-                    {/* Thao tác */}
-                    <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => onOpenTicket(t)}
-                        className="px-3 py-1 rounded-md border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 hover:text-orange-600 text-slate-700 text-xs font-medium transition-colors cursor-pointer shadow-2xs"
+                        className="px-3 py-1 rounded-lg border border-gray-200 bg-gray-50 group-hover:bg-orange-600 group-hover:border-orange-600 group-hover:text-white text-gray-700 text-[11px] font-bold transition-all cursor-pointer"
                       >
-                        Chi tiết
+                        Chi tiết →
                       </button>
                     </td>
                   </tr>

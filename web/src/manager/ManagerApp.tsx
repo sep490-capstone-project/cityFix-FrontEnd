@@ -19,6 +19,7 @@ interface Props {
 
 export default function ManagerApp({ userId, onLogout }: Props) {
   const [page, setPage] = useState<ManagerPage>('dashboard');
+  const [previousPage, setPreviousPage] = useState<ManagerPage>('dashboard');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Khởi tạo user cho MANAGER, ưu tiên thông tin thực tế từ backend
@@ -68,7 +69,6 @@ export default function ManagerApp({ userId, onLogout }: Props) {
         }
 
         if (currentDeptId) {
-          // 1. Thử tìm trong danh sách departments vừa tải
           let foundName = '';
           if (deptListRes.status === 'fulfilled' && deptListRes.value) {
             const list: DepartmentItem[] = Array.isArray(deptListRes.value)
@@ -78,13 +78,11 @@ export default function ManagerApp({ userId, onLogout }: Props) {
             if (d?.name) foundName = d.name;
           }
 
-          // 2. Thử tìm trong mock data nếu có
           if (!foundName) {
             const mockD = DEPARTMENTS.find((d) => d.departmentId === currentDeptId);
             if (mockD?.name) foundName = mockD.name;
           }
 
-          // 3. Nếu vẫn chưa có và là UUID từ backend, gọi trực tiếp API chi tiết cơ quan
           if (!foundName && currentDeptId.length > 5) {
             try {
               const dDetail = await getDepartmentById(currentDeptId);
@@ -113,6 +111,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
   const [selectedTicketData, setSelectedTicketData] = useState<any>(null);
 
   function openTicket(ticketOrId: any) {
+    setPreviousPage(page === 'ticket-detail' ? previousPage : page);
     if (typeof ticketOrId === 'object' && ticketOrId !== null) {
       setSelectedId(ticketOrId.id || ticketOrId.ticketId || '');
       setSelectedTicketData(ticketOrId);
@@ -136,74 +135,88 @@ export default function ManagerApp({ userId, onLogout }: Props) {
     }));
   }
 
+  const resolvedDeptLabel =
+    departmentName ||
+    (currentUser.departmentId
+      ? DEPARTMENTS.find((d) => d.departmentId === currentUser.departmentId)?.name ?? 'Đang tải...'
+      : 'Cơ quan Quản lý');
+
   const NAV = [
     { key: 'dashboard', label: 'Dashboard', icon: <GridIcon /> },
     { key: 'tickets', label: 'Quản lý Hồ sơ', icon: <TicketIcon /> },
-    { key: 'dispatch', label: 'Điều phối & Duyệt vé', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg> },
-    { key: 'staff', label: 'Cán bộ phòng ban', icon: <StaffIcon /> },
-    { key: 'profile', label: 'Tài khoản', icon: <UserIcon /> }
+    { key: 'dispatch', label: 'Điều phối & Duyệt vé', icon: <DispatchIcon /> },
+    { key: 'staff', label: 'Cán bộ & Phòng ban', icon: <StaffIcon /> },
+    { key: 'profile', label: 'Hồ sơ cá nhân', icon: <UserIcon /> },
   ] as const;
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-56 h-screen bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+      <aside className="w-60 h-screen bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
         {/* Logo */}
-        <div className="relative px-4 py-3 border-b border-gray-200">
+        <div className="relative px-4 py-3 border-b border-gray-100">
           <div className="absolute top-0 left-0 right-0 h-[3px] hazard-stripe-thin" />
-          <div className="flex items-center">
-            <img src={cityfixLogo} alt="CityFix" className="h-16 w-28 object-contain object-left" />
-            <p className="text-[9px] text-orange-500/70 uppercase tracking-widest ml-1">Manager Portal</p>
-          </div>
-        </div>
-
-        {/* Role badge */}
-        <div className="px-4 py-2.5 border-b border-gray-200">
-          <div className="flex items-center gap-2 bg-orange-500/8 border border-orange-500/15 rounded-xl px-3 py-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-gray-800 truncate">{currentUser.fullName}</p>
-              <p className="text-[10px] text-orange-400/70 uppercase tracking-wide">Nhân viên xử lý</p>
-            </div>
+          <div className="flex items-center gap-2">
+            <img src={cityfixLogo} alt="CityFix" className="h-12 w-24 object-contain object-left" />
+            <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-200 text-[10px] font-bold uppercase tracking-wider">
+              Manager
+            </span>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5">
+        <nav className="flex-1 px-2.5 py-3 space-y-1 overflow-y-auto scrollbar-hide">
           {NAV.map(item => {
             const active = page === item.key || (page === 'ticket-detail' && item.key === 'tickets');
             return (
-              <button key={item.key} onClick={() => setPage(item.key as ManagerPage)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all active:scale-[0.97]
-                  ${active
-                    ? 'bg-orange-500/12 border border-orange-500/20 text-orange-400'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 border border-transparent'
-                  }`}>
-                <span className={`flex-shrink-0 ${active ? 'text-orange-400' : ''}`}>{item.icon}</span>
-                <span className="text-[13px] font-semibold">{item.label}</span>
+              <button
+                key={item.key}
+                onClick={() => setPage(item.key as ManagerPage)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                  active
+                    ? 'bg-orange-50 border border-orange-200 text-orange-600 font-bold'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-transparent font-medium'
+                }`}
+              >
+                <span className={`flex-shrink-0 ${active ? 'text-orange-600' : 'text-gray-400'}`}>
+                  {item.icon}
+                </span>
+                <span className="text-[13px] flex-1">{item.label}</span>
               </button>
             );
           })}
         </nav>
 
         {/* Dept info */}
-        <div className="mx-3 mb-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
-          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-1">Cơ quan</p>
-          <p className="text-[11px] text-gray-700 font-medium leading-snug">
-            {departmentName ||
-              (currentUser.departmentId
-                ? (DEPARTMENTS.find((d) => d.departmentId === currentUser.departmentId)?.name ?? 'Đang tải...')
-                : 'Chưa phân công')}
+        <div className="mx-3 mb-2.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+            Cơ quan phụ trách
+          </p>
+          <p className="text-xs text-gray-800 font-semibold leading-snug line-clamp-2">
+            {resolvedDeptLabel}
           </p>
         </div>
 
-        {/* Logout */}
-        <div className="px-3 pb-4 border-t border-gray-200 pt-3">
-          <button onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 border border-transparent transition-all active:scale-[0.97]">
-            <LogoutIcon />
-            <span className="text-[13px] font-semibold">Đăng xuất</span>
-          </button>
+        {/* User Footer */}
+        <div className="px-3 py-3 border-t border-gray-100 bg-gray-50/50">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-orange-600 flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">
+              {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'M'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-gray-900 truncate">{currentUser.fullName}</p>
+              <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">
+                Quản lý cơ quan
+              </p>
+            </div>
+            <button
+              onClick={onLogout}
+              title="Đăng xuất"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0 cursor-pointer"
+            >
+              <LogoutIcon />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -211,27 +224,27 @@ export default function ManagerApp({ userId, onLogout }: Props) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6 gap-4 flex-shrink-0">
-          <div className="flex-1">
-            <h1 className="font-display text-[20px] font-extrabold text-gray-900 uppercase tracking-tight">
-              {page === 'dashboard' ? 'Dashboard' :
-               page === 'tickets' || page === 'ticket-detail' ? 'Hồ sơ tiếp nhận' :
+          <div className="flex-1 min-w-0">
+            <h1 className="font-display text-base font-extrabold text-gray-900 tracking-tight truncate">
+              {page === 'dashboard' ? 'Tổng quan Đơn vị' :
+               page === 'tickets' || page === 'ticket-detail' ? 'Quản lý Hồ sơ Tiếp nhận' :
                page === 'dispatch' ? 'Điều phối & Duyệt vé' :
                page === 'staff' ? 'Cán bộ & Phòng ban' : 'Hồ sơ cá nhân'}
             </h1>
           </div>
-          <div className="w-px h-6 bg-gray-100" />
+          <span className="px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-xs font-semibold hidden md:inline-block truncate max-w-[260px]">
+            {resolvedDeptLabel}
+          </span>
+          <div className="w-px h-4 bg-gray-200 hidden sm:block" />
           <NotificationBell onOpenTicket={(ticketId) => openTicket(ticketId)} />
-          <div className="w-px h-6 bg-gray-100" />
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center">
-              <span className="font-display text-[11px] font-bold text-gray-600">{currentUser.fullName.charAt(0)}</span>
-            </div>
-            <p className="text-[12px] text-gray-700 font-semibold">{currentUser.fullName}</p>
-          </div>
+          <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+          <p className="font-mono-cf text-xs text-gray-500">
+            {new Date().toLocaleDateString('vi-VN')}
+          </p>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto scrollbar-thin city-background">
+        <main className="flex-1 overflow-y-auto scrollbar-thin workspace-bg">
           {page === 'dashboard' && <ManagerDashboard currentUser={currentUser} onOpenTicket={openTicket} onViewAll={() => setPage('tickets')} />}
           {page === 'tickets' && <ManagerTickets currentUser={currentUser} onOpenTicket={openTicket} />}
           {page === 'dispatch' && <ManagerDispatch onOpenTicket={openTicket} />}
@@ -241,7 +254,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
               ticketId={selectedId || ''}
               ticket={selectedTicketData}
               currentUser={currentUser}
-              onBack={() => setPage('tickets')}
+              onBack={() => setPage(previousPage || 'dashboard')}
             />
           )}
           {page === 'profile' && (
@@ -253,8 +266,9 @@ export default function ManagerApp({ userId, onLogout }: Props) {
   );
 }
 
-function GridIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>; }
-function TicketIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5v2M15 11v2M15 17v2M5 5h14a2 2 0 012 2v3a2 2 0 000 4v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 000-4V7a2 2 0 012-2z"/></svg>; }
-function StaffIcon()  { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>; }
-function UserIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
-function LogoutIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>; }
+function GridIcon()     { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>; }
+function TicketIcon()   { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5v2M15 11v2M15 17v2M5 5h14a2 2 0 012 2v3a2 2 0 000 4v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 000-4V7a2 2 0 012-2z"/></svg>; }
+function DispatchIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>; }
+function StaffIcon()    { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>; }
+function UserIcon()     { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
+function LogoutIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>; }

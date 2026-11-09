@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Button,
-  Card,
   Form,
   Input,
   InputNumber,
@@ -26,9 +25,9 @@ import {
 } from '@ant-design/icons';
 
 import { getAccessToken } from '../services';
-import { getAllSubCategories  } from '../services/subCategories';
+import { getAllSubCategories } from '../services/subCategories';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 const API_BASE_URL = 'https://cityfix-backend-80ar.onrender.com';
@@ -167,16 +166,12 @@ export default function AdminSteps() {
 
   const [form] = Form.useForm<StepFormValues>();
 
-  // Lấy danh sách SubCategory bằng service có sẵn
   const loadSubCategories = useCallback(async () => {
     setLoadingSubCategories(true);
 
     try {
       const result = await getAllSubCategories();
-
-      // Service có thể trả về mảng trực tiếp hoặc response có data.
       const response = result as unknown;
-
       let items: AdminSubCategory[] = [];
 
       if (Array.isArray(response)) {
@@ -206,7 +201,6 @@ export default function AdminSteps() {
     }
   }, []);
 
-  // Lấy danh sách Step
   const loadSteps = useCallback(
     async (subCategoryId?: string) => {
       setLoading(true);
@@ -237,7 +231,6 @@ export default function AdminSteps() {
     void loadSteps();
   }, [loadSubCategories, loadSteps]);
 
-  // Options dùng chung cho bộ lọc và form
   const subCategoryOptions = subCategories
     .filter((item) => item.active !== false)
     .map((item) => ({
@@ -245,7 +238,6 @@ export default function AdminSteps() {
       label: item.name,
     }));
 
-  // Mở form tạo Step
   const openCreateModal = () => {
     setEditingStep(null);
     form.resetFields();
@@ -260,7 +252,6 @@ export default function AdminSteps() {
     setModalOpen(true);
   };
 
-  // Mở form sửa Step
   const openEditModal = (step: AdminStep) => {
     setEditingStep(step);
 
@@ -271,7 +262,6 @@ export default function AdminSteps() {
       duration: step.duration,
     });
 
-    // Đảm bảo danh sách lựa chọn được tải khi mở form sửa.
     if (subCategories.length === 0) {
       void loadSubCategories();
     }
@@ -279,7 +269,6 @@ export default function AdminSteps() {
     setModalOpen(true);
   };
 
-  // Lưu Step
   const handleSave = async (values: StepFormValues) => {
     setSaving(true);
 
@@ -322,7 +311,6 @@ export default function AdminSteps() {
     }
   };
 
-  // Xóa Step
   const handleDelete = async (stepId: string) => {
     try {
       await adminStepApi.delete(stepId);
@@ -341,7 +329,6 @@ export default function AdminSteps() {
     }
   };
 
-  // Tìm tên SubCategory để hiển thị trên bảng
   const getSubCategoryName = (id: string) => {
     return (
       subCategories.find(
@@ -350,7 +337,6 @@ export default function AdminSteps() {
     );
   };
 
-  // Tìm kiếm theo tên bước, mô tả hoặc tên danh mục con
   const filteredSteps = steps.filter((step) => {
     const keyword = searchText.trim().toLowerCase();
 
@@ -366,7 +352,6 @@ export default function AdminSteps() {
     );
   });
 
-  // Cột bảng
   const columns: TableProps<AdminStep>['columns'] = [
     {
       title: 'STT',
@@ -402,7 +387,7 @@ export default function AdminSteps() {
       key: 'duration',
       width: 120,
       render: (value: number) => (
-        <Tag color="blue">{value ?? 0} giờ</Tag>
+        <Tag color="orange">{value ?? 0} giờ</Tag>
       ),
     },
     {
@@ -440,51 +425,50 @@ export default function AdminSteps() {
   // ==================== RENDER ====================
 
   return (
-    <div className="p-6">
-      <Card>
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Title level={3} style={{ marginBottom: 6 }}>
-              Quản lý quy trình xử lý
-            </Title>
-
-            <Text type="secondary">
-              Quản lý các bước xử lý sự cố theo danh mục con
-              của CityFix.
-            </Text>
-          </div>
-
-          <Space wrap>
-            <Button
-              icon={<ReloadOutlined />}
-              loading={loading}
-              onClick={() => {
-                void loadSubCategories();
-                void loadSteps(filterSubCategoryId);
-              }}
-            >
-              Làm mới
-            </Button>
-
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openCreateModal}
-            >
-              Thêm Step
-            </Button>
-          </Space>
+    <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
+      {/* Header Card */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
+            Quản lý Quy trình Xử lý (Steps)
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Thiết lập các bước xử lý sự cố và thời lượng thực hiện chuẩn theo từng danh mục con
+          </p>
         </div>
 
+        <Space wrap>
+          <Button
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={() => {
+              void loadSubCategories();
+              void loadSteps(filterSubCategoryId);
+            }}
+          >
+            Làm mới
+          </Button>
+
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCreateModal}
+          >
+            Thêm Step
+          </Button>
+        </Space>
+      </div>
+
+      {/* Main Content Card */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
         <Alert
-          type="info"
+          type="warning"
           showIcon
-          message="Thời lượng quy trình xử lý"
-          description="Thời lượng của mỗi bước được tính bằng đơn vị Giờ (h). Tổng thời lượng của các bước active sẽ được Backend tự động tính thành SLA cho danh mục con tương ứng."
-          style={{ marginBottom: 20 }}
+          message="Quy tắc tính Thời lượng Quy trình"
+          description="Thời lượng của mỗi bước được tính bằng đơn vị Giờ (h). Tổng thời lượng của các bước đang hoạt động sẽ được Backend tự động tính cho danh mục con tương ứng."
         />
 
-        <div className="mb-4 flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
           <Select
             allowClear
             showSearch
@@ -527,7 +511,7 @@ export default function AdminSteps() {
             emptyText: 'Chưa có dữ liệu Step.',
           }}
         />
-      </Card>
+      </div>
 
       <Modal
         title={editingStep ? 'Cập nhật Step' : 'Tạo Step mới'}

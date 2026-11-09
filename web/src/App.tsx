@@ -12,7 +12,7 @@ import AdminSteps from './admin/AdminSteps';
 import Settings, { SettingsTab } from './admin/AdminSettings';
 import StaffApp from './staff/StaffApp';
 import ManagerApp from './manager/ManagerApp';
-import { TICKETS } from './data';
+import { TICKETS, Ticket } from './data';
 import cityfixLogo from './assets/cityfix-logo.png';
 import { logout, getAccessToken, decodeJwt, getProfile } from './services';
 
@@ -23,12 +23,12 @@ type Page = 'dashboard' | 'tickets' | 'ticket-detail' | 'analytics' | 'users' | 
 type AuthPage = 'login' | 'register' | 'app';
 
 const NAV: { key: string; label: string; icon: () => React.ReactElement; hasSubmenu?: boolean }[] = [
-  { key: 'dashboard',     label: 'Dashboard',          icon: GridIcon     },
-  { key: 'tickets',       label: 'Quản lý Hồ sơ',         icon: TicketIcon   },
-  { key: 'analytics',     label: 'Phân tích',          icon: ChartIcon    },
+  { key: 'dashboard',     label: 'Tổng quan',          icon: GridIcon     },
+  { key: 'tickets',       label: 'Tra cứu Hồ sơ',      icon: TicketIcon   },
+  { key: 'analytics',     label: 'Thống kê & Báo cáo', icon: ChartIcon    },
   { key: 'users',         label: 'Người dùng',         icon: UsersIcon    },
-  { key: 'settings',      label: 'Cài đặt',            icon: GearIcon,    hasSubmenu: true },
-  { key: 'steps', label: 'Quy trình xử lý', icon: ReviewIcon },
+  { key: 'settings',      label: 'Cài đặt Hệ thống',   icon: GearIcon,    hasSubmenu: true },
+  { key: 'steps',         label: 'Quy trình xử lý',    icon: ReviewIcon   },
 ];
 
 import RouteSync from './components/RouteSync';
@@ -41,6 +41,8 @@ function MainApp() {
   const [verifyEmailTarget, setVerifyEmailTarget] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [previousAdminPage, setPreviousAdminPage] = useState<Page>('dashboard');
+  const [selectedTicketObj, setSelectedTicketObj] = useState<Ticket | null>(null);
   const { message: messageApi, modal } = AntdApp.useApp();
 
   const userEmail = reduxState.userEmail;
@@ -147,7 +149,16 @@ function MainApp() {
     messageApi.success('Đăng ký và xác thực tài khoản thành công! Bạn có thể đăng nhập ngay.');
   }
 
-  function navigate(p: Page, id?: string) {
+  function navigate(p: Page, id?: string, ticketObj?: Ticket) {
+    if (p === 'ticket-detail') {
+      setPreviousAdminPage(page === 'ticket-detail' ? previousAdminPage : page);
+      if (ticketObj) {
+        setSelectedTicketObj(ticketObj);
+      } else if (id) {
+        const matched = TICKETS.find((t) => t.ticketId === id);
+        if (matched) setSelectedTicketObj(matched);
+      }
+    }
     dispatch(setCurrentPage({ page: p, id }));
   }
 
@@ -188,32 +199,41 @@ function MainApp() {
     return <><RouteSync authPage={authPage} setAuthPage={setAuthPage} /><StaffApp userId={userId} onLogout={handleLogout} /></>;
   }
 
-  const ticket = TICKETS.find(t => t.ticketId === selectedId) ?? TICKETS[0];
+  const ticket =
+    (selectedTicketObj && (selectedTicketObj.ticketId === selectedId || !selectedId)
+      ? selectedTicketObj
+      : TICKETS.find((t) => t.ticketId === selectedId)) ?? TICKETS[0];
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
       {/* Sidebar */}
-      <aside className={`${collapsed ? 'w-16' : 'w-64'} h-screen bg-white border-r border-gray-200 flex flex-col flex-shrink-0 transition-all duration-200 shadow-sm`}>
+      <aside className={`${collapsed ? 'w-16' : 'w-60'} h-screen bg-white border-r border-gray-200 flex flex-col flex-shrink-0 transition-all duration-200`}>
         {/* Logo */}
         <div className="relative px-4 py-3 border-b border-gray-100">
           <div className="absolute top-0 left-0 right-0 h-[3px] hazard-stripe-thin" />
-          <div className={`flex items-center ${collapsed ? 'justify-center' : ''}`}>
+          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2'}`}>
             <img
               src={cityfixLogo}
               alt="CityFix"
-              className={collapsed ? 'h-10 w-10 object-contain' : 'h-16 w-28 object-contain object-left'}
+              className={collapsed ? 'h-9 w-9 object-contain' : 'h-12 w-24 object-contain object-left'}
             />
-            {!collapsed && <p className="text-[9px] text-gray-400 uppercase tracking-widest ml-1">Admin Portal</p>}
+            {!collapsed && (
+              <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-200 text-[10px] font-bold uppercase tracking-wider">
+                Admin
+              </span>
+            )}
           </div>
-          <button onClick={() => setCollapsed(c => !c)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 mt-1.5 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 mt-1 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+          >
             {collapsed ? <ChevRIcon /> : <ChevLIcon />}
           </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto scrollbar-hide">
+        <nav className="flex-1 px-2.5 py-3 space-y-1 overflow-y-auto scrollbar-hide">
           {NAV.map(item => {
             const isActive = page === item.key || (page === 'ticket-detail' && item.key === 'tickets');
             const Icon = item.icon;
@@ -224,14 +244,14 @@ function MainApp() {
                     if (item.hasSubmenu) { setSettingsOpen(o => !o); navigate('settings'); }
                     else navigate(item.key as Page);
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all active:scale-[0.97] cursor-pointer
-                    ${isActive
-                      ? 'bg-orange-50 border border-orange-200 text-orange-600'
-                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 border border-transparent'
-                    }`}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-orange-50 border border-orange-200 text-orange-600 font-bold'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-transparent font-medium'
+                  }`}
                 >
-                  <span className={`flex-shrink-0 ${isActive ? 'text-orange-500' : 'text-gray-400'}`}><Icon /></span>
-                  {!collapsed && <span className="text-[13px] font-semibold flex-1">{item.label}</span>}
+                  <span className={`flex-shrink-0 ${isActive ? 'text-orange-600' : 'text-gray-400'}`}><Icon /></span>
+                  {!collapsed && <span className="text-[13px] flex-1">{item.label}</span>}
                   {!collapsed && item.hasSubmenu && (
                     <span className={`text-gray-400 transition-transform ${settingsOpen ? 'rotate-90' : ''}`}><ChevRIcon /></span>
                   )}
@@ -239,7 +259,7 @@ function MainApp() {
 
                 {/* Settings submenu */}
                 {item.hasSubmenu && settingsOpen && !collapsed && (
-                  <div className="ml-4 mt-0.5 space-y-0.5 border-l border-gray-200 pl-3">
+                  <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-200 pl-3">
                     {[
                       { label: 'Danh mục sự cố', sub: 'categories' as SettingsTab },
                       { label: 'Danh mục con',   sub: 'subcategories' as SettingsTab },
@@ -253,10 +273,10 @@ function MainApp() {
                             dispatch(setSettingsTab(s.sub));
                             navigate('settings');
                           }}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-[12px] font-medium transition-all cursor-pointer ${
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                             isSubActive
-                              ? 'bg-orange-100/70 text-orange-600 font-semibold'
-                              : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                              ? 'bg-orange-50 text-orange-600 font-bold'
+                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800 font-medium'
                           }`}>
                           {s.label}
                         </button>
@@ -269,38 +289,24 @@ function MainApp() {
           })}
         </nav>
 
-        {/* Emergency */}
-        {!collapsed && (
-          <div className="mx-3 my-2 relative rounded-xl overflow-hidden border border-red-200 bg-red-50">
-            <div className="flex items-center gap-2.5 px-3 py-2.5">
-              <div className="relative">
-                <div className="w-2 h-2 rounded-full bg-red-500" />
-                <div className="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping-slow" />
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-red-600">Cảnh báo khẩn cấp</p>
-                <p className="text-[10px] text-red-400">2 khu vực đang hoạt động</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* User */}
-        <div className="px-3 py-3 border-t border-gray-100">
-          <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-[#b94b00] flex items-center justify-center flex-shrink-0">
-              <span className="font-display text-[13px] font-bold text-white">
-                {userEmail ? userEmail.charAt(0).toUpperCase() : 'A'}
-              </span>
+        {/* User Footer */}
+        <div className="px-3 py-3 border-t border-gray-100 bg-gray-50/50">
+          <div className={`flex items-center gap-2.5 ${collapsed ? 'justify-center' : ''}`}>
+            <div className="w-8 h-8 rounded-xl bg-orange-600 flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">
+              {userEmail ? userEmail.charAt(0).toUpperCase() : 'A'}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-semibold text-gray-800 truncate">{userEmail || 'admin@cityfix.vn'}</p>
-                <p className="text-[10px] text-orange-500 uppercase tracking-wide">{userRole === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'}</p>
+                <p className="text-xs font-bold text-gray-900 truncate">{userEmail || 'admin@cityfix.vn'}</p>
+                <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">Quản trị viên</p>
               </div>
             )}
             {!collapsed && (
-              <button onClick={handleLogout} title="Đăng xuất" className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 cursor-pointer">
+              <button
+                onClick={handleLogout}
+                title="Đăng xuất"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0 cursor-pointer"
+              >
                 <LogoutIcon />
               </button>
             )}
@@ -311,35 +317,31 @@ function MainApp() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6 gap-4 flex-shrink-0 shadow-sm">
-          <div className="flex-1">
-            <h1 className="font-display text-[22px] font-extrabold text-gray-900 uppercase tracking-tight">
-  {page === 'dashboard' ? 'Dashboard' :
-   page === 'tickets' || page === 'ticket-detail' ? 'Quản lý Hồ sơ' :
-   page === 'analytics' ? 'Phân tích & Báo cáo' :
-   page === 'users' ? 'Người dùng' :
-   page === 'steps' ? 'Quản lý quy trình xử lý' :
-   'Cài đặt hệ thống'}
-</h1>
+        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6 gap-4 flex-shrink-0">
+          <div className="flex-1 min-w-0">
+            <h1 className="font-display text-base font-extrabold text-gray-900 tracking-tight truncate">
+              {page === 'dashboard' ? 'Tổng quan Hệ thống' :
+               page === 'tickets' || page === 'ticket-detail' ? 'Tra cứu Hồ sơ Sự cố' :
+               page === 'analytics' ? 'Thống kê & Báo cáo' :
+               page === 'users' ? 'Quản lý Người dùng' :
+               page === 'steps' ? 'Quản lý Quy trình Xử lý' :
+               'Cài đặt Hệ thống'}
+            </h1>
           </div>
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 w-64">
-            <SearchIcon />
-            <input placeholder="Tìm kiếm toàn hệ thống..."
-              className="bg-transparent text-[13px] text-gray-600 placeholder-gray-400 outline-none flex-1" />
-          </div>
-          <button className="relative w-9 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors cursor-pointer">
-            <BellIcon />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-500" />
-          </button>
-          <div className="w-px h-6 bg-gray-200" />
-          <p className="font-mono-cf text-[11px] text-gray-400 tracking-wider">10/09/2026</p>
+          <span className="px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-xs font-semibold hidden sm:inline-block">
+            Quản trị viên Hệ thống
+          </span>
+          <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+          <p className="font-mono-cf text-xs text-gray-500">
+            {new Date().toLocaleDateString('vi-VN')}
+          </p>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto scrollbar-thin city-background">
-          {page === 'dashboard' && <Dashboard onOpenTicket={id => navigate('ticket-detail', id)} onViewAll={() => navigate('tickets')} />}
-          {page === 'tickets' && <TicketList onOpenTicket={id => navigate('ticket-detail', id)} />}
-          {page === 'ticket-detail' && <TicketDetail ticket={ticket} onBack={() => navigate('tickets')} />}
+        <main className="flex-1 overflow-y-auto scrollbar-thin workspace-bg">
+          {page === 'dashboard' && <Dashboard onOpenTicket={(id, tObj) => navigate('ticket-detail', id, tObj)} onViewAll={() => navigate('tickets')} />}
+          {page === 'tickets' && <TicketList onOpenTicket={(id, tObj) => navigate('ticket-detail', id, tObj)} />}
+          {page === 'ticket-detail' && <TicketDetail ticket={ticket} onBack={() => navigate(previousAdminPage || 'dashboard')} />}
           {page === 'analytics' && <Analytics />}
           {page === 'users' && <UserManagement />}
           {page === 'steps' && <AdminSteps />}
