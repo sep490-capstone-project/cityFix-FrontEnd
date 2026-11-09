@@ -22,6 +22,7 @@ import {
   mapBackendStatus,
   getUnreadNotificationCount,
 } from '../../api';
+import ResidentChatModal from './ResidentChatModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -197,6 +198,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const [totalMyReports, setTotalMyReports] = useState<number>(0);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [chatModalVisible, setChatModalVisible] = useState(false);
 
   // Animations
   const pinPulseAnim = useRef(new Animated.Value(1)).current;
@@ -329,6 +331,14 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         </View>
 
         <View style={styles.headerRight}>
+          {/* <TouchableOpacity
+            style={styles.aiChatHeaderBtn}
+            onPress={() => setChatModalVisible(true)}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="sparkles" size={16} color="#ea580c" />
+            <Text style={styles.aiChatHeaderBtnText}>Hỏi AI</Text>
+          </TouchableOpacity> */}
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={() => navigate('notifications')}
@@ -798,7 +808,20 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         </View>
       </ScrollView>
 
-      {/* FAB + Bottom Navigation */}
+      {/* Floating AI Assistant Button + FAB + Bottom Navigation */}
+      <TouchableOpacity
+        style={styles.floatingAiBtn}
+        onPress={() => setChatModalVisible(true)}
+        activeOpacity={0.88}
+      >
+        <View style={styles.floatingAiIconCircle}>
+          <Ionicons name="chatbubble-ellipses" size={18} color="#ffffff" />
+        </View>
+        {/* <View>
+          <Text style={styles.floatingAiTitle}>Trợ lý</Text>
+        </View> */}
+      </TouchableOpacity>
+
       <View style={styles.footerContainer}>
         <View style={styles.paddingHorizontal}>
           <TouchableOpacity
@@ -842,6 +865,13 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           })}
         </View>
       </View>
+
+      <ResidentChatModal
+        visible={chatModalVisible}
+        onClose={() => setChatModalVisible(false)}
+        navigate={navigate}
+        userName={authUser?.fullName}
+      />
     </View>
   );
 }
@@ -1707,5 +1737,59 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: '#ea580c',
     fontWeight: '700',
+  },
+  aiChatHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 40,
+    paddingHorizontal: 11,
+    borderRadius: 14,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  aiChatHeaderBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#ea580c',
+  },
+  floatingAiBtn: {
+    position: 'absolute',
+    right: 20,
+    bottom: 146,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#fdba74',
+    borderRadius: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 20,
+  },
+  floatingAiIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f97316',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  floatingAiTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  floatingAiSub: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#ea580c',
   },
 });

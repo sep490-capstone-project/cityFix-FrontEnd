@@ -212,7 +212,13 @@ export interface ManagerTicketItem {
   ticketId?: string;
   description: string;
   imageUrl?: string;
-  images?: string[];
+  imageUrls?: string[];
+  images?: Array<string | { url?: string; imageUrl?: string; secureUrl?: string; mediaUrl?: string; fileUrl?: string }>;
+  evidenceUrls?: string[];
+  mediaUrls?: string[];
+  mediaUrl?: string;
+  photoUrl?: string;
+  thumbnailUrl?: string;
   categoryId?: string;
   categoryName?: string;
   subCategoryId?: string;
@@ -242,6 +248,113 @@ export interface ManagerTicketItem {
   departmentName?: string;
   assigneeId?: string;
   assigneeName?: string;
+}
+
+/**
+ * Trích xuất toàn bộ danh sách URL ảnh phản ánh hiện trường của người dân từ mọi định dạng DTO Backend
+ */
+export function extractTicketImages(ticket: any): string[] {
+  if (!ticket || typeof ticket !== 'object') return [];
+
+  const result: string[] = [];
+  const addUrl = (raw: any) => {
+    if (!raw) return;
+    if (typeof raw === 'object' && !Array.isArray(raw)) {
+      const candidate =
+        raw.imageUrl ||
+        raw.url ||
+        raw.secureUrl ||
+        raw.mediaUrl ||
+        raw.fileUrl ||
+        raw.photoUrl ||
+        raw.thumbnailUrl ||
+        raw.path ||
+        raw.src;
+      if (candidate) addUrl(candidate);
+      return;
+    }
+    if (typeof raw !== 'string') return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === 'string' || trimmed === 'null' || trimmed === 'undefined') return;
+
+    // Trường hợp chuỗi JSON mảng: '["https://..."]'
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(addUrl);
+          return;
+        }
+      } catch {
+        // Không phải JSON hợp lệ, xử lý tiếp bên dưới
+      }
+    }
+
+    // Trường hợp nhiều URL phân tách bằng dấu phẩy (không phải data URI)
+    if (!trimmed.startsWith('data:') && trimmed.includes(',') && /https?:\/\//i.test(trimmed)) {
+      const parts = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 1 && parts.every((p) => /^https?:\/\//i.test(p) || p.startsWith('/'))) {
+        parts.forEach(addUrl);
+        return;
+      }
+    }
+
+    const normalized =
+      trimmed.startsWith('/') && !trimmed.startsWith('//')
+        ? `${BASE_URL}${trimmed}`
+        : trimmed;
+
+    if (!result.includes(normalized)) {
+      result.push(normalized);
+    }
+  };
+
+  const arrayFields = [
+    ticket.imageUrls,
+    ticket.images,
+    ticket.mediaUrls,
+    ticket.evidenceUrls,
+    ticket.photoUrls,
+    ticket.photos,
+    ticket.attachments,
+    ticket.files,
+    ticket.medias,
+    ticket.reportImages,
+  ];
+  for (const arr of arrayFields) {
+    if (Array.isArray(arr)) {
+      arr.forEach(addUrl);
+    } else if (typeof arr === 'string') {
+      addUrl(arr);
+    }
+  }
+
+  const singleFields = [
+    ticket.imageUrl,
+    ticket.mediaUrl,
+    ticket.photoUrl,
+    ticket.thumbnailUrl,
+    ticket.evidenceUrl,
+    ticket.reportImageUrl,
+    ticket.fileUrl,
+    ticket.image,
+    ticket.photo,
+  ];
+  for (const val of singleFields) {
+    addUrl(val);
+  }
+
+  return result;
+}
+
+export function normalizeManagerTicket(ticket: any): ManagerTicketItem {
+  if (!ticket || typeof ticket !== 'object') return ticket;
+  const imgs = extractTicketImages(ticket);
+  return {
+    ...ticket,
+    imageUrl: imgs[0] || ticket.imageUrl || undefined,
+    imageUrls: imgs.length > 0 ? imgs : ticket.imageUrls,
+  };
 }
 
 export interface PageManagerTickets {
@@ -489,13 +602,17 @@ export async function getManagerInitiatedTickets(params?: {
   }
 
   if (Array.isArray(res)) {
+    const content = res.map(normalizeManagerTicket);
     return {
-      content: res,
+      content,
       totalPages: 1,
-      totalElements: res.length,
-      size: res.length,
+      totalElements: content.length,
+      size: content.length,
       number: 0,
     };
+  }
+  if (Array.isArray(res?.content)) {
+    res = { ...res, content: res.content.map(normalizeManagerTicket) };
   }
   return res as PageManagerTickets;
 }
@@ -735,17 +852,27 @@ export async function getTicketSteps(ticketId: string): Promise<TicketStep[]> {
  */
 export async function getTicketById(ticketId: string): Promise<ManagerTicketItem> {
   try {
-    return await managerRequest<ManagerTicketItem>(
+    const item = await managerRequest<ManagerTicketItem>(
       `/api/v1/tickets/${encodeURIComponent(ticketId)}`,
       { method: 'GET' }
     );
+    return normalizeManagerTicket(item);
   } catch (err: any) {
+    try {
+      const item = await managerRequest<ManagerTicketItem>(
+        `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}`,
+        { method: 'GET' }
+      );
+      if (item) return normalizeManagerTicket(item);
+    } catch {
+      // Fallback 1 failed
+    }
     try {
       const page = await getManagerTickets({ size: 100 });
       const found = page.content?.find((t) => (t.id || t.ticketId) === ticketId);
-      if (found) return found;
+      if (found) return normalizeManagerTicket(found);
     } catch {
-      // Fallback failed
+      // Fallback 2 failed
     }
     throw err;
   }
@@ -801,18 +928,22 @@ export async function getManagerTickets(params?: {
   }
 
   const qs = query.toString() ? `?${query.toString()}` : '';
-  const res = await managerRequest<any>(`/api/v1/manager/tickets${qs}`, {
+  let res = await managerRequest<any>(`/api/v1/manager/tickets${qs}`, {
     method: 'GET',
   });
 
   if (Array.isArray(res)) {
+    const content = res.map(normalizeManagerTicket);
     return {
-      content: res,
+      content,
       totalPages: 1,
-      totalElements: res.length,
-      size: res.length,
+      totalElements: content.length,
+      size: content.length,
       number: 0,
     };
+  }
+  if (Array.isArray(res?.content)) {
+    res = { ...res, content: res.content.map(normalizeManagerTicket) };
   }
   return res as PageManagerTickets;
 }
@@ -830,18 +961,22 @@ export async function getManagerResolvedTickets(params?: {
   if (params?.size !== undefined) query.append('size', params.size.toString());
 
   const qs = query.toString() ? `?${query.toString()}` : '';
-  const res = await managerRequest<any>(`/api/v1/manager/tickets/resolved${qs}`, {
+  let res = await managerRequest<any>(`/api/v1/manager/tickets/resolved${qs}`, {
     method: 'GET',
   });
 
   if (Array.isArray(res)) {
+    const content = res.map(normalizeManagerTicket);
     return {
-      content: res,
+      content,
       totalPages: 1,
-      totalElements: res.length,
-      size: res.length,
+      totalElements: content.length,
+      size: content.length,
       number: 0,
     };
+  }
+  if (Array.isArray(res?.content)) {
+    res = { ...res, content: res.content.map(normalizeManagerTicket) };
   }
   return res as PageManagerTickets;
 }

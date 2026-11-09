@@ -615,6 +615,8 @@ export async function analyzeReportImage(
 export interface CreateTicketRequest {
   description: string;
   imageUrl: string;
+  imageUrls?: string[];
+  images?: string[];
   subCategoryIds: string[];
   priority: string;
   priorityReasoning?: string;
@@ -668,9 +670,20 @@ export async function createTicket(
     token = await AsyncStorage.getItem('accessToken');
   }
 
+  const resolvedImageUrls =
+    Array.isArray(data.imageUrls) && data.imageUrls.length > 0
+      ? data.imageUrls.filter(Boolean)
+      : Array.isArray(data.images) && data.images.length > 0
+        ? data.images.filter(Boolean)
+        : data.imageUrl
+          ? [data.imageUrl]
+          : [];
+
   const payloadBody = {
     description: data.description,
-    imageUrl: data.imageUrl,
+    imageUrl: data.imageUrl || resolvedImageUrls[0] || '',
+    imageUrls: resolvedImageUrls,
+    images: resolvedImageUrls,
     categoryId: data.categoryId || (Array.isArray(data.subCategoryIds) && data.subCategoryIds[0]) || '',
     subCategoryIds: Array.isArray(data.subCategoryIds) && data.subCategoryIds.length > 0
       ? data.subCategoryIds
