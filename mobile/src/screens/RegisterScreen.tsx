@@ -24,6 +24,9 @@ import {
   VN_PROVINCES_2025,
   Province2025,
   getWardsForProvince2025,
+  formatWardName,
+  formatProvinceName,
+  formatStandardAddress,
 } from '../constants/vnProvinces2025';
 
 interface Props {
@@ -297,8 +300,9 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
 
   const handleSelectProvince = (prov: Province2025, autoOpenWard = false) => {
     Keyboard.dismiss();
-    const isDifferent = prov.name !== province;
-    setProvince(prov.name);
+    const formatted = formatProvinceName(prov.name);
+    const isDifferent = formatted !== province;
+    setProvince(formatted);
     if (isDifferent) {
       setWard('');
     }
@@ -313,7 +317,8 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
 
   const handleSelectWard = (w: string) => {
     Keyboard.dismiss();
-    setWard(w);
+    const formatted = formatWardName(w);
+    setWard(formatted);
     if (errors.ward) setErrors((prev) => ({ ...prev, ward: '' }));
     setPickerSearch('');
     setPickerMode(null);
@@ -516,8 +521,21 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
       e.phone = 'Số điện thoại gồm 10 chữ số và bắt đầu bằng số 0.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       e.email = 'Địa chỉ email chưa đúng định dạng.';
-    if (!province.trim()) e.province = 'Vui lòng chọn Tỉnh / Thành phố.';
-    if (!ward.trim()) e.ward = 'Vui lòng chọn Phường / Xã (sau sáp nhập).';
+    if (!province.trim()) {
+      e.province = 'Vui lòng chọn Tỉnh / Thành phố.';
+    } else if (
+      (province.includes('Hồ Chí Minh') || province.includes('Hà Nội') || province.includes('Đà Nẵng') || province.includes('Hải Phòng') || province.includes('Cần Thơ') || province.includes('Huế')) &&
+      !province.startsWith('TP.')
+    ) {
+      e.province = 'Thành phố trực thuộc TW phải bắt đầu bằng "TP." (VD: TP. Hồ Chí Minh)';
+    }
+
+    if (!ward.trim()) {
+      e.ward = 'Vui lòng chọn Phường / Xã (sau sáp nhập).';
+    } else if (/phường/i.test(ward) && !ward.startsWith('P.')) {
+      e.ward = 'Tên phường bắt buộc phải ghi đúng "P." (VD: P. Bến Thành)';
+    }
+
     if (password.length < 8) e.password = 'Mật khẩu cần tối thiểu 8 ký tự.';
     if (!confirmPw || confirmPw !== password) e.confirmPw = 'Mật khẩu xác nhận chưa trùng khớp.';
     return e;
@@ -539,9 +557,9 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
         fullName,
         phoneNumber: phone,
         email,
-        province,
-        ward,
-        address,
+        province: formatProvinceName(province),
+        ward: formatWardName(ward),
+        address: formatStandardAddress(address),
         password,
       });
       try {

@@ -17,6 +17,9 @@ import {
   Province2025,
   getWardsForProvince2025,
   findProvince2025ByName,
+  formatWardName,
+  formatProvinceName,
+  formatStandardAddress,
 } from '../constants/vnProvinces2025';
 
 type ModalMode = 'view' | 'create' | 'edit' | null;
@@ -317,15 +320,19 @@ export default function UserManagement() {
       const payloadDepartmentId = selectedDeptIds.length === 1 ? selectedDeptIds[0] : undefined;
       const payloadDepartmentIds = selectedDeptIds.length > 1 ? selectedDeptIds : undefined;
 
+      const formattedProvince = formatProvinceName(form.province);
+      const formattedWard = formatWardName(form.ward);
+      const formattedAddress = formatStandardAddress(form.address);
+
       if (modal === 'create') {
         const created = await createAdminUser({
           email: form.email,
           password: form.password,
           fullName: form.fullName,
           phoneNumber: form.phoneNumber,
-          province: form.province,
-          ward: form.ward,
-          address: form.address,
+          province: formattedProvince,
+          ward: formattedWard,
+          address: formattedAddress,
           roleId: form.roleId || undefined,
           role: form.role,
           departmentId: payloadDepartmentId,
@@ -337,6 +344,9 @@ export default function UserManagement() {
           {
             ...created,
             role: form.role,
+            province: formattedProvince,
+            ward: formattedWard,
+            address: formattedAddress,
             departmentId: payloadDepartmentId,
             departmentIds: selectedDeptIds,
             createdAt: new Date().toLocaleDateString('vi-VN'),
@@ -349,9 +359,9 @@ export default function UserManagement() {
           email: form.email,
           fullName: form.fullName,
           phoneNumber: form.phoneNumber,
-          province: form.province,
-          ward: form.ward,
-          address: form.address,
+          province: formattedProvince,
+          ward: formattedWard,
+          address: formattedAddress,
           roleId: form.roleId || undefined,
           role: form.role,
           departmentId: payloadDepartmentId,

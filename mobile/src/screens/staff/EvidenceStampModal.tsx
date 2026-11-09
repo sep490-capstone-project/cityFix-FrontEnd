@@ -1176,6 +1176,11 @@ import {
   StaffTicketStepEvidence,
   submitStaffEvidence,
 } from '../../api';
+import {
+  formatStandardAddress,
+  formatWardName,
+  formatProvinceName,
+} from '../../constants/vnProvinces2025';
 
 export interface StampedPhotoItem {
   id: string;
@@ -1290,25 +1295,46 @@ export default function EvidenceStampModal({
           const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
           if (geo && geo.length > 0) {
             const g = geo[0];
-            const addr = [
-              g.name,
-              g.street,
-              g.subregion || g.district,
-              g.city || g.region,
-            ]
+            const namePart = g.name && g.name !== g.street ? g.name.trim() : '';
+            const streetPart = (g.street || '').trim();
+            const streetFull = [namePart, streetPart].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' ');
+
+            const adminCandidates = [g.district, g.subregion].filter(Boolean).map((s) => s!.trim());
+            let wardStr = '';
+            let distStr = '';
+            for (const item of adminCandidates) {
+              if (/^(phường|p\.)\s+/i.test(item) || /^phường\b/i.test(item)) {
+                wardStr = formatWardName(item);
+              } else if (/^(xã|x\.|thị trấn|tt\.)\s+/i.test(item)) {
+                wardStr = item;
+              } else if (/^(quận|q\.|huyện|h\.|thị xã|tx\.)\s+/i.test(item)) {
+                distStr = item;
+              } else if (!wardStr) {
+                wardStr = formatWardName(item);
+              } else if (!distStr) {
+                distStr = item;
+              }
+            }
+            if (wardStr && !/^(P\.|Xã|Thị trấn)/i.test(wardStr)) {
+              wardStr = formatWardName(wardStr);
+            }
+
+            const cityStr = formatProvinceName((g.city || g.region || '').trim());
+            const addr = [streetFull, wardStr, distStr, cityStr]
               .filter(Boolean)
               .filter((v, i, a) => a.indexOf(v) === i)
               .join(', ');
+
             if (addr) {
-              return { address: addr, coordsText };
+              return { address: formatStandardAddress(addr), coordsText };
             }
           }
         } catch {
-  // ignore reverse geocode err
+          // ignore reverse geocode err
         }
 
         return {
-          address: ticketAddress || coordsText,
+          address: formatStandardAddress(ticketAddress) || coordsText,
           coordsText,
         };
       }
