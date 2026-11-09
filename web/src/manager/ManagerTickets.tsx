@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, StatusKey, Severity, statusInfo, sevInfo, priorityInfo } from '../data';
+import { BuildingIcon, UserIcon, CheckIcon, AlertTriangleIcon, TagIcon } from '../components/Icons';
 import {
   getManagerTickets,
   getManagerResolvedTickets,
@@ -116,7 +117,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            🏢 Cơ quan tôi ({activeTab === 'dept' ? filtered.length : '...'})
+            <span className="inline-flex items-center gap-1.5"><BuildingIcon className="w-3.5 h-3.5" /> Cơ quan tôi ({activeTab === 'dept' ? filtered.length : '...'})</span>
           </button>
           <button
             type="button"
@@ -127,7 +128,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            👤 Hồ sơ tiếp nhận ({activeTab === 'mine' ? filtered.length : '...'})
+            <span className="inline-flex items-center gap-1.5"><UserIcon className="w-3.5 h-3.5" /> Hồ sơ tiếp nhận ({activeTab === 'mine' ? filtered.length : '...'})</span>
           </button>
           <button
             type="button"
@@ -138,7 +139,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            ✓ Đã giải quyết
+            <span className="inline-flex items-center gap-1.5"><CheckIcon className="w-3.5 h-3.5" /> Đã giải quyết</span>
           </button>
         </div>
 
@@ -170,7 +171,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
       {/* Thông báo lỗi nếu có */}
       {errorMessage && (
         <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-[12px] text-red-700 flex items-center justify-between">
-          <span>⚠️ {errorMessage}</span>
+          <span className="inline-flex items-center gap-1.5"><AlertTriangleIcon className="w-4 h-4 text-red-500 flex-shrink-0" /> {errorMessage}</span>
           <button onClick={() => setErrorMessage(null)} className="font-bold text-red-500 cursor-pointer ml-2">
             ✕
           </button>
@@ -315,7 +316,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                                     className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-md truncate max-w-[150px]"
                                     title={name}
                                   >
-                                    🏷️ {name}
+                                    <span className="inline-flex items-center gap-1"><TagIcon className="w-2.5 h-2.5 text-orange-500" /> {name}</span>
                                   </span>
                                 ))}
                                 {subs.length > 2 && (

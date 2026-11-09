@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   itemBody: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: '#64748B',
     lineHeight: 18,
     marginTop: 4,
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   ticketLinkText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '600',
     color: '#C2410C',
   },
@@ -732,7 +732,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptySubtitle: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 18,

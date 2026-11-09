@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     borderColor: '#fed7aa',
   },
   stepBadgeText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   description: {
     marginTop: 8,
     color: '#64748b',
-    fontSize: 13.5,
+    fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
   },
@@ -525,12 +525,12 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     color: '#dc2626',
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '600',
   },
   helperHint: {
     marginTop: 14,
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#94a3b8',
     textAlign: 'center',
   },

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Ticket, STATUS_MAP, StatusKey, getDept, getCat, getUser, USERS, DEPARTMENTS, ROUTING_RULES, TICKET_HISTORY, statusInfo, sevInfo, dangerInfo } from '../data';
 
 interface Props { ticket: Ticket; onBack: () => void; }
@@ -134,7 +134,7 @@ export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
             </Row>
             <Row label="Đe dọa tính mạng">
               <span className={`text-[11px] font-bold ${ticket.isLifeThreatening ? 'text-red-400' : 'text-green-600'}`}>
-                {ticket.isLifeThreatening ? 'Có ⚠' : 'Không'}
+                {ticket.isLifeThreatening ? 'Có (Khẩn cấp)' : 'Không'}
               </span>
             </Row>
           </Card>
@@ -316,7 +316,7 @@ export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
                   className="w-full relative rounded-xl overflow-hidden px-4 py-2.5 active:scale-[0.97] transition-transform disabled:opacity-40">
                   <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
                   <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
-                  <span className="relative text-white font-bold uppercase tracking-wide text-[12px]">✓ Tiếp nhận & Phân công</span>
+                  <span className="relative text-white font-bold uppercase tracking-wide text-[12px]">Tiếp nhận & Phân công</span>
                 </button>
               </div>
             )}
@@ -327,7 +327,7 @@ export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
                 {!showReroute ? (
                   <button onClick={() => setShowReroute(true)}
                     className="w-full mt-3 py-2.5 rounded-xl border border-red-200 text-red-600 text-[12px] font-bold uppercase tracking-wide hover:bg-red-50 transition-colors active:scale-[0.97]">
-                    ✕ Từ chối & Chuyển cơ quan đúng
+                    Từ chối & Chuyển cơ quan đúng
                   </button>
                 ) : (
                   <div className="mt-3 space-y-2.5">
@@ -371,7 +371,7 @@ export default function TicketDetail({ ticket: initialTicket, onBack }: Props) {
                 <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
                 <div className="absolute inset-0 opacity-[0.06]" style={{ background: 'repeating-linear-gradient(-45deg,white,white 8px,transparent 8px,transparent 16px)' }} />
                 <span className="relative text-white font-bold uppercase tracking-wide text-[12px]">
-                  {statusUpdated ? '✓ Đã cập nhật' : 'Cập nhật'}
+                  {statusUpdated ? 'Đã cập nhật' : 'Cập nhật'}
                 </span>
               </button>
             </div>

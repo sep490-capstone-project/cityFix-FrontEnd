@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { AlertTriangleIcon } from '../components/Icons';
 import {
   TICKETS,
   getDept,
@@ -430,7 +431,7 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
 
               <div className="px-5 py-3 border-t border-gray-100">
                 <p className="text-[10px] text-gray-400">
-                  ⚠ Hồ sơ lặp lại ≥ 2 lần → Kích hoạt cảnh báo & trừ điểm hiệu suất cơ quan
+                  <span className="inline-flex items-center gap-1"><AlertTriangleIcon className="w-3 h-3 text-amber-500 flex-shrink-0" /> Hồ sơ lặp lại ≥ 2 lần → Kích hoạt cảnh báo & trừ điểm hiệu suất cơ quan</span>
                 </p>
               </div>
             </div>

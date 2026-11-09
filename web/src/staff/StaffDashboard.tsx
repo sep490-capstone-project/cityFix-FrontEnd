@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
 import { User, statusInfo, sevInfo, priorityInfo, DEPARTMENTS } from '../data';
 import { getStaffAssignedTickets, getStaffTicketSteps, StaffTicketItem, StaffTicketStep } from '../services';
+import {
+  BuildingIcon,
+  AlertTriangleIcon,
+  FileTextIcon,
+  ClockIcon,
+  AlertCircleIcon,
+  CheckCircleIcon,
+  TrendingUpIcon,
+  MapPinIcon,
+} from './StaffIcons';
+
 
 interface Props {
   currentUser: User;
@@ -144,7 +155,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                 </span>
               </div>
               <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 font-medium">
-                <span>🏢</span>
+                <BuildingIcon className="w-3.5 h-3.5 text-gray-500" />
                 <span className="font-bold text-gray-800">{deptName}</span>
                 <span className="text-gray-300">|</span>
                 <span>Đại diện cơ quan tiếp nhận hồ sơ & giải quyết hiện trường</span>
@@ -186,8 +197,8 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
       {activeCriticalTickets.length > 0 && (
         <div className="rounded-2xl border border-red-300 bg-red-50/90 p-4 shadow-2xs flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center text-base font-bold shadow-xs flex-shrink-0 animate-bounce">
-              ⚠️
+            <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs flex-shrink-0 animate-bounce">
+              <AlertTriangleIcon className="w-5 h-5 text-white" />
             </div>
             <div>
               <p className="text-xs font-bold text-red-900">
@@ -213,7 +224,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tổng tiếp nhận</span>
-            <span className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs">📋</span>
+            <span className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><FileTextIcon className="w-4 h-4" /></span>
           </div>
           <p className="text-2xl font-black text-gray-900 mt-2">{totalCount}</p>
           <p className="text-[11px] text-gray-400 mt-0.5 font-medium">Toàn bộ hồ sơ của cơ quan</p>
@@ -223,7 +234,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Đang xử lý</span>
-            <span className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center text-xs">⏳</span>
+            <span className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center"><ClockIcon className="w-4 h-4" /></span>
           </div>
           <p className="text-2xl font-black text-orange-600 mt-2">{inProgressTickets.length}</p>
           <p className="text-[11px] text-gray-400 mt-0.5 font-medium">Đang khắc phục hiện trường</p>
@@ -233,7 +244,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Khẩn cấp</span>
-            <span className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center text-xs">🚨</span>
+            <span className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center"><AlertCircleIcon className="w-4 h-4" /></span>
           </div>
           <p className="text-2xl font-black text-red-600 mt-2">{criticalTickets.length}</p>
           <p className="text-[11px] text-gray-400 mt-0.5 font-medium">Ưu tiên xử lý hàng đầu</p>
@@ -243,7 +254,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Đã hoàn thành</span>
-            <span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs">✅</span>
+            <span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><CheckCircleIcon className="w-4 h-4" /></span>
           </div>
           <p className="text-2xl font-black text-emerald-600 mt-2">{completedTickets.length}</p>
           <p className="text-[11px] text-gray-400 mt-0.5 font-medium">
@@ -255,7 +266,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-shadow col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tỷ lệ hoàn tất</span>
-            <span className="w-7 h-7 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center text-xs">📈</span>
+            <span className="w-7 h-7 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center"><TrendingUpIcon className="w-4 h-4" /></span>
           </div>
           <p className="text-2xl font-black text-teal-600 mt-2">{completionRate}%</p>
           <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2 overflow-hidden">
@@ -437,7 +448,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
           {/* Card 1: Phân bổ trạng thái */}
           <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-4">
             <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
-              <span>📊</span> Phân bổ trạng thái hồ sơ
+              Phân bổ trạng thái hồ sơ
             </h3>
 
             {/* Segmented bar */}
@@ -488,7 +499,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
           <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <h3 className="text-xs font-extrabold text-orange-600 uppercase tracking-wider flex items-center gap-2">
-                <span>⚡</span> Quy trình xử lý hiện trường
+                Quy trình xử lý hiện trường
               </h3>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
                 Chuẩn SOP
@@ -539,7 +550,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
             <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-gray-100">
                 <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
-                  <span>📋</span> Bước cần xử lý ({activeSteps.length})
+                  Bước cần xử lý ({activeSteps.length})
                 </h3>
                 <span className="text-[10px] font-bold text-orange-600">Đang giao</span>
               </div>
@@ -575,7 +586,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
             <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-xs space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-gray-100">
                 <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
-                  <span>🏆</span> Hồ sơ đã giải quyết xong ({recentCompleted.length})
+                  Hồ sơ đã giải quyết xong ({recentCompleted.length})
                 </h3>
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                   Nghiệm thu
@@ -599,7 +610,7 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                         </span>
                       </div>
                       <p className="text-[10px] text-gray-500 truncate">
-                        📍 {t.address || 'Hiện trường đã hoàn tất'}
+                        <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3 h-3 text-gray-400 flex-shrink-0" /> {t.address || 'Hiện trường đã hoàn tất'}</span>
                       </p>
                     </div>
                   );

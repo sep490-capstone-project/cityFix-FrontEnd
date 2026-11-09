@@ -1016,7 +1016,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   rememberedEmailText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '800',
     color: '#0f172a',
   },
@@ -1032,7 +1032,7 @@ const styles = StyleSheet.create({
     borderColor: '#fdba74',
   },
   rememberedUseText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -1097,7 +1097,7 @@ const styles = StyleSheet.create({
     borderColor: '#fed7aa',
   },
   activeFieldBadgeText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -1274,7 +1274,7 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   registerTitleText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
   },

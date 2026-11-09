@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   TextInput,
+  Animated,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
@@ -38,6 +39,49 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'done', label: 'Hoàn thành' },
   { key: 'cancelled', label: 'Đã hủy' },
 ];
+
+
+function ReportCardSkeleton() {
+  const pulseAnim = React.useRef(new Animated.Value(0.4)).current;
+
+  React.useEffect(() => {
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 750,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.4,
+          duration: 750,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+    return () => pulseLoop.stop();
+  }, [pulseAnim]);
+
+  return (
+    <Animated.View style={[styles.skeletonContainer, { opacity: pulseAnim }]}>
+      {[1, 2, 3, 4].map((key) => (
+        <View key={key} style={styles.skeletonCard}>
+          <View style={styles.skeletonAccent} />
+          <View style={styles.skeletonThumb} />
+          <View style={styles.skeletonBody}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonAddress} />
+            <View style={styles.skeletonFooterRow}>
+              <View style={styles.skeletonBadge} />
+              <View style={styles.skeletonDate} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </Animated.View>
+  );
+}
 
 function formatDate(dateString?: string): string {
   if (!dateString) return '';
@@ -210,10 +254,7 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket, fil
       >
         <View style={styles.contentPadding}>
           {loading && !refreshing ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#ea580c" />
-              <Text style={styles.loadingText}>Đang tải danh sách hồ sơ tiếp nhận...</Text>
-            </View>
+            <ReportCardSkeleton />
           ) : null}
 
           {error && !loading ? (
@@ -482,6 +523,72 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 10,
   },
+  /* Skeleton Shimmer Loading Bars đồng bộ 100% với Resident */
+  skeletonContainer: {
+    gap: 12,
+    paddingTop: 4,
+  },
+  skeletonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    gap: 12,
+  },
+  skeletonAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: '#E2E8F0',
+  },
+  skeletonThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    marginLeft: 4,
+  },
+  skeletonBody: {
+    flex: 1,
+    gap: 8,
+  },
+  skeletonTitle: {
+    width: '70%',
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+  },
+  skeletonAddress: {
+    width: '90%',
+    height: 11,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  skeletonBadge: {
+    width: 65,
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+  skeletonDate: {
+    width: 75,
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: '#F1F5F9',
+  },
+
   loadingContainer: {
     paddingVertical: 48,
     alignItems: 'center',

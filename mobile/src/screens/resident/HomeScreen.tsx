@@ -152,21 +152,23 @@ function formatLocation(ward?: string, province?: string): string {
   let w = (ward || '').trim();
   let p = (province || '').trim();
 
-  // Bỏ chữ "Phường" / "Phuong" / "P." theo yêu cầu người dùng
+  // Bỏ chữ "Phường" / "Phuong" / "P." / "Xã" theo yêu cầu người dùng
   if (w) {
-    w = w.replace(/^(phường|phuong|p\.)\s*/i, '').trim();
-    if (w.toLowerCase() === 'ben nghe') {
+    w = w.replace(/^(phường|phuong|p\.|xã|xa|thị trấn|thi tran)\s*/i, '').trim();
+    const lowerW = w.toLowerCase();
+    if (lowerW === 'ben nghe' || lowerW === 'bến nghé') {
       w = 'Bến Nghé';
     }
   }
 
-  // Chuẩn hóa Tỉnh / TP
+  // Chuẩn hóa Tỉnh / TP (bắt được cả 'Ho Chi Min.' từ API cũ)
   const lowerP = p.toLowerCase();
   if (
+    lowerP.includes('ho chi min') ||
     lowerP.includes('ho chi minh') ||
+    lowerP.includes('hồ chí minh') ||
     lowerP === 'hcm' ||
     lowerP === 'tp hcm' ||
-    lowerP === 'hồ chí minh' ||
     lowerP === 'tp. hcm'
   ) {
     p = 'TP. Hồ Chí Minh';
@@ -190,6 +192,7 @@ function formatLocation(ward?: string, province?: string): string {
 
 export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const [allMyTickets, setAllMyTickets] = useState<ReportedTicket[]>([]);
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
   const [totalMyReports, setTotalMyReports] = useState<number>(0);
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -214,6 +217,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
         ticketsRes.value &&
         Array.isArray(ticketsRes.value.content)
       ) {
+        setAllMyTickets(ticketsRes.value.content);
         setRealTickets(ticketsRes.value.content.slice(0, 3));
         setTotalMyReports(
           ticketsRes.value.totalElements ?? ticketsRes.value.content.length
@@ -278,6 +282,23 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
     .slice(-2)
     .join('')
     .toUpperCase();
+
+  const totalCount = totalMyReports || allMyTickets.length;
+  const receivedCount = allMyTickets.filter(
+    (t) => mapBackendStatus(t.status).statusKey === 'received'
+  ).length;
+  const processingCount = allMyTickets.filter(
+    (t) => mapBackendStatus(t.status).statusKey === 'processing'
+  ).length;
+  const doneCount = allMyTickets.filter(
+    (t) => mapBackendStatus(t.status).statusKey === 'done'
+  ).length;
+  const completionPct =
+    totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+  const processingPct =
+    totalCount > 0 ? Math.round((processingCount / totalCount) * 100) : 0;
+  const receivedPct =
+    totalCount > 0 ? Math.round((receivedCount / totalCount) * 100) : 0;
 
   return (
     <View style={styles.container}>
@@ -409,43 +430,43 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           </Animated.View>
         </Animated.View>
 
-        {/* 2. Enhanced Duotone Stats Grid */}
+        {/* 2. Stats Grid chuẩn style Staff: 3 thẻ Hồ sơ tiếp nhận, Đang xử lý, Đã hoàn thành */}
         <View style={styles.paddingHorizontal}>
           <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <View style={[styles.statIconWrap, { backgroundColor: '#fff7ed' }]}>
-                <Ionicons name="warning" size={16} color="#ea580c" />
-              </View>
-              <Text style={[styles.statValue, { color: '#ea580c' }]}>34</Text>
-              <Text style={styles.statLabel}>Sự cố hôm nay</Text>
-              <Text style={[styles.statSub, { color: '#ea580c' }]}>↑12% tuần này</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigate('my-reports', { filter: 'all' })}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="briefcase-outline" size={18} color="#f97316" />
+              <Text style={styles.statValue}>{totalCount}</Text>
+              <Text style={styles.statLabel}>Hồ sơ tiếp nhận</Text>
+              <Text style={styles.statSub}>
+                {receivedCount > 0 ? `${receivedCount} chờ xử lý` : 'Chạm để xem →'}
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.statCard}
-              onPress={() => navigate('my-reports')}
-              activeOpacity={0.8}
+              onPress={() => navigate('my-reports', { filter: 'processing' })}
+              activeOpacity={0.75}
             >
-              <View style={[styles.statIconWrap, { backgroundColor: '#eff6ff' }]}>
-                <Ionicons name="document-text" size={16} color="#2563eb" />
-              </View>
-              <Text style={[styles.statValue, { color: '#2563eb' }]}>
-                {totalMyReports}
-              </Text>
-              <Text style={styles.statLabel}>Hồ sơ của bạn</Text>
-              <Text style={[styles.statSub, { color: '#2563eb' }]}>Chạm để xem →</Text>
+              <Ionicons name="construct-outline" size={18} color="#f97316" />
+              <Text style={styles.statValue}>{processingCount}</Text>
+              <Text style={styles.statLabel}>Đang xử lý</Text>
+              <Text style={styles.statSub}>Chạm để xem →</Text>
             </TouchableOpacity>
 
-            <View style={styles.statCard}>
-              <View style={[styles.statIconWrap, { backgroundColor: '#f0fdf4' }]}>
-                <Ionicons name="checkmark-done-circle" size={16} color="#16a34a" />
-              </View>
-              <Text style={[styles.statValue, { color: '#16a34a' }]}>127</Text>
-              <Text style={styles.statLabel}>Đã khắc phục</Text>
-              <Text style={[styles.statSub, { color: '#16a34a' }]}>
-                {`Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => navigate('my-reports', { filter: 'done' })}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="checkmark-circle-outline" size={18} color="#16a34a" />
+              <Text style={[styles.statValue, { color: '#16a34a' }]}>{doneCount}</Text>
+              <Text style={styles.statLabel}>Đã hoàn thành</Text>
+              <Text style={[styles.statSub, { color: '#16a34a' }]}>Tỷ lệ {completionPct}%</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -621,20 +642,33 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           </ScrollView>
         </View>
 
-        {/* 5. Animated Fluid Processing Performance Progress */}
-        <View style={[styles.paddingHorizontal, { marginTop: 22 }]}>
-          <SectionLabel title="HIỆU SUẤT XỬ LÝ THEO LOẠI" />
+        {/* 5. Tiến độ giải quyết hồ sơ (Thanh tiến độ màu cam đồng bộ 100% với style Staff) */}
+        <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
+          <SectionLabel title="TIẾN ĐỘ GIẢI QUYẾT HỒ SƠ" />
           <View style={styles.progressBox}>
-            {PERFORMANCE_ROWS.map((row, idx) => (
+            {[
+              {
+                label: 'Hồ sơ đã hoàn tất xử lý',
+                pct: completionPct,
+                count: `${doneCount}/${totalCount}`,
+              },
+              {
+                label: 'Hồ sơ đang triển khai tại hiện trường',
+                pct: processingPct,
+                count: `${processingCount}/${totalCount}`,
+              },
+              {
+                label: 'Hồ sơ mới gửi chờ tiếp nhận',
+                pct: receivedPct,
+                count: `${receivedCount}/${totalCount}`,
+              },
+            ].map((row, idx) => (
               <View key={idx} style={styles.progressRow}>
                 <View style={styles.progressHeader}>
-                  <View style={styles.progressLabelWrap}>
-                    <View style={[styles.progressColorDot, { backgroundColor: row.color }]} />
-                    <Text style={styles.progressLabel}>{row.label}</Text>
-                  </View>
+                  <Text style={styles.progressLabel}>{row.label}</Text>
                   <View style={styles.progressRight}>
                     <Text style={styles.progressCount}>{row.count}</Text>
-                    <Text style={[styles.progressPct, { color: row.color }]}>{row.pct}%</Text>
+                    <Text style={styles.progressPct}>{row.pct}%</Text>
                   </View>
                 </View>
                 <View style={styles.progressBarTrack}>
@@ -642,7 +676,6 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                     style={[
                       styles.progressBarFill,
                       {
-                        backgroundColor: row.color,
                         width: progressBarAnim.interpolate({
                           inputRange: [0, 1],
                           outputRange: ['0%', `${row.pct}%`],
@@ -869,7 +902,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   locationText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '600',
     color: '#64748b',
     letterSpacing: 0.1,
@@ -998,7 +1031,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   aiHeroSub: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: '#64748b',
     lineHeight: 16.5,
     marginTop: 3,
@@ -1015,7 +1048,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   aiHeroCtaText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '800',
     color: '#ffffff',
   },
@@ -1067,7 +1100,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   actionBtnText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     color: '#ea580c',
   },
@@ -1091,27 +1124,21 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  statIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   statValue: {
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: '800',
-    marginTop: 6,
+    color: '#f97316',
+    marginTop: 4,
   },
   statLabel: {
     fontSize: 10,
-    fontWeight: '600',
-    color: '#475569',
+    color: '#64748b',
     marginTop: 2,
   },
   statSub: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '700',
+    color: '#ea580c',
     marginTop: 2,
   },
 
@@ -1144,7 +1171,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   alertTagText: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: '800',
     color: '#dc2626',
     letterSpacing: 1,
@@ -1156,13 +1183,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc2626',
   },
   alertTitle: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
     marginTop: 2,
   },
   alertSub: {
-    fontSize: 10.5,
+    fontSize: 11,
     color: '#7f1d1d',
     marginTop: 2,
   },
@@ -1203,7 +1230,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   catSub: {
-    fontSize: 9.5,
+    fontSize: 10,
     color: '#64748b',
     marginTop: 2,
     textAlign: 'center',
@@ -1252,7 +1279,7 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
   },
   pinText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '800',
     color: '#ffffff',
   },
@@ -1278,7 +1305,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   legendText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#0f172a',
   },
@@ -1298,7 +1325,7 @@ const styles = StyleSheet.create({
     color: '#ea580c',
   },
   totalSub: {
-    fontSize: 8.5,
+    fontSize: 9,
     color: '#64748b',
     fontWeight: '600',
   },
@@ -1363,13 +1390,13 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   trendingCategory: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
     marginTop: 2,
   },
   trendingAddress: {
-    fontSize: 10.5,
+    fontSize: 11,
     color: '#64748b',
     marginTop: 2,
   },
@@ -1380,7 +1407,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   trendingDelta: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#16a34a',
   },
@@ -1393,24 +1420,19 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   upvoteBtnText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#ea580c',
   },
 
-  /* Processing Progress Box */
+  /* Progress Summary chuẩn style Staff với thanh tiến độ màu cam */
   progressBox: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
-    gap: 14,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 2,
+    gap: 12,
   },
   progressRow: {
     gap: 6,
@@ -1420,44 +1442,35 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  progressLabelWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  progressColorDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
   progressLabel: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '600',
     color: '#334155',
   },
   progressRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   progressCount: {
-    fontSize: 10,
-    color: '#94a3b8',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 9,
+    color: '#64748b',
   },
   progressPct: {
     fontSize: 11,
     fontWeight: '800',
+    color: '#f97316',
   },
   progressBarTrack: {
     height: 6,
-    backgroundColor: '#f1f5f9',
     borderRadius: 3,
+    backgroundColor: '#f1f5f9',
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
     borderRadius: 3,
+    backgroundColor: '#f97316',
   },
 
   /* My Recent Tickets */
@@ -1534,7 +1547,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   homeRateBadgeText: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
     color: '#ea580c',
   },
