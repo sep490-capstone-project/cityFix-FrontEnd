@@ -19,7 +19,19 @@ export default function StaffApp({ userId, onLogout }: Props) {
   const [previousStaffPage, setPreviousStaffPage] = useState<StaffPage>('dashboard');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const initialUser = getUser(userId) ?? USERS.find(u => u.role === 'STAFF') ?? USERS[2];
+  const initialUser: User = getUser(userId) ?? {
+    userId: userId || 'STAFF',
+    fullName: 'Cán bộ Kỹ thuật',
+    email: '',
+    phoneNumber: '',
+    province: '',
+    ward: '',
+    address: '',
+    role: 'STAFF',
+    status: 'ACTIVE',
+    createdAt: '',
+    updatedAt: '',
+  };
   const [currentUser, setCurrentUser] = useState<User>(initialUser);
   const [departmentName, setDepartmentName] = useState<string>('');
 
@@ -33,7 +45,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
           getDepartments(),
         ]);
 
-        let currentDeptId = currentUser.departmentId;
+        let currentDeptId = currentUser?.departmentId;
 
         if (profileRes.status === 'fulfilled' && profileRes.value && mounted) {
           const p = profileRes.value;
@@ -99,27 +111,27 @@ export default function StaffApp({ userId, onLogout }: Props) {
       setSelectedTicketData(ticketOrId);
       setSelectedId(ticketOrId.id || ticketOrId.ticketId);
     } else {
-      setSelectedId(ticketOrId);
       setSelectedTicketData(null);
+      setSelectedId(ticketOrId);
     }
     setPage('ticket-detail');
   }
 
   function handleProfileUpdated(updated: UserProfile) {
-    setCurrentUser((prev) => ({
+    setCurrentUser(prev => ({
       ...prev,
       fullName: updated.fullName || prev.fullName,
       phoneNumber: updated.phoneNumber || prev.phoneNumber,
       address: updated.address || prev.address,
       province: updated.province || prev.province,
       ward: updated.ward || prev.ward,
-      departmentId: updated.departmentId || prev.departmentId,
+      email: updated.email || prev.email,
     }));
   }
 
   const resolvedDeptLabel =
     departmentName ||
-    (currentUser.departmentId
+    (currentUser?.departmentId
       ? DEPARTMENTS.find((d) => d.departmentId === currentUser.departmentId)?.name ?? 'Đang tải...'
       : 'Đơn vị Hiện trường');
 
@@ -181,10 +193,10 @@ export default function StaffApp({ userId, onLogout }: Props) {
         <div className="px-3 py-3 border-t border-gray-100 bg-gray-50/50">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-orange-600 flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">
-              {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'S'}
+              {currentUser?.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'S'}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-gray-900 truncate">{currentUser.fullName}</p>
+              <p className="text-xs font-bold text-gray-900 truncate">{currentUser?.fullName || 'Cán bộ Kỹ thuật'}</p>
               <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">
                 Cán bộ kỹ thuật
               </p>

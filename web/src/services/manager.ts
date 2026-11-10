@@ -232,6 +232,8 @@ export interface ManagerTicketItem {
   dangerLevel?: 'SAFE' | 'CAUTION' | 'DANGEROUS' | 'CRITICAL';
   locationMethod?: 'AUTO_GPS' | 'MANUAL_ENTRY';
   address: string;
+  province?: string;
+  ward?: string;
   status: string;
   latitude?: number;
   longitude?: number;

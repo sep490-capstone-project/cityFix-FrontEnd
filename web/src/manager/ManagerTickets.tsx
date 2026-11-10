@@ -6,6 +6,7 @@ import {
   getManagerResolvedTickets,
   ManagerTicketItem,
   ApiError,
+  matchesSearch,
 } from '../services';
 import { message } from 'antd';
 import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
@@ -83,12 +84,22 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
 
     // Tìm kiếm
     if (search.trim()) {
-      const q = search.toLowerCase();
-      const id = (t.id || t.ticketId || '').toLowerCase();
-      const cat = (t.categoryName || '').toLowerCase();
-      const desc = (t.description || '').toLowerCase();
-      const addr = (t.address || '').toLowerCase();
-      if (!id.includes(q) && !cat.includes(q) && !desc.includes(q) && !addr.includes(q)) return false;
+      const q = search.trim();
+      const shortId = (t.id || t.ticketId || '').slice(0, 8);
+      const match =
+        matchesSearch(t.id, q) ||
+        matchesSearch(t.ticketId, q) ||
+        matchesSearch(shortId, q) ||
+        matchesSearch(t.categoryName, q) ||
+        matchesSearch(t.subCategoryName, q) ||
+        matchesSearch(t.description, q) ||
+        matchesSearch(t.address, q) ||
+        matchesSearch(t.ward, q) ||
+        matchesSearch(t.province, q) ||
+        matchesSearch(t.assigneeName, q) ||
+        matchesSearch(t.creatorFullName, q) ||
+        matchesSearch(t.creatorPhoneNumber, q);
+      if (!match) return false;
     }
 
     return true;

@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { message } from 'antd';
 import { BuildingIcon } from '../components/Icons';
-import { USERS, DEPARTMENTS as FALLBACK_DEPARTMENTS } from '../data';
 import { downloadCsvFile } from '../utils/exportFile';
 import {
   getAdminUsers,
@@ -13,6 +12,7 @@ import {
   getDepartments,
   DepartmentItem,
   formatDepartmentLevel,
+  matchesSearch,
   ApiError,
 } from '../services';
 import {
@@ -65,7 +65,10 @@ function extractUserRole(u: any): 'ADMIN' | 'MANAGER' | 'STAFF' | 'RESIDENT' {
     raw = u.role.name || u.role.roleName || u.role.code || '';
   } else if (Array.isArray(u.roles) && u.roles.length > 0) {
     const firstRole = u.roles[0];
-    raw = typeof firstRole === 'string' ? firstRole : (firstRole?.name || firstRole?.roleName || firstRole?.code || '');
+    raw =
+      typeof firstRole === 'string'
+        ? firstRole
+        : firstRole?.name || firstRole?.roleName || firstRole?.code || '';
   }
 
   const upper = raw.toUpperCase();
@@ -116,9 +119,14 @@ export default function UserManagement() {
   const [modal, setModal] = useState<ModalMode>(null);
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+
+  // Bộ lọc (100% dữ liệu thực tế từ API)
   const [search, setSearch] = useState('');
-  const [deptSearch, setDeptSearch] = useState('');
   const [roleF, setRoleF] = useState<string>('all');
+  const [deptF, setDeptF] = useState<string>('all');
+  const [statusF, setStatusF] = useState<string>('all');
+
+  const [deptSearch, setDeptSearch] = useState('');
   const [formError, setFormError] = useState('');
   const [availableWards, setAvailableWards] = useState<string[]>([]);
   const [loadingWards, setLoadingWards] = useState(false);
@@ -152,44 +160,10 @@ export default function UserManagement() {
     setLoading(true);
     try {
       const data = await getAdminUsers();
-      if (data && data.length > 0) {
-        setUsers(data);
-      } else {
-        setUsers(
-          USERS.map((u) => ({
-            id: u.userId,
-            userId: u.userId,
-            email: u.email,
-            fullName: u.fullName,
-            phoneNumber: u.phoneNumber,
-            province: u.province,
-            ward: u.ward,
-            address: u.address,
-            role: u.role,
-            status: u.status,
-            departmentId: u.departmentId,
-            createdAt: u.createdAt,
-          }))
-        );
-      }
+      setUsers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.warn('Lỗi khi tải users từ API:', err);
-      setUsers(
-        USERS.map((u) => ({
-          id: u.userId,
-          userId: u.userId,
-          email: u.email,
-          fullName: u.fullName,
-          phoneNumber: u.phoneNumber,
-          province: u.province,
-          ward: u.ward,
-          address: u.address,
-          role: u.role,
-          status: u.status,
-          departmentId: u.departmentId,
-          createdAt: u.createdAt,
-        }))
-      );
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -204,15 +178,10 @@ export default function UserManagement() {
       } else if (res && Array.isArray((res as any).content)) {
         list = (res as any).content;
       }
-
-      if (list.length > 0) {
-        setDepartments(list);
-      } else {
-        setDepartments(FALLBACK_DEPARTMENTS as any);
-      }
+      setDepartments(list);
     } catch (err) {
       console.warn('Lỗi khi tải danh sách cơ quan:', err);
-      setDepartments(FALLBACK_DEPARTMENTS as any);
+      setDepartments([]);
     }
   }
 
@@ -221,26 +190,57 @@ export default function UserManagement() {
     fetchDepartmentsList();
   }, []);
 
-  const filtered = users.filter((u) => {
-    const userRole = extractUserRole(u).toUpperCase();
-    if (roleF !== 'all') {
-      if (roleF === 'CITIZEN' || roleF === 'RESIDENT') {
-        if (userRole !== 'CITIZEN' && userRole !== 'RESIDENT' && userRole !== 'USER') return false;
-      } else if (userRole !== roleF) {
-        return false;
+  const filtered = useMemo(() => {
+    const q = search.trim();
+    return users.filter((u) => {
+      const userRole = extractUserRole(u).toUpperCase();
+      if (roleF !== 'all') {
+        if (roleF === 'CITIZEN' || roleF === 'RESIDENT') {
+          if (userRole !== 'CITIZEN' && userRole !== 'RESIDENT' && userRole !== 'USER') {
+            return false;
+          }
+        } else if (userRole !== roleF) {
+          return false;
+        }
       }
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      const name = (u.fullName || '').toLowerCase();
-      const mail = (u.email || '').toLowerCase();
-      const phone = u.phoneNumber || u.phone || '';
-      if (!name.includes(q) && !mail.includes(q) && !phone.includes(q)) {
-        return false;
+
+      const deptIds = extractUserDepartmentIds(u);
+      if (deptF !== 'all') {
+        if (deptF === 'UNASSIGNED') {
+          if (deptIds.length > 0) return false;
+        } else if (!deptIds.includes(deptF)) {
+          return false;
+        }
       }
-    }
-    return true;
-  });
+
+      const userStatus = (u.status || 'ACTIVE').toUpperCase();
+      if (statusF !== 'all') {
+        if (statusF === 'ACTIVE' && userStatus !== 'ACTIVE') return false;
+        if (statusF === 'BLOCKED' && userStatus === 'ACTIVE') return false;
+      }
+
+      if (q) {
+        const userDeptNames = deptIds
+          .map((id) => departments.find((d) => d.departmentId === id)?.name || '')
+          .filter(Boolean)
+          .join(' ');
+        const uid = String(u.id || u.userId || '');
+        const phone = u.phoneNumber || u.phone || '';
+
+        const match =
+          matchesSearch(u.fullName, q) ||
+          matchesSearch(u.email, q) ||
+          matchesSearch(phone, q) ||
+          matchesSearch(userDeptNames, q) ||
+          matchesSearch(u.province, q) ||
+          matchesSearch(u.ward, q) ||
+          matchesSearch(u.address, q) ||
+          matchesSearch(uid, q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [users, roleF, deptF, statusF, search, departments]);
 
   function toggleDept(deptId: string) {
     setForm((f) => {
@@ -251,7 +251,7 @@ export default function UserManagement() {
       return {
         ...f,
         departmentIds: nextList,
-        departmentId: nextList.length === 1 ? nextList[0] : (nextList[0] || ''),
+        departmentId: nextList.length === 1 ? nextList[0] : nextList[0] || '',
       };
     });
     setFormError('');
@@ -274,7 +274,7 @@ export default function UserManagement() {
       email: u.email || '',
       password: '',
       phoneNumber: u.phoneNumber || u.phone || '',
-      province: matchedProvince ? matchedProvince.name : (u.province || 'TP. Hồ Chí Minh'),
+      province: matchedProvince ? matchedProvince.name : u.province || 'TP. Hồ Chí Minh',
       ward: u.ward || '',
       address: u.address || '',
       role: userRole,
@@ -312,9 +312,12 @@ export default function UserManagement() {
     setFormError('');
 
     try {
-      const selectedDeptIds = form.role === 'MANAGER'
-        ? form.departmentIds.filter(Boolean)
-        : (form.departmentId ? [form.departmentId] : []);
+      const selectedDeptIds =
+        form.role === 'MANAGER'
+          ? form.departmentIds.filter(Boolean)
+          : form.departmentId
+          ? [form.departmentId]
+          : [];
 
       const payloadDepartmentId = selectedDeptIds.length === 1 ? selectedDeptIds[0] : undefined;
       const payloadDepartmentIds = selectedDeptIds.length > 1 ? selectedDeptIds : undefined;
@@ -382,8 +385,8 @@ export default function UserManagement() {
                   departmentIds: selectedDeptIds,
                   updatedAt: new Date().toLocaleDateString('vi-VN'),
                 }
-              : x
-          )
+              : x,
+          ),
         );
       }
       setModal(null);
@@ -421,14 +424,14 @@ export default function UserManagement() {
 
       setUsers((prev) =>
         prev.map((x) =>
-          (x.id || x.userId) === targetId ? { ...x, status: nextStatus } : x
-        )
+          (x.id || x.userId) === targetId ? { ...x, status: nextStatus } : x,
+        ),
       );
     } catch (err: any) {
       alert(
         err instanceof ApiError
           ? err.message
-          : 'Không thể cập nhật trạng thái người dùng.'
+          : 'Không thể cập nhật trạng thái người dùng.',
       );
     }
   }
@@ -439,7 +442,7 @@ export default function UserManagement() {
 
     if (
       !window.confirm(
-        `Bạn có chắc chắn muốn xóa tài khoản "${u.fullName || u.email}" không?`
+        `Bạn có chắc chắn muốn xóa tài khoản "${u.fullName || u.email}" không?`,
       )
     ) {
       return;
@@ -448,11 +451,11 @@ export default function UserManagement() {
     try {
       await deleteAdminUser(targetId);
       setUsers((prev) =>
-        prev.filter((x) => (x.id || x.userId) !== targetId)
+        prev.filter((x) => (x.id || x.userId) !== targetId),
       );
     } catch (err: any) {
       alert(
-        err instanceof ApiError ? err.message : 'Xóa người dùng thất bại.'
+        err instanceof ApiError ? err.message : 'Xóa người dùng thất bại.',
       );
     }
   }
@@ -508,6 +511,12 @@ export default function UserManagement() {
     message.success(`Đã xuất ${filtered.length} người dùng ra file CSV!`);
   }
 
+  const hasFilter =
+    Boolean(search.trim()) ||
+    roleF !== 'all' ||
+    deptF !== 'all' ||
+    statusF !== 'all';
+
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
       {/* 1. Header Card */}
@@ -524,11 +533,14 @@ export default function UserManagement() {
 
           <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
             <span className="font-mono-cf text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl">
-              {filtered.length} người dùng
+              {filtered.length} / {users.length} người dùng
             </span>
 
             <button
-              onClick={fetchUsers}
+              onClick={() => {
+                fetchUsers();
+                fetchDepartmentsList();
+              }}
               disabled={loading}
               className="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
             >
@@ -552,8 +564,8 @@ export default function UserManagement() {
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="pt-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 w-full sm:w-72">
+        <div className="pt-3 border-t border-gray-100 flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 w-full sm:w-80 focus-within:bg-white focus-within:border-orange-500 transition-colors">
             <svg
               width="14"
               height="14"
@@ -570,7 +582,7 @@ export default function UserManagement() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Tìm theo tên, email, SĐT..."
+              placeholder="Tìm tên, email, SĐT, cơ quan, địa bàn..."
               className="bg-transparent text-xs text-gray-800 placeholder-gray-400 outline-none flex-1 font-medium"
             />
           </div>
@@ -586,6 +598,44 @@ export default function UserManagement() {
             <option value="STAFF">Nhân viên kỹ thuật</option>
             <option value="RESIDENT">Cư dân</option>
           </select>
+
+          <select
+            value={deptF}
+            onChange={(e) => setDeptF(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 font-semibold outline-none cursor-pointer focus:border-orange-500 max-w-[220px]"
+          >
+            <option value="all">Tất cả cơ quan ({departments.length})</option>
+            <option value="UNASSIGNED">Chưa gán cơ quan</option>
+            {departments.map((d) => (
+              <option key={d.departmentId} value={d.departmentId}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusF}
+            onChange={(e) => setStatusF(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 font-semibold outline-none cursor-pointer focus:border-orange-500"
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
+            <option value="BLOCKED">Bị khóa (BLOCKED)</option>
+          </select>
+
+          {hasFilter && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setRoleF('all');
+                setDeptF('all');
+                setStatusF('all');
+              }}
+              className="text-xs font-semibold text-red-600 hover:text-red-700 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
         </div>
       </div>
 
@@ -615,108 +665,118 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.map((u) => {
-                const uid = u.id || u.userId || u.email;
-                const deptIds = extractUserDepartmentIds(u);
-                const userDeptNames = deptIds
-                  .map((id) => departments.find((d) => d.departmentId === id)?.name)
-                  .filter(Boolean);
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400 text-xs">
+                    {loading
+                      ? 'Đang tải danh sách tài khoản từ máy chủ...'
+                      : 'Không tìm thấy tài khoản nào phù hợp với điều kiện lọc.'}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((u) => {
+                  const uid = u.id || u.userId || u.email;
+                  const deptIds = extractUserDepartmentIds(u);
+                  const userDeptNames = deptIds
+                    .map((id) => departments.find((d) => d.departmentId === id)?.name)
+                    .filter(Boolean);
 
-                const roleKey = extractUserRole(u).toUpperCase();
-                const roleBadge = ROLE_MAP[roleKey] || {
-                  label: roleKey,
-                  cls: 'text-gray-600 bg-gray-50 border-gray-200',
-                };
+                  const roleKey = extractUserRole(u).toUpperCase();
+                  const roleBadge = ROLE_MAP[roleKey] || {
+                    label: roleKey,
+                    cls: 'text-gray-600 bg-gray-50 border-gray-200',
+                  };
 
-                return (
-                  <tr
-                    key={uid}
-                    className="hover:bg-orange-50/40 transition-colors cursor-pointer"
-                    onClick={(e) => {
-                      if (!(e.target as HTMLElement).closest('td:last-child')) {
-                        setSelected(u);
-                        setModal('view');
-                      }
-                    }}
-                  >
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center flex-shrink-0 font-bold text-xs">
-                          {(u.fullName || 'U').charAt(0).toUpperCase()}
+                  return (
+                    <tr
+                      key={uid}
+                      className="hover:bg-orange-50/40 transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        if (!(e.target as HTMLElement).closest('td:last-child')) {
+                          setSelected(u);
+                          setModal('view');
+                        }
+                      }}
+                    >
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center flex-shrink-0 font-bold text-xs">
+                            {(u.fullName || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <p className="text-xs text-gray-900 font-bold">
+                            {u.fullName || '—'}
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-900 font-bold">
-                          {u.fullName || '—'}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 font-mono-cf text-xs text-gray-600">
-                      {u.email}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono-cf text-xs text-gray-600">
-                      {u.phoneNumber || u.phone || '—'}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span
-                        className={`inline-flex whitespace-nowrap text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${roleBadge.cls}`}
-                      >
-                        {roleBadge.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-xs text-gray-600 max-w-[180px]">
-                      {userDeptNames.length === 0 ? (
-                        '—'
-                      ) : userDeptNames.length === 1 ? (
-                        <span className="truncate block" title={userDeptNames[0]}>
-                          {userDeptNames[0]}
-                        </span>
-                      ) : (
+                      </td>
+                      <td className="px-4 py-3.5 font-mono-cf text-xs text-gray-600">
+                        {u.email}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono-cf text-xs text-gray-600">
+                        {u.phoneNumber || u.phone || '—'}
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold cursor-help"
-                          title={userDeptNames.join(', ')}
+                          className={`inline-flex whitespace-nowrap text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${roleBadge.cls}`}
                         >
-                          <BuildingIcon className="w-3 h-3 text-orange-600" />
-                          <span>{userDeptNames.length} cơ quan</span>
+                          {roleBadge.label}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span
-                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1.5 ${
-                          u.status === 'ACTIVE'
-                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                            : 'text-red-700 bg-red-50 border-red-200'
-                        }`}
-                      >
+                      </td>
+                      <td className="px-4 py-3.5 text-xs text-gray-600 max-w-[180px]">
+                        {userDeptNames.length === 0 ? (
+                          '—'
+                        ) : userDeptNames.length === 1 ? (
+                          <span className="truncate block" title={userDeptNames[0]}>
+                            {userDeptNames[0]}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold cursor-help"
+                            title={userDeptNames.join(', ')}
+                          >
+                            <BuildingIcon className="w-3 h-3 text-orange-600" />
+                            <span>{userDeptNames.length} cơ quan</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            u.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-red-500'
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1.5 ${
+                            u.status === 'ACTIVE'
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                              : 'text-red-700 bg-red-50 border-red-200'
                           }`}
-                        />
-                        {u.status === 'ACTIVE' ? 'Hoạt động' : 'Bị khóa'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 font-mono-cf text-[11px] text-gray-400">
-                      {u.createdAt || '—'}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1.5">
-                        <ActionBtn onClick={() => openView(u)} label="Xem" />
-                        <ActionBtn onClick={() => openEdit(u)} label="Sửa" />
-                        <ActionBtn
-                          onClick={() => toggleBlock(u)}
-                          label={u.status === 'ACTIVE' ? 'Khóa' : 'Mở'}
-                          danger={u.status === 'ACTIVE'}
-                        />
-                        <ActionBtn
-                          onClick={() => handleDelete(u)}
-                          label="Xóa"
-                          danger
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              u.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-red-500'
+                            }`}
+                          />
+                          {u.status === 'ACTIVE' ? 'Hoạt động' : 'Bị khóa'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-mono-cf text-[11px] text-gray-400">
+                        {u.createdAt || '—'}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <ActionBtn onClick={() => openView(u)} label="Xem" />
+                          <ActionBtn onClick={() => openEdit(u)} label="Sửa" />
+                          <ActionBtn
+                            onClick={() => toggleBlock(u)}
+                            label={u.status === 'ACTIVE' ? 'Khóa' : 'Mở'}
+                            danger={u.status === 'ACTIVE'}
+                          />
+                          <ActionBtn
+                            onClick={() => handleDelete(u)}
+                            label="Xóa"
+                            danger
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -1071,7 +1131,15 @@ export default function UserManagement() {
                       </div>
 
                       <p className="text-[11px] text-gray-500">
-                        Vai trò Quản lý có thể phụ trách một hoặc nhiều cơ quan. Nếu chọn 1 cơ quan hệ thống gửi <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">departmentId</code>, nếu chọn nhiều cơ quan hệ thống gửi <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">departmentIds</code>.
+                        Vai trò Quản lý có thể phụ trách một hoặc nhiều cơ quan. Nếu chọn 1 cơ quan hệ thống gửi{' '}
+                        <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">
+                          departmentId
+                        </code>
+                        , nếu chọn nhiều cơ quan hệ thống gửi{' '}
+                        <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">
+                          departmentIds
+                        </code>
+                        .
                       </p>
 
                       {/* Filter search */}
@@ -1086,9 +1154,11 @@ export default function UserManagement() {
                       {/* Scrollable Checkbox list */}
                       <div className="max-h-44 overflow-y-auto space-y-1 bg-white border border-gray-200 rounded-xl p-2 scrollbar-thin">
                         {departments
-                          .filter((d) =>
-                            !deptSearch.trim() ||
-                            (d.name || '').toLowerCase().includes(deptSearch.toLowerCase().trim())
+                          .filter(
+                            (d) =>
+                              !deptSearch.trim() ||
+                              matchesSearch(d.name, deptSearch) ||
+                              matchesSearch(d.departmentId, deptSearch),
                           )
                           .map((d) => {
                             const isChecked = form.departmentIds.includes(d.departmentId);
@@ -1171,7 +1241,7 @@ export default function UserManagement() {
               )}
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

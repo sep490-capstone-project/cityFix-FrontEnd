@@ -14,7 +14,8 @@ import {
   getDepartmentUsers,
   ManagerTicketItem,
   DepartmentStaffUser,
-} from '../services/manager';
+  matchesSearch,
+} from '../services';
 import { getDepartmentById } from '../services/departments';
 import { message } from 'antd';
 import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
@@ -153,14 +154,23 @@ export default function ManagerDashboard({ currentUser, onOpenTicket, onViewAll 
     }
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim();
       list = list.filter((t) => {
-        const id = (t.id || t.ticketId || '').toLowerCase();
-        const desc = (t.description || '').toLowerCase();
-        const cat = (t.categoryName || '').toLowerCase();
-        const addr = (t.address || '').toLowerCase();
-        const assignee = (t.assigneeName || '').toLowerCase();
-        return id.includes(q) || desc.includes(q) || cat.includes(q) || addr.includes(q) || assignee.includes(q);
+        const shortId = (t.id || t.ticketId || '').slice(0, 8);
+        return (
+          matchesSearch(t.id, q) ||
+          matchesSearch(t.ticketId, q) ||
+          matchesSearch(shortId, q) ||
+          matchesSearch(t.description, q) ||
+          matchesSearch(t.categoryName, q) ||
+          matchesSearch(t.subCategoryName, q) ||
+          matchesSearch(t.address, q) ||
+          matchesSearch(t.ward, q) ||
+          matchesSearch(t.province, q) ||
+          matchesSearch(t.assigneeName, q) ||
+          matchesSearch(t.creatorFullName, q) ||
+          matchesSearch(t.creatorPhoneNumber, q)
+        );
       });
     }
 

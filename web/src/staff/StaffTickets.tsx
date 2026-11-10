@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { message } from 'antd';
 import { User, statusInfo, sevInfo, priorityInfo } from '../data';
-import { getStaffAssignedTickets, StaffTicketItem, ApiError } from '../services';
+import { getStaffAssignedTickets, StaffTicketItem, ApiError, matchesSearch } from '../services';
 import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
 
 interface Props {
@@ -82,12 +82,19 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
       if (p !== priorityF.toUpperCase()) return false;
     }
     if (search.trim()) {
-      const q = search.toLowerCase();
-      const id = (t.id || t.ticketId || '').toLowerCase();
-      const cat = (t.categoryName || '').toLowerCase();
-      const desc = (t.description || '').toLowerCase();
-      const addr = (t.address || '').toLowerCase();
-      if (!id.includes(q) && !cat.includes(q) && !desc.includes(q) && !addr.includes(q)) return false;
+      const q = search.trim();
+      const shortId = (t.id || t.ticketId || '').slice(0, 8);
+      const match =
+        matchesSearch(t.id, q) ||
+        matchesSearch(t.ticketId, q) ||
+        matchesSearch(shortId, q) ||
+        matchesSearch(t.categoryName, q) ||
+        matchesSearch(t.subCategoryName, q) ||
+        matchesSearch(t.description, q) ||
+        matchesSearch(t.address, q) ||
+        matchesSearch(t.ward, q) ||
+        matchesSearch(t.province, q);
+      if (!match) return false;
     }
     return true;
   });

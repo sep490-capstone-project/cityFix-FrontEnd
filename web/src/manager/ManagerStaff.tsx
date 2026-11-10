@@ -8,6 +8,7 @@ import {
   DepartmentStaffUser,
   ManagerTicketItem,
   ApiError,
+  matchesSearch,
 } from '../services';
 import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
 
@@ -334,17 +335,18 @@ export default function ManagerStaff({ currentUser }: Props) {
         return false;
       }
       if (!search.trim()) return true;
-      const q = search.toLowerCase();
+      const q = search.trim();
       const matchDept =
-        d.name?.toLowerCase().includes(q) ||
-        d.contactEmail?.toLowerCase().includes(q) ||
-        d.phoneNumber?.includes(q);
+        matchesSearch(d.name, q) ||
+        matchesSearch(d.departmentId, q) ||
+        matchesSearch(d.contactEmail, q) ||
+        matchesSearch(d.phoneNumber, q);
       const matchStaff = (d.users || []).some(
         (u) =>
-          u.fullName?.toLowerCase().includes(q) ||
-          u.email?.toLowerCase().includes(q) ||
-          u.phoneNumber?.includes(q) ||
-          u.userId?.toLowerCase().includes(q)
+          matchesSearch(u.fullName, q) ||
+          matchesSearch(u.email, q) ||
+          matchesSearch(u.phoneNumber, q) ||
+          matchesSearch(u.userId, q)
       );
       return matchDept || matchStaff;
     });
@@ -367,13 +369,14 @@ export default function ManagerStaff({ currentUser }: Props) {
         return false;
       }
       if (!search.trim()) return true;
-      const q = search.toLowerCase();
+      const q = search.trim();
       return (
-        u.fullName?.toLowerCase().includes(q) ||
-        u.email?.toLowerCase().includes(q) ||
-        u.phoneNumber?.includes(q) ||
-        u.departmentName?.toLowerCase().includes(q) ||
-        u.userId?.toLowerCase().includes(q)
+        matchesSearch(u.fullName, q) ||
+        matchesSearch(u.email, q) ||
+        matchesSearch(u.phoneNumber, q) ||
+        matchesSearch(u.departmentName, q) ||
+        matchesSearch(u.departmentId, q) ||
+        matchesSearch(u.userId, q)
       );
     });
   }, [allStaff, selectedDeptId, roleFilter, workloadFilter, search, getActiveTaskCount]);
@@ -780,13 +783,13 @@ export default function ManagerStaff({ currentUser }: Props) {
                 if (workloadFilter === 'available' && activeCount > 0) return false;
                 if (workloadFilter === 'busy' && activeCount === 0) return false;
                 if (search.trim()) {
-                  const q = search.toLowerCase();
+                  const q = search.trim();
                   const matchSelf =
-                    st.fullName?.toLowerCase().includes(q) ||
-                    st.email?.toLowerCase().includes(q) ||
-                    st.phoneNumber?.includes(q) ||
-                    st.userId?.toLowerCase().includes(q);
-                  const matchDeptName = dept.name?.toLowerCase().includes(q);
+                    matchesSearch(st.fullName, q) ||
+                    matchesSearch(st.email, q) ||
+                    matchesSearch(st.phoneNumber, q) ||
+                    matchesSearch(st.userId, q);
+                  const matchDeptName = matchesSearch(dept.name, q) || matchesSearch(dept.departmentId, q);
                   return matchSelf || matchDeptName;
                 }
                 return true;

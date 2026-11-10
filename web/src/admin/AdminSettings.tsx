@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FileTextIcon } from '../components/Icons';
-import { CATEGORIES, DEPARTMENTS, ROUTING_RULES } from '../data';
 import {
   getAdminCategories,
   createAdminCategory,
@@ -8,14 +7,12 @@ import {
   deleteAdminCategory,
   AdminCategory,
   getAllSubCategories,
-  getSubCategoriesByCategoryId,
   createSubCategory,
   updateSubCategory,
   deleteSubCategory,
   AdminSubCategory,
   SubCategoryPriority,
   getRoutingRules,
-  getRoutingRulesByDepartment,
   getRoutingRuleById,
   createRoutingRule,
   updateRoutingRule,
@@ -28,6 +25,9 @@ import {
   deleteDepartment,
   DepartmentItem,
   formatDepartmentLevel,
+  matchesSearch,
+  matchesLocation,
+  normalizeLocationKey,
   ApiError,
 } from '../services';
 
@@ -61,21 +61,40 @@ export default function Settings({ initialTab = 'categories', onTabChange }: Set
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
+      {/* Clean Command Header Card */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
+              Cấu hình & Định tuyến Hệ thống
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+              Quản trị Hệ thống
+            </span>
+          </div>
+          <p className="text-[12px] text-gray-500 mt-1">
+            Thiết lập Danh mục sự cố, Danh mục con (SLA), Cơ quan phụ trách và Quy tắc định tuyến tự động
+          </p>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 w-fit mb-5 shadow-xs">
-        {([
-          { key: 'categories', label: 'Danh mục sự cố' },
-          { key: 'subcategories', label: 'Danh mục con' },
-          { key: 'departments', label: 'Cơ quan' },
-          { key: 'routing', label: 'Quy tắc định tuyến' },
-        ] as const).map((t) => (
+        {(
+          [
+            { key: 'categories', label: 'Danh mục sự cố' },
+            { key: 'subcategories', label: 'Danh mục con' },
+            { key: 'departments', label: 'Cơ quan' },
+            { key: 'routing', label: 'Quy tắc định tuyến' },
+          ] as const
+        ).map((t) => (
           <button
             key={t.key}
             onClick={() => handleTabClick(t.key)}
             className={`px-4 py-2 rounded-lg text-[12px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
               tab === t.key
-                ? 'bg-orange-500/15 text-orange-600 border border-orange-500/20 shadow-xs'
+                ? 'bg-orange-600 text-white font-bold shadow-2xs'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -97,7 +116,7 @@ export default function Settings({ initialTab = 'categories', onTabChange }: Set
   );
 }
 
-// ── Category Management ───────────────────────────────────────────────────────
+// ── 1. Category Management ────────────────────────────────────────────────────
 function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (categoryId: string) => void }) {
   const [cats, setCats] = useState<AdminCategory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -105,40 +124,18 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [sel, setSel] = useState<AdminCategory | null>(null);
   const [form, setForm] = useState({ name: '', description: '', isActive: true });
+  const [searchQuery, setSearchQuery] = useState('');
   const [actionError, setActionError] = useState('');
 
-  // 1. Lấy danh sách danh mục (GET /api/v1/admin/categories)
   async function fetchCategories() {
     setLoading(true);
     setActionError('');
     try {
       const data = await getAdminCategories();
-      if (data && data.length > 0) {
-        setCats(data);
-      } else {
-        // Fallback mock nếu database rỗng
-        setCats(
-          CATEGORIES.map((c) => ({
-            id: c.categoryId,
-            categoryId: c.categoryId,
-            name: c.name,
-            description: c.description,
-            isActive: c.isActive,
-          }))
-        );
-      }
+      setCats(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.warn('Lỗi khi tải danh mục từ API:', err);
-      // Fallback hiển thị dữ liệu sẵn có
-      setCats(
-        CATEGORIES.map((c) => ({
-          id: c.categoryId,
-          categoryId: c.categoryId,
-          name: c.name,
-          description: c.description,
-          isActive: c.isActive,
-        }))
-      );
+      setCats([]);
     } finally {
       setLoading(false);
     }
@@ -147,6 +144,19 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  const filteredCats = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return cats;
+    return cats.filter((c) => {
+      const catId = c.id || c.categoryId || '';
+      return (
+        matchesSearch(catId, q) ||
+        matchesSearch(c.name, q) ||
+        matchesSearch(c.description, q)
+      );
+    });
+  }, [cats, searchQuery]);
 
   function openCreate() {
     setForm({ name: '', description: '', isActive: true });
@@ -166,7 +176,6 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
     setModal('edit');
   }
 
-  // 2. Tạo mới & 3. Cập nhật danh mục (POST / PUT /api/v1/admin/categories)
   async function save() {
     if (!form.name.trim()) {
       setActionError('Vui lòng nhập tên danh mục');
@@ -182,7 +191,6 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
           name: form.name,
           description: form.description,
         });
-
         setCats((prev) => [created, ...prev]);
       } else if (sel) {
         const targetId = sel.id || sel.categoryId || '';
@@ -190,11 +198,10 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
           name: form.name,
           description: form.description,
         });
-
         setCats((prev) =>
           prev.map((x) =>
-            (x.id || x.categoryId) === targetId ? { ...x, ...updated, ...form } : x
-          )
+            (x.id || x.categoryId) === targetId ? { ...x, ...updated, ...form } : x,
+          ),
         );
       }
       setModal(null);
@@ -206,7 +213,6 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
     }
   }
 
-  // 4. Xóa danh mục (DELETE /api/v1/admin/categories/{id})
   async function del(c: AdminCategory) {
     const targetId = c.id || c.categoryId || '';
     if (!targetId) return;
@@ -225,10 +231,27 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 border border-gray-200 rounded-2xl shadow-xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Tìm theo mã, tên danh mục hoặc mô tả..."
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 focus:bg-white w-72"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 cursor-pointer"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <p className="text-[12px] text-gray-500 font-medium">
-            {cats.length} danh mục sự cố
+            {filteredCats.length} / {cats.length} danh mục sự cố
           </p>
           <button
             onClick={fetchCategories}
@@ -237,46 +260,54 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
           >
             {loading ? 'Đang tải...' : '↻ Làm mới'}
           </button>
+          <CTA onClick={openCreate} label="+ Thêm danh mục mới" />
         </div>
-        <CTA onClick={openCreate} label="+ Thêm danh mục mới" />
       </div>
 
       <Table headers={['ID', 'Tên danh mục', 'Mô tả', 'Danh mục con', 'Hành động']}>
-        {cats.map((c) => {
-          const catId = c.id || c.categoryId || '—';
-          return (
-            <tr key={catId} className="hover:bg-orange-50/50 transition-colors">
-              <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">
-                {catId}
-              </td>
-              <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold">
-                {c.name}
-              </td>
-              <td className="px-4 py-3 text-[12px] text-gray-500 max-w-[280px] truncate">
-                {c.description || '—'}
-              </td>
-              <td className="px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => onGoToSubCategories?.(catId)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-semibold transition-colors cursor-pointer"
-                  title="Chuyển sang xem danh mục con của danh mục này"
-                >
-                  <FileTextIcon className="w-3.5 h-3.5 text-orange-600" />
-                  <span>Xem danh mục con →</span>
-                </button>
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex gap-1.5">
-                  <SmBtn onClick={() => openEdit(c)}>Sửa</SmBtn>
-                  <SmBtn onClick={() => del(c)} danger>
-                    Xóa
-                  </SmBtn>
-                </div>
-              </td>
-            </tr>
-          );
-        })}
+        {filteredCats.length === 0 ? (
+          <tr>
+            <td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-[13px]">
+              {loading ? 'Đang tải danh mục sự cố...' : 'Không tìm thấy danh mục sự cố nào phù hợp.'}
+            </td>
+          </tr>
+        ) : (
+          filteredCats.map((c) => {
+            const catId = c.id || c.categoryId || '—';
+            return (
+              <tr key={catId} className="hover:bg-orange-50/50 transition-colors">
+                <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">
+                  {catId}
+                </td>
+                <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold">
+                  {c.name}
+                </td>
+                <td className="px-4 py-3 text-[12px] text-gray-500 max-w-[280px] truncate">
+                  {c.description || '—'}
+                </td>
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onGoToSubCategories?.(catId)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                    title="Chuyển sang xem danh mục con của danh mục này"
+                  >
+                    <FileTextIcon className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Xem danh mục con →</span>
+                  </button>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1.5">
+                    <SmBtn onClick={() => openEdit(c)}>Sửa</SmBtn>
+                    <SmBtn onClick={() => del(c)} danger>
+                      Xóa
+                    </SmBtn>
+                  </div>
+                </td>
+              </tr>
+            );
+          })
+        )}
       </Table>
 
       {modal && (
@@ -290,7 +321,8 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
         >
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Tên danh mục sự cố <span className="text-red-500">*</span></label>
+              Tên danh mục sự cố <span className="text-red-500">*</span>
+            </label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -306,9 +338,7 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
             <textarea
               rows={3}
               value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="Mô tả phạm vi, phân loại của danh mục sự cố này..."
               className={inpModal}
             />
@@ -319,7 +349,7 @@ function CategoryMgmt({ onGoToSubCategories }: { onGoToSubCategories?: (category
   );
 }
 
-// ── SubCategory Management (6 APIs Integrated) ──────────────────────────────
+// ── 2. SubCategory Management ─────────────────────────────────────────────────
 function SubCategoryMgmt({
   initialCategoryId = '',
   onResetCategoryFilter,
@@ -337,6 +367,7 @@ function SubCategoryMgmt({
   // Filters
   const [selectedCatId, setSelectedCatId] = useState<string>(initialCategoryId);
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionError, setActionError] = useState('');
 
@@ -391,15 +422,17 @@ function SubCategoryMgmt({
     fetchData();
   }, []);
 
-  const categoryMap = cats.reduce<Record<string, string>>((acc, c) => {
-    const id = c.id || c.categoryId || '';
-    if (id) acc[id] = c.name;
-    return acc;
-  }, {});
+  const categoryMap = useMemo(() => {
+    return cats.reduce<Record<string, string>>((acc, c) => {
+      const id = c.id || c.categoryId || '';
+      if (id) acc[id] = c.name;
+      return acc;
+    }, {});
+  }, [cats]);
 
   function openCreate() {
     setForm({
-      categoryId: selectedCatId || (cats[0]?.id || cats[0]?.categoryId || ''),
+      categoryId: selectedCatId || cats[0]?.id || cats[0]?.categoryId || '',
       name: '',
       description: '',
       sla: 0,
@@ -463,13 +496,14 @@ function SubCategoryMgmt({
           prev.map((x) =>
             x.subCategoryId === targetId
               ? { ...x, ...updated, ...form, active: form.isActive }
-              : x
-          )
+              : x,
+          ),
         );
       }
       setModal(null);
     } catch (err: any) {
-      const msg = err instanceof ApiError ? err.message : 'Không thể lưu danh mục con. Vui lòng thử lại.';
+      const msg =
+        err instanceof ApiError ? err.message : 'Không thể lưu danh mục con. Vui lòng thử lại.';
       setActionError(msg);
     } finally {
       setSaving(false);
@@ -490,83 +524,97 @@ function SubCategoryMgmt({
     }
   }
 
-  // Filter list
-  const filteredSubs = subs.filter((s) => {
-    if (selectedCatId && s.categoryId !== selectedCatId) return false;
-    if (
-      priorityFilter !== 'ALL' &&
-      (s.priority || 'LOW').toUpperCase() !== priorityFilter.toUpperCase()
-    ) {
-      return false;
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = s.name?.toLowerCase().includes(q);
-      const matchDesc = s.description?.toLowerCase().includes(q);
-      const matchCat = categoryMap[s.categoryId]?.toLowerCase().includes(q);
-      if (!matchName && !matchDesc && !matchCat) return false;
-    }
-    return true;
-  });
+  const filteredSubs = useMemo(() => {
+    const q = searchQuery.trim();
+    return subs.filter((s) => {
+      if (selectedCatId && s.categoryId !== selectedCatId) return false;
+      if (
+        priorityFilter !== 'ALL' &&
+        (s.priority || 'LOW').toUpperCase() !== priorityFilter.toUpperCase()
+      ) {
+        return false;
+      }
+      const isActive = (s.isActive ?? s.active) !== false;
+      if (statusFilter === 'ACTIVE' && !isActive) return false;
+      if (statusFilter === 'INACTIVE' && isActive) return false;
+
+      if (q) {
+        const catName = categoryMap[s.categoryId] || '';
+        const match =
+          matchesSearch(s.subCategoryId, q) ||
+          matchesSearch(s.name, q) ||
+          matchesSearch(s.description, q) ||
+          matchesSearch(catName, q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [subs, selectedCatId, priorityFilter, statusFilter, searchQuery, categoryMap]);
 
   return (
     <div className="space-y-4">
       {/* Filters and Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 border border-gray-200 rounded-2xl shadow-xs">
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Category Dropdown */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-gray-500">Danh mục:</span>
-            <select
-              value={selectedCatId}
-              onChange={(e) => setSelectedCatId(e.target.value)}
-              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
-            >
-              <option value="">-- Tất cả danh mục chính --</option>
-              {cats.map((c) => {
-                const cid = c.id || c.categoryId || '';
-                return (
-                  <option key={cid} value={cid}>
-                    {c.name}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Priority Dropdown */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-gray-500">Ưu tiên:</span>
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
-            >
-              <option value="ALL">Tất cả mức độ</option>
-              <option value="LOW">Thấp (LOW)</option>
-              <option value="MEDIUM">Trung bình (MEDIUM)</option>
-              <option value="HIGH">Cao (HIGH)</option>
-            </select>
-          </div>
-
           {/* Search box */}
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm tên hoặc mô tả danh mục con..."
-            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 w-56"
+            placeholder="Tìm mã, tên, mô tả hoặc danh mục..."
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 focus:bg-white w-60"
           />
 
-          {(selectedCatId || priorityFilter !== 'ALL' || searchQuery) && (
+          {/* Category Dropdown */}
+          <select
+            value={selectedCatId}
+            onChange={(e) => setSelectedCatId(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+          >
+            <option value="">Tất cả danh mục chính ({cats.length})</option>
+            {cats.map((c) => {
+              const cid = c.id || c.categoryId || '';
+              return (
+                <option key={cid} value={cid}>
+                  {c.name}
+                </option>
+              );
+            })}
+          </select>
+
+          {/* Priority Dropdown */}
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+          >
+            <option value="ALL">Mọi mức độ ưu tiên</option>
+            <option value="LOW">Thấp (LOW)</option>
+            <option value="MEDIUM">Trung bình (MEDIUM)</option>
+            <option value="HIGH">Cao (HIGH)</option>
+          </select>
+
+          {/* Status Dropdown */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+          >
+            <option value="ALL">Mọi trạng thái</option>
+            <option value="ACTIVE">Đang hoạt động</option>
+            <option value="INACTIVE">Tạm dừng</option>
+          </select>
+
+          {(selectedCatId || priorityFilter !== 'ALL' || statusFilter !== 'ALL' || searchQuery) && (
             <button
               onClick={() => {
                 setSelectedCatId('');
                 setPriorityFilter('ALL');
+                setStatusFilter('ALL');
                 setSearchQuery('');
                 if (onResetCategoryFilter) onResetCategoryFilter();
               }}
-              className="text-[11px] text-gray-500 hover:text-gray-700 underline cursor-pointer ml-1"
+              className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 cursor-pointer"
             >
               Xóa bộ lọc
             </button>
@@ -589,11 +637,23 @@ function SubCategoryMgmt({
       </div>
 
       {/* SubCategory Table */}
-      <Table headers={['ID', 'Tên danh mục con', 'Danh mục chính', 'SLA (Giờ)', 'Mức ưu tiên', 'Trạng thái', 'Hành động']}>
+      <Table
+        headers={[
+          'ID',
+          'Tên danh mục con',
+          'Danh mục chính',
+          'SLA (Giờ)',
+          'Mức ưu tiên',
+          'Trạng thái',
+          'Hành động',
+        ]}
+      >
         {filteredSubs.length === 0 ? (
           <tr>
             <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-[13px]">
-              {loading ? 'Đang tải dữ liệu danh mục con...' : 'Không tìm thấy danh mục con nào phù hợp.'}
+              {loading
+                ? 'Đang tải dữ liệu danh mục con...'
+                : 'Không tìm thấy danh mục con nào phù hợp.'}
             </td>
           </tr>
         ) : (
@@ -610,7 +670,10 @@ function SubCategoryMgmt({
                 <td className="px-4 py-3">
                   <div className="text-[13px] text-gray-800 font-semibold">{s.name}</div>
                   {s.description && (
-                    <div className="text-[11px] text-gray-400 max-w-[280px] truncate" title={s.description}>
+                    <div
+                      className="text-[11px] text-gray-400 max-w-[280px] truncate"
+                      title={s.description}
+                    >
                       {s.description}
                     </div>
                   )}
@@ -712,7 +775,9 @@ function SubCategoryMgmt({
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] flex items-center justify-between">
                 <span>Thời gian SLA (giờ)</span>
-                <span className="text-[10px] font-normal text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">Tự động tính từ các bước</span>
+                <span className="text-[10px] font-normal text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                  Tự động tính từ các bước
+                </span>
               </label>
               <div className="bg-gray-100 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 font-semibold">
                 {form.sla ?? 0} giờ
@@ -726,7 +791,9 @@ function SubCategoryMgmt({
             </label>
             <select
               value={form.priority}
-              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as SubCategoryPriority }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, priority: e.target.value as SubCategoryPriority }))
+              }
               className={inpModal}
             >
               <option value="LOW">Thấp (LOW)</option>
@@ -742,9 +809,7 @@ function SubCategoryMgmt({
             <textarea
               rows={3}
               value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="Mô tả cụ thể dạng sự cố thuộc danh mục con này..."
               className={inpModal}
             />
@@ -758,7 +823,10 @@ function SubCategoryMgmt({
               onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
               className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-orange-500 cursor-pointer"
             />
-            <label htmlFor="subCatActive" className="text-[12px] text-gray-700 font-medium cursor-pointer">
+            <label
+              htmlFor="subCatActive"
+              className="text-[12px] text-gray-700 font-medium cursor-pointer"
+            >
               Đang hoạt động (Kích hoạt danh mục con này)
             </label>
           </div>
@@ -768,7 +836,7 @@ function SubCategoryMgmt({
   );
 }
 
-// ── Department Management (5 APIs Integrated) ─────────────────────────────────
+// ── 3. Department Management ──────────────────────────────────────────────────
 function DepartmentMgmt() {
   const [depts, setDepts] = useState<DepartmentItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -783,18 +851,20 @@ function DepartmentMgmt() {
     isActive: true,
   });
   const [actionError, setActionError] = useState('');
+
+  // Bộ lọc
+  const [searchDept, setSearchDept] = useState('');
+  const [filterLevel, setFilterLevel] = useState<string>('ALL');
   const [filterActive, setFilterActive] = useState<string>('all');
 
-  // API 3: GET /api/v1/departments
   async function fetchDepts() {
     setLoading(true);
     setActionError('');
     try {
-      const activeOnlyParam = filterActive === 'active' ? true : undefined;
       const res = await getDepartments({
-        activeOnly: activeOnlyParam,
+        activeOnly: filterActive === 'active' ? true : undefined,
         page: 0,
-        size: 50,
+        size: 100,
       });
 
       if (Array.isArray(res)) {
@@ -806,17 +876,7 @@ function DepartmentMgmt() {
       }
     } catch (err: any) {
       console.warn('Lỗi khi tải danh sách cơ quan từ API:', err);
-      // Fallback hiển thị dữ liệu mẫu
-      setDepts(
-        DEPARTMENTS.map((d) => ({
-          departmentId: d.departmentId,
-          name: d.name,
-          level: d.level,
-          contactEmail: d.contactEmail,
-          phoneNumber: d.phoneNumber,
-          isActive: true,
-        }))
-      );
+      setDepts([]);
     } finally {
       setLoading(false);
     }
@@ -825,6 +885,27 @@ function DepartmentMgmt() {
   useEffect(() => {
     fetchDepts();
   }, [filterActive]);
+
+  const filteredDepts = useMemo(() => {
+    const q = searchDept.trim();
+    return depts.filter((d) => {
+      if (filterLevel !== 'ALL' && d.level !== filterLevel) return false;
+      const isAct = d.isActive !== false;
+      if (filterActive === 'active' && !isAct) return false;
+      if (filterActive === 'inactive' && isAct) return false;
+
+      if (q) {
+        const match =
+          matchesSearch(d.departmentId, q) ||
+          matchesSearch(d.name, q) ||
+          matchesSearch(d.contactEmail, q) ||
+          matchesSearch(d.phoneNumber, q) ||
+          matchesSearch(formatDepartmentLevel(d.level), q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [depts, searchDept, filterLevel, filterActive]);
 
   function openCreate() {
     setForm({
@@ -839,7 +920,6 @@ function DepartmentMgmt() {
     setModal('create');
   }
 
-  // API 4: GET /api/v1/departments/{id}
   async function openEdit(d: DepartmentItem) {
     const targetId = d.departmentId || '';
     setActionError('');
@@ -871,7 +951,6 @@ function DepartmentMgmt() {
     }
   }
 
-  // API 1 (PUT) & API 2 (POST)
   async function save() {
     if (!form.name.trim()) {
       setActionError('Vui lòng nhập tên cơ quan phụ trách');
@@ -891,17 +970,14 @@ function DepartmentMgmt() {
 
     try {
       if (modal === 'create') {
-        // API 2: POST /api/v1/departments
         const created = await createDepartment({
           name: form.name,
           level: form.level,
           contactEmail: form.contactEmail,
           phoneNumber: form.phoneNumber,
         });
-
         setDepts((prev) => [created || { ...form, departmentId: `D${Date.now()}` }, ...prev]);
       } else if (sel) {
-        // API 1: PUT /api/v1/departments/{id}
         const targetId = sel.departmentId;
         const updated = await updateDepartment(targetId, {
           name: form.name,
@@ -910,23 +986,24 @@ function DepartmentMgmt() {
           phoneNumber: form.phoneNumber,
           isActive: form.isActive,
         });
-
         setDepts((prev) =>
           prev.map((x) =>
-            x.departmentId === targetId ? { ...x, ...updated, ...form } : x
-          )
+            x.departmentId === targetId ? { ...x, ...updated, ...form } : x,
+          ),
         );
       }
       setModal(null);
     } catch (err: any) {
-      const msg = err instanceof ApiError ? err.message : 'Không thể lưu thông tin cơ quan. Vui lòng thử lại.';
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : 'Không thể lưu thông tin cơ quan. Vui lòng thử lại.';
       setActionError(msg);
     } finally {
       setSaving(false);
     }
   }
 
-  // API 5: DELETE /api/v1/departments/{id} (Vô hiệu hóa cơ quan)
   async function del(d: DepartmentItem) {
     const targetId = d.departmentId;
     if (!targetId) return;
@@ -937,9 +1014,8 @@ function DepartmentMgmt() {
 
     try {
       await deleteDepartment(targetId);
-      // Cập nhật trạng thái isActive sang false
       setDepts((ds) =>
-        ds.map((x) => (x.departmentId === targetId ? { ...x, isActive: false } : x))
+        ds.map((x) => (x.departmentId === targetId ? { ...x, isActive: false } : x)),
       );
     } catch (err: any) {
       alert(err instanceof ApiError ? err.message : 'Vô hiệu hóa cơ quan thất bại.');
@@ -948,19 +1024,54 @@ function DepartmentMgmt() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <p className="text-[12px] text-gray-500 font-medium">
-            {depts.length} cơ quan phụ trách
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 border border-gray-200 rounded-2xl shadow-xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <input
+            type="text"
+            value={searchDept}
+            onChange={(e) => setSearchDept(e.target.value)}
+            placeholder="Tìm theo mã, tên cơ quan, email, SĐT..."
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 focus:bg-white w-64"
+          />
+
+          <select
+            value={filterLevel}
+            onChange={(e) => setFilterLevel(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+          >
+            <option value="ALL">Tất cả cấp quản lý</option>
+            <option value="CITY">Cấp Thành phố (CITY)</option>
+            <option value="WARD">Cấp Xã/Phường (WARD)</option>
+          </select>
+
           <select
             value={filterActive}
             onChange={(e) => setFilterActive(e.target.value)}
-            className="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[11px] text-gray-600 outline-none focus:border-orange-500"
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
           >
             <option value="all">Tất cả trạng thái</option>
-            <option value="active">Chỉ đang hoạt động</option>
+            <option value="active">Đang hoạt động</option>
+            <option value="inactive">Đã vô hiệu hóa</option>
           </select>
+
+          {(searchDept || filterLevel !== 'ALL' || filterActive !== 'all') && (
+            <button
+              onClick={() => {
+                setSearchDept('');
+                setFilterLevel('ALL');
+                setFilterActive('all');
+              }}
+              className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 cursor-pointer"
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <p className="text-[12px] text-gray-500 font-medium">
+            {filteredDepts.length} / {depts.length} cơ quan phụ trách
+          </p>
           <button
             onClick={fetchDepts}
             disabled={loading}
@@ -968,19 +1079,30 @@ function DepartmentMgmt() {
           >
             {loading ? 'Đang tải...' : '↻ Làm mới'}
           </button>
+          <CTA onClick={openCreate} label="+ Thêm cơ quan mới" />
         </div>
-        <CTA onClick={openCreate} label="+ Thêm cơ quan mới" />
       </div>
 
-      <Table headers={['ID', 'Tên cơ quan', 'Cấp', 'Email liên hệ', 'Số điện thoại', 'Cán bộ', 'Trạng thái', 'Hành động']}>
-        {depts.length === 0 ? (
+      <Table
+        headers={[
+          'ID',
+          'Tên cơ quan',
+          'Cấp',
+          'Email liên hệ',
+          'Số điện thoại',
+          'Cán bộ',
+          'Trạng thái',
+          'Hành động',
+        ]}
+      >
+        {filteredDepts.length === 0 ? (
           <tr>
             <td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-[13px]">
-              {loading ? 'Đang tải danh sách cơ quan...' : 'Không có cơ quan nào.'}
+              {loading ? 'Đang tải danh sách cơ quan...' : 'Không tìm thấy cơ quan nào phù hợp.'}
             </td>
           </tr>
         ) : (
-          depts.map((d) => (
+          filteredDepts.map((d) => (
             <tr key={d.departmentId} className="hover:bg-orange-50/50 transition-colors">
               <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">
                 {d.departmentId}
@@ -1043,7 +1165,8 @@ function DepartmentMgmt() {
         >
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Tên cơ quan phụ trách <span className="text-red-500">*</span></label>
+              Tên cơ quan phụ trách <span className="text-red-500">*</span>
+            </label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -1054,7 +1177,8 @@ function DepartmentMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Cấp quản lý <span className="text-red-500">*</span></label>
+              Cấp quản lý <span className="text-red-500">*</span>
+            </label>
             <select
               value={form.level}
               onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
@@ -1071,9 +1195,7 @@ function DepartmentMgmt() {
             </label>
             <select
               value={form.isActive ? 'ACTIVE' : 'INACTIVE'}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, isActive: e.target.value === 'ACTIVE' }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.value === 'ACTIVE' }))}
               className={inpModal}
             >
               <option value="ACTIVE">Hoạt động (ACTIVE)</option>
@@ -1083,7 +1205,8 @@ function DepartmentMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Email liên hệ <span className="text-red-500">*</span></label>
+              Email liên hệ <span className="text-red-500">*</span>
+            </label>
             <input
               type="email"
               value={form.contactEmail}
@@ -1095,7 +1218,8 @@ function DepartmentMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Số điện thoại liên hệ <span className="text-red-500">*</span></label>
+              Số điện thoại liên hệ <span className="text-red-500">*</span>
+            </label>
             <input
               value={form.phoneNumber}
               onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))}
@@ -1109,9 +1233,9 @@ function DepartmentMgmt() {
   );
 }
 
-// ── Routing Rule Management (6 APIs Integrated) ─────────────────────────────────
+// ── 4. Routing Rule Management ────────────────────────────────────────────────
 function RoutingMgmt() {
-  const [rules, setRules] = useState<RoutingRuleItem[]>([]);
+  const [allRules, setAllRules] = useState<RoutingRuleItem[]>([]);
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [departments, setDepartments] = useState<DepartmentItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1120,30 +1244,27 @@ function RoutingMgmt() {
   const [sel, setSel] = useState<RoutingRuleItem | null>(null);
   const [form, setForm] = useState({
     categoryId: '',
-    province: 'Tp Ho Chi Minh',
+    province: 'TP. Hồ Chí Minh',
     ward: '',
     departmentId: '',
   });
   const [actionError, setActionError] = useState('');
 
-  // Filter state
+  // Bộ lọc (100% lấy từ dữ liệu thực tế của API, không dùng mock)
+  const [searchRule, setSearchRule] = useState('');
   const [filterDept, setFilterDept] = useState('');
   const [filterCat, setFilterCat] = useState('');
-  const [filterProvince, setFilterProvince] = useState('');
-  const [filterWard, setFilterWard] = useState('');
+  const [filterProvince, setFilterProvince] = useState('ALL');
+  const [filterWard, setFilterWard] = useState('ALL');
 
   // Load categories & departments on init
   useEffect(() => {
     async function loadDropdowns() {
       try {
         const cats = await getAdminCategories();
-        if (cats && cats.length > 0) {
-          setCategories(cats);
-        } else {
-          setCategories(CATEGORIES.map(c => ({ id: c.categoryId, categoryId: c.categoryId, name: c.name, description: c.description })));
-        }
+        setCategories(Array.isArray(cats) ? cats : []);
       } catch {
-        setCategories(CATEGORIES.map(c => ({ id: c.categoryId, categoryId: c.categoryId, name: c.name, description: c.description })));
+        setCategories([]);
       }
 
       try {
@@ -1153,55 +1274,34 @@ function RoutingMgmt() {
         } else if (deptsRes && Array.isArray(deptsRes.content)) {
           setDepartments(deptsRes.content);
         } else {
-          setDepartments(DEPARTMENTS);
+          setDepartments([]);
         }
       } catch {
-        setDepartments(DEPARTMENTS);
+        setDepartments([]);
       }
     }
     loadDropdowns();
   }, []);
 
-  // Fetch Rules function
   async function fetchRules() {
     setLoading(true);
     setActionError('');
     try {
-      if (filterDept && !filterCat && !filterProvince && !filterWard) {
-        // API 3: GET /api/v1/routing-rules/department/{departmentId}
-        const data = await getRoutingRulesByDepartment(filterDept);
-        setRules(data || []);
-      } else {
-        // API 4: GET /api/v1/routing-rules
-        const res = await getRoutingRules({
-          departmentId: filterDept || undefined,
-          categoryId: filterCat || undefined,
-          province: filterProvince || undefined,
-          ward: filterWard || undefined,
-          page: 0,
-          size: 50,
-        });
+      const res = await getRoutingRules({
+        page: 0,
+        size: 200,
+      });
 
-        if (Array.isArray(res)) {
-          setRules(res);
-        } else if (res && Array.isArray(res.content)) {
-          setRules(res.content);
-        } else {
-          setRules([]);
-        }
+      if (Array.isArray(res)) {
+        setAllRules(res);
+      } else if (res && Array.isArray(res.content)) {
+        setAllRules(res.content);
+      } else {
+        setAllRules([]);
       }
     } catch (err: any) {
       console.warn('Lỗi khi tải quy tắc định tuyến từ API:', err);
-      setRules(
-        ROUTING_RULES.map((r) => ({
-          ruleId: r.ruleId,
-          id: r.ruleId,
-          categoryId: r.categoryId,
-          departmentId: r.departmentId,
-          province: r.province,
-          ward: r.ward,
-        }))
-      );
+      setAllRules([]);
     } finally {
       setLoading(false);
     }
@@ -1209,14 +1309,68 @@ function RoutingMgmt() {
 
   useEffect(() => {
     fetchRules();
-  }, [filterDept, filterCat, filterProvince, filterWard]);
+  }, []);
+
+  // Danh sách Tỉnh/Thành phố thực tế có trong Quy tắc định tuyến
+  const provinceOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allRules.forEach((r) => {
+      const p = (r.province || '').trim();
+      if (!p) return;
+      const key = normalizeLocationKey(p);
+      if (key && !map.has(key)) map.set(key, p);
+    });
+    return Array.from(map.values());
+  }, [allRules]);
+
+  // Danh sách Phường/Xã thực tế có trong Quy tắc định tuyến (lọc theo Tỉnh/TP đã chọn)
+  const wardOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    allRules.forEach((r) => {
+      const p = (r.province || '').trim();
+      const w = (r.ward || '').trim();
+      if (!w) return;
+      if (filterProvince !== 'ALL' && !matchesLocation(p, filterProvince)) return;
+      const key = normalizeLocationKey(w);
+      if (key && !map.has(key)) map.set(key, w);
+    });
+    return Array.from(map.values());
+  }, [allRules, filterProvince]);
+
+  // Lọc danh sách quy tắc định tuyến chính xác theo Từ khóa + Cơ quan + Danh mục + Tỉnh/TP + Phường/Xã
+  const rules = useMemo(() => {
+    const q = searchRule.trim();
+    return allRules.filter((r) => {
+      if (filterDept && r.departmentId !== filterDept) return false;
+      if (filterCat && r.categoryId !== filterCat) return false;
+      if (filterProvince !== 'ALL' && !matchesLocation(r.province, filterProvince)) return false;
+      if (filterWard !== 'ALL' && !matchesLocation(r.ward, filterWard)) return false;
+
+      if (q) {
+        const ruleId = r.ruleId || r.id || '';
+        const cat = categories.find((c) => (c.id || c.categoryId) === r.categoryId);
+        const dept = departments.find((d) => d.departmentId === r.departmentId);
+        const catDisplay = r.categoryName || cat?.name || r.categoryId || '';
+        const deptDisplay = r.departmentName || dept?.name || r.departmentId || '';
+
+        const match =
+          matchesSearch(ruleId, q) ||
+          matchesSearch(catDisplay, q) ||
+          matchesSearch(deptDisplay, q) ||
+          matchesSearch(r.province, q) ||
+          matchesSearch(r.ward, q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [allRules, searchRule, filterDept, filterCat, filterProvince, filterWard, categories, departments]);
 
   function openCreate() {
-    const defaultCat = categories[0]?.id || categories[0]?.categoryId || 'CAT001';
-    const defaultDept = departments[0]?.departmentId || 'D001';
+    const defaultCat = categories[0]?.id || categories[0]?.categoryId || '';
+    const defaultDept = departments[0]?.departmentId || '';
     setForm({
       categoryId: defaultCat,
-      province: 'Tp Ho Chi Minh',
+      province: provinceOptions[0] || 'TP. Hồ Chí Minh',
       ward: '',
       departmentId: defaultDept,
     });
@@ -1225,14 +1379,13 @@ function RoutingMgmt() {
     setModal('create');
   }
 
-  // API 5: Get rule detail when editing
   async function openEdit(r: RoutingRuleItem) {
     const ruleId = r.ruleId || r.id || '';
     setActionError('');
     setSel(r);
     setForm({
       categoryId: r.categoryId || '',
-      province: r.province || 'Tp Ho Chi Minh',
+      province: r.province || 'TP. Hồ Chí Minh',
       ward: r.ward || '',
       departmentId: r.departmentId || '',
     });
@@ -1255,7 +1408,6 @@ function RoutingMgmt() {
     }
   }
 
-  // API 1 (PUT) & API 2 (POST)
   async function save() {
     if (!form.categoryId) {
       setActionError('Vui lòng chọn loại sự cố / danh mục');
@@ -1285,7 +1437,7 @@ function RoutingMgmt() {
           province: form.province,
           ward: form.ward,
         });
-        setRules((prev) => [created || { ...form, ruleId: `RR${Date.now()}` }, ...prev]);
+        setAllRules((prev) => [created || { ...form, ruleId: `RR${Date.now()}` }, ...prev]);
       } else if (sel) {
         const targetId = sel.ruleId || sel.id || '';
         const updated = await updateRoutingRule(targetId, {
@@ -1295,22 +1447,24 @@ function RoutingMgmt() {
           ward: form.ward,
         });
 
-        setRules((prev) =>
+        setAllRules((prev) =>
           prev.map((x) =>
-            (x.ruleId || x.id) === targetId ? { ...x, ...updated, ...form } : x
-          )
+            (x.ruleId || x.id) === targetId ? { ...x, ...updated, ...form } : x,
+          ),
         );
       }
       setModal(null);
     } catch (err: any) {
-      const msg = err instanceof ApiError ? err.message : 'Không thể lưu quy tắc. Vui lòng kiểm tra lại.';
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : 'Không thể lưu quy tắc. Vui lòng kiểm tra lại.';
       setActionError(msg);
     } finally {
       setSaving(false);
     }
   }
 
-  // API 6: DELETE /api/v1/routing-rules/{id}
   async function del(r: RoutingRuleItem) {
     const targetId = r.ruleId || r.id || '';
     if (!targetId) return;
@@ -1321,31 +1475,60 @@ function RoutingMgmt() {
 
     try {
       await deleteRoutingRule(targetId);
-      setRules((prev) => prev.filter((x) => (x.ruleId || x.id) !== targetId));
+      setAllRules((prev) => prev.filter((x) => (x.ruleId || x.id) !== targetId));
     } catch (err: any) {
       alert(err instanceof ApiError ? err.message : 'Xóa quy tắc thất bại.');
     }
   }
 
+  const hasFilter =
+    Boolean(searchRule) ||
+    Boolean(filterDept) ||
+    Boolean(filterCat) ||
+    filterProvince !== 'ALL' ||
+    filterWard !== 'ALL';
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 bg-orange-50/70 border border-orange-200 rounded-xl px-4 py-3">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#ea580c"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v4M12 16h.01" />
+        </svg>
         <p className="text-[12px] text-gray-700">
-          Logic định tuyến: <strong>Danh mục + Tỉnh/TP + Phường/Xã</strong> → Phân công tự động → <strong>Cơ quan xử lý</strong>
+          Logic định tuyến: <strong>Danh mục + Tỉnh/TP + Phường/Xã</strong> → Phân công tự động →{' '}
+          <strong>Cơ quan xử lý</strong>
         </p>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      {/* Filter bar (100% dữ liệu thực tế từ hệ thống) */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
         <div className="flex flex-wrap items-center gap-2 flex-1">
-          {/* Filter Department */}
+          {/* Ô tìm kiếm từ khóa */}
+          <input
+            type="text"
+            value={searchRule}
+            onChange={(e) => setSearchRule(e.target.value)}
+            placeholder="Tìm mã quy tắc, danh mục, cơ quan, địa bàn..."
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 focus:bg-white w-60"
+          />
+
+          {/* Lọc Cơ quan */}
           <select
             value={filterDept}
             onChange={(e) => setFilterDept(e.target.value)}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500"
+            className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
           >
-            <option value="">-- Tất cả cơ quan --</option>
+            <option value="">Tất cả cơ quan ({departments.length})</option>
             {departments.map((d) => (
               <option key={d.departmentId} value={d.departmentId}>
                 {d.name}
@@ -1353,13 +1536,13 @@ function RoutingMgmt() {
             ))}
           </select>
 
-          {/* Filter Category */}
+          {/* Lọc Danh mục */}
           <select
             value={filterCat}
             onChange={(e) => setFilterCat(e.target.value)}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500"
+            className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
           >
-            <option value="">-- Tất cả danh mục --</option>
+            <option value="">Tất cả danh mục ({categories.length})</option>
             {categories.map((c) => (
               <option key={c.id || c.categoryId} value={c.id || c.categoryId}>
                 {c.name}
@@ -1367,31 +1550,51 @@ function RoutingMgmt() {
             ))}
           </select>
 
-          {/* Filter Province (Tỉnh / Thành phố) */}
-          <input
+          {/* Lọc Tỉnh / Thành phố thực tế */}
+          <select
             value={filterProvince}
-            onChange={(e) => setFilterProvince(e.target.value)}
-            placeholder="1. Lọc Tỉnh/Thành phố..."
-            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 w-44"
-          />
+            onChange={(e) => {
+              setFilterProvince(e.target.value);
+              setFilterWard('ALL');
+            }}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+          >
+            <option value="ALL">Tất cả Tỉnh/TP ({provinceOptions.length})</option>
+            {provinceOptions.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
 
-          {/* Filter Ward (Phường / Xã) */}
-          <input
+          {/* Lọc Phường / Xã thực tế */}
+          <select
             value={filterWard}
             onChange={(e) => setFilterWard(e.target.value)}
-            placeholder="2. Lọc Phường/Xã..."
-            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 w-44"
-          />
+            className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+          >
+            <option value="ALL">
+              {filterProvince === 'ALL'
+                ? `Tất cả Phường/Xã (${wardOptions.length})`
+                : `Phường/Xã (${filterProvince}) (${wardOptions.length})`}
+            </option>
+            {wardOptions.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
 
-          {(filterDept || filterCat || filterWard || filterProvince) && (
+          {hasFilter && (
             <button
               onClick={() => {
+                setSearchRule('');
                 setFilterDept('');
                 setFilterCat('');
-                setFilterWard('');
-                setFilterProvince('');
+                setFilterProvince('ALL');
+                setFilterWard('ALL');
               }}
-              className="text-[11px] text-gray-400 hover:text-gray-600 underline cursor-pointer px-1"
+              className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 cursor-pointer"
             >
               Xóa bộ lọc
             </button>
@@ -1399,6 +1602,9 @@ function RoutingMgmt() {
         </div>
 
         <div className="flex items-center gap-3">
+          <p className="text-[12px] text-gray-500 font-medium">
+            {rules.length} / {allRules.length} quy tắc
+          </p>
           <button
             onClick={fetchRules}
             disabled={loading}
@@ -1410,17 +1616,28 @@ function RoutingMgmt() {
         </div>
       </div>
 
-      <Table headers={['ID', 'Danh mục sự cố', 'Tỉnh / Thành phố', 'Phường / Xã', 'Cơ quan chịu trách nhiệm', 'Hành động']}>
+      <Table
+        headers={[
+          'ID',
+          'Danh mục sự cố',
+          'Tỉnh / Thành phố',
+          'Phường / Xã',
+          'Cơ quan chịu trách nhiệm',
+          'Hành động',
+        ]}
+      >
         {rules.length === 0 ? (
           <tr>
             <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-[13px]">
-              {loading ? 'Đang tải danh sách quy tắc...' : 'Không tìm thấy quy tắc định tuyến nào.'}
+              {loading
+                ? 'Đang tải danh sách quy tắc...'
+                : 'Không tìm thấy quy tắc định tuyến nào phù hợp.'}
             </td>
           </tr>
         ) : (
           rules.map((r) => {
             const ruleId = r.ruleId || r.id || '—';
-            const cat = categories.find((c) => (c.id || c.categoryId) === r.categoryId) || CATEGORIES.find(c => c.categoryId === r.categoryId);
+            const cat = categories.find((c) => (c.id || c.categoryId) === r.categoryId);
             const dept = departments.find((d) => d.departmentId === r.departmentId);
             const catDisplay = r.categoryName || cat?.name || r.categoryId;
             const deptDisplay = r.departmentName || dept?.name || r.departmentId;
@@ -1436,7 +1653,7 @@ function RoutingMgmt() {
                 <td className="px-4 py-3 text-[12px] text-gray-600">
                   {r.province || '—'}
                 </td>
-                <td className="px-4 py-3 text-[12px] text-gray-600 max-w-[130px] truncate font-medium">
+                <td className="px-4 py-3 text-[12px] text-gray-600 max-w-[150px] truncate font-medium">
                   {r.ward || '—'}
                 </td>
                 <td className="px-4 py-3 text-[12px] text-orange-700 font-semibold max-w-[180px] truncate">
@@ -1458,7 +1675,9 @@ function RoutingMgmt() {
 
       {modal && (
         <StandardModal
-          title={modal === 'create' ? 'Tạo quy tắc định tuyến mới' : 'Chỉnh sửa quy tắc định tuyến'}
+          title={
+            modal === 'create' ? 'Tạo quy tắc định tuyến mới' : 'Chỉnh sửa quy tắc định tuyến'
+          }
           onClose={() => setModal(null)}
           onSave={save}
           saveLabel="Lưu quy tắc"
@@ -1467,7 +1686,8 @@ function RoutingMgmt() {
         >
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Danh mục sự cố <span className="text-red-500">*</span></label>
+              Danh mục sự cố <span className="text-red-500">*</span>
+            </label>
             <select
               value={form.categoryId}
               onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
@@ -1487,7 +1707,8 @@ function RoutingMgmt() {
 
           <div className="space-y-1.5 col-span-2">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Cơ quan xử lý <span className="text-red-500">*</span></label>
+              Cơ quan xử lý <span className="text-red-500">*</span>
+            </label>
             <select
               value={form.departmentId}
               onChange={(e) => setForm((f) => ({ ...f, departmentId: e.target.value }))}
@@ -1504,23 +1725,25 @@ function RoutingMgmt() {
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Tỉnh / Thành phố <span className="text-red-500">*</span></label>
+              Tỉnh / Thành phố <span className="text-red-500">*</span>
+            </label>
             <input
               value={form.province}
               onChange={(e) => setForm((f) => ({ ...f, province: e.target.value }))}
-              placeholder="VD: Tp Ho Chi Minh"
+              placeholder="VD: TP. Hồ Chí Minh"
               className={inpModal}
             />
           </div>
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Phường / Xã <span className="text-red-500">*</span></label>
+              Phường / Xã <span className="text-red-500">*</span>
+            </label>
             <input
               value={form.ward}
               onChange={(e) => setForm((f) => ({ ...f, ward: e.target.value }))}
               className={inpModal}
-              placeholder="VD: Phường 6 hoặc Phường Bến Nghé"
+              placeholder="VD: Phường Bến Nghé"
             />
           </div>
         </StandardModal>
@@ -1529,8 +1752,9 @@ function RoutingMgmt() {
   );
 }
 
-// ── Shared Standard Modal Component (Đồng bộ form tạo tài khoản) ──────────────
-const inpModal = "w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 transition-colors";
+// ── Shared Standard Modal Component ──────────────────────────────────────────
+const inpModal =
+  'w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-[12px] text-gray-900 outline-none focus:border-orange-500 transition-colors';
 
 function StandardModal({
   title,
@@ -1612,7 +1836,10 @@ function Table({ headers, children }: { headers: string[]; children: React.React
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50/80">
               {headers.map((h) => (
-                <th key={h} className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-[0.16em] whitespace-nowrap">
+                <th
+                  key={h}
+                  className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-[0.16em] whitespace-nowrap"
+                >
                   {h}
                 </th>
               ))}
@@ -1627,23 +1854,48 @@ function Table({ headers, children }: { headers: string[]; children: React.React
 
 function CTA({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <button onClick={onClick} className="relative rounded-xl overflow-hidden px-4 py-2 active:scale-[0.97] transition-transform cursor-pointer">
+    <button
+      onClick={onClick}
+      className="relative rounded-xl overflow-hidden px-4 py-2 active:scale-[0.97] transition-transform cursor-pointer"
+    >
       <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
-      <div className="absolute inset-0 opacity-[0.06]" style={{ background: 'repeating-linear-gradient(-45deg,white,white 8px,transparent 8px,transparent 16px)' }} />
-      <span className="relative text-white font-bold uppercase tracking-wide text-[12px]">{label}</span>
+      <div
+        className="absolute inset-0 opacity-[0.06]"
+        style={{
+          background:
+            'repeating-linear-gradient(-45deg,white,white 8px,transparent 8px,transparent 16px)',
+        }}
+      />
+      <span className="relative text-white font-bold uppercase tracking-wide text-[12px]">
+        {label}
+      </span>
     </button>
   );
 }
 
-function SmBtn({ onClick, children, danger, warn }: { onClick: () => void; children: React.ReactNode; danger?: boolean; warn?: boolean }) {
+function SmBtn({
+  onClick,
+  children,
+  danger,
+  warn,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  danger?: boolean;
+  warn?: boolean;
+}) {
   return (
-    <button onClick={onClick}
-      className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all active:scale-[0.97] cursor-pointer
-        ${danger ? 'border-red-500/30 text-red-600 hover:bg-red-50' :
-          warn ? 'border-amber-500/30 text-amber-600 hover:bg-amber-50' :
-          'border-gray-300 text-gray-600 hover:text-gray-800 hover:border-gray-400'}`}>
+    <button
+      onClick={onClick}
+      className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+        danger
+          ? 'border-red-500/30 text-red-600 hover:bg-red-50'
+          : warn
+          ? 'border-amber-500/30 text-amber-600 hover:bg-amber-50'
+          : 'border-gray-300 text-gray-600 hover:text-gray-800 hover:border-gray-400'
+      }`}
+    >
       {children}
     </button>
   );
 }
-
