@@ -21,7 +21,7 @@ import {
   DangerLevel,
 } from '../data';
 import { getDepartments, DepartmentItem } from '../services/departments';
-import { getDepartmentTicketsForAdmin, ManagerTicketItem } from '../services/manager';
+import { getDepartmentTicketsForAdmin, ManagerTicketItem, extractTicketImages } from '../services/manager';
 import { getAdminCategories } from '../services/categories';
 import { getRoutingRules } from '../services/routingRules';
 import { getAdminUsers } from '../services/users';
@@ -134,8 +134,8 @@ export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
       categoryName,
       assigneeId: t.assigneeName || (t.assigneeId ? `CB-${t.assigneeId.slice(0, 4)}` : undefined),
       description: t.description || categoryName,
-      imageUrl: t.imageUrl || (Array.isArray(t.images) && t.images[0]) || undefined,
-      evidenceUrls: Array.isArray(t.images) ? t.images : undefined,
+      imageUrl: extractTicketImages(t)[0] || undefined,
+      evidenceUrls: extractTicketImages(t),
       severity: mappedSeverity,
       dangerLevel: mappedDanger,
       locationMethod: t.locationMethod || 'AUTO_GPS',

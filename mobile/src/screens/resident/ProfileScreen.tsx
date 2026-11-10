@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
+  FlatList,
+  Keyboard,
   ScrollView,
   StyleSheet,
   StatusBar,
@@ -23,6 +26,16 @@ import {
   getProfile,
   ApiError,
 } from '../../api';
+import {
+  VN_PROVINCES_2025,
+  Province2025,
+  getWardsForProvince2025,
+  findProvince2025ByName,
+  removeVietnameseTones,
+  formatWardName,
+  formatProvinceName,
+  formatStandardAddress,
+} from '../../constants/vnProvinces2025';
 
 interface Props {
   navigate: (screen: string, params?: any) => void;
@@ -53,6 +66,77 @@ export default function ProfileScreen({
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
   const [totalReportsCount, setTotalReportsCount] = useState<number>(0);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Picker modal state for 2025 Merged Provinces & Wards
+  const [pickerMode, setPickerMode] = useState<'province' | 'ward' | null>(null);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [availableWards, setAvailableWards] = useState<string[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
+
+  const selectedProvinceObj = useMemo<Province2025 | undefined>(
+    () => findProvince2025ByName(editProvince),
+    [editProvince],
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedProvinceObj) {
+      setAvailableWards([]);
+      return;
+    }
+    setAvailableWards(selectedProvinceObj.defaultWards);
+    setLoadingWards(true);
+    getWardsForProvince2025(selectedProvinceObj)
+      .then((wards) => {
+        if (active) setAvailableWards(wards);
+      })
+      .finally(() => {
+        if (active) setLoadingWards(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProvinceObj]);
+
+  const filteredProvinces = useMemo(() => {
+    const q = removeVietnameseTones(pickerSearch.trim());
+    if (!q) return VN_PROVINCES_2025;
+    return VN_PROVINCES_2025.filter(
+      (p) =>
+        removeVietnameseTones(p.name).includes(q) ||
+        (p.mergedFrom && removeVietnameseTones(p.mergedFrom).includes(q)),
+    );
+  }, [pickerSearch]);
+
+  const filteredWards = useMemo(() => {
+    const q = removeVietnameseTones(pickerSearch.trim());
+    if (!q) return availableWards;
+    return availableWards.filter((w) => removeVietnameseTones(w).includes(q));
+  }, [availableWards, pickerSearch]);
+
+  const handleSelectProvince = (prov: Province2025, autoOpenWard = false) => {
+    Keyboard.dismiss();
+    const formatted = formatProvinceName(prov.name);
+    const isDifferent = formatted !== editProvince;
+    setEditProvince(formatted);
+    if (isDifferent) {
+      setEditWard('');
+    }
+    setPickerSearch('');
+    if (autoOpenWard) {
+      setPickerMode('ward');
+    } else {
+      setPickerMode(null);
+    }
+  };
+
+  const handleSelectWard = (w: string) => {
+    Keyboard.dismiss();
+    const formatted = formatWardName(w);
+    setEditWard(formatted);
+    setPickerSearch('');
+    setPickerMode(null);
+  };
 
   useEffect(() => {
     getProfile()
@@ -135,21 +219,25 @@ export default function ProfileScreen({
 
     setSaving(true);
     try {
+      const finalProvince = formatProvinceName(editProvince.trim());
+      const finalWard = formatWardName(editWard.trim());
+      const finalAddress = formatStandardAddress(editAddress.trim());
+
       const updatedProfile = await updateProfile({
         fullName: trimmedFullName,
         phoneNumber: cleanPhone,
-        address: editAddress.trim(),
-        province: editProvince.trim(),
-        ward: editWard.trim(),
+        address: finalAddress,
+        province: finalProvince,
+        ward: finalWard,
       });
 
       const updatedUser: AuthUser = {
         ...authUser,
         fullName: updatedProfile.fullName || trimmedFullName,
         phone: updatedProfile.phoneNumber || cleanPhone,
-        address: updatedProfile.address ?? editAddress.trim(),
-        province: updatedProfile.province ?? editProvince.trim(),
-        ward: updatedProfile.ward ?? editWard.trim(),
+        address: updatedProfile.address ?? finalAddress,
+        province: updatedProfile.province ?? finalProvince,
+        ward: updatedProfile.ward ?? finalWard,
       };
 
       onUpdateUser(updatedUser);
@@ -325,16 +413,66 @@ export default function ProfileScreen({
                 )}
               </View>
 
+              {/* Province */}
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Tỉnh/TP</Text>
+                {editMode ? (
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setPickerSearch('');
+                      setPickerMode('province');
+                    }}
+                    style={styles.selectorBtn}
+                  >
+                    <Text
+                      style={[
+                        styles.selectorBtnText,
+                        !editProvince && styles.selectorPlaceholderText,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {editProvince || 'Chọn Tỉnh / Thành phố'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={15} color="#ea580c" />
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.infoValue}>{authUser?.province || '—'}</Text>
+                )}
+              </View>
+
               {/* Ward / Area */}
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Phường/Xã</Text>
                 {editMode ? (
-                  <TextInput
-                    style={styles.infoInput}
-                    value={editWard}
-                    onChangeText={setEditWard}
-                    placeholder="Phường / Xã"
-                  />
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setPickerSearch('');
+                      if (!editProvince.trim()) {
+                        setPickerMode('province');
+                        return;
+                      }
+                      setPickerMode('ward');
+                    }}
+                    style={styles.selectorBtn}
+                  >
+                    <Text
+                      style={[
+                        styles.selectorBtnText,
+                        !editWard && styles.selectorPlaceholderText,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {editWard ||
+                        (editProvince
+                          ? `Chọn Phường/Xã (${editProvince})`
+                          : 'Chọn Tỉnh/TP trước')}
+                    </Text>
+                    <Ionicons name="chevron-down" size={15} color="#ea580c" />
+                  </TouchableOpacity>
                 ) : (
                   <Text style={styles.infoValue}>{authUser?.ward || '—'}</Text>
                 )}
@@ -352,21 +490,6 @@ export default function ProfileScreen({
                   />
                 ) : (
                   <Text style={styles.infoValue}>{authUser?.address || '—'}</Text>
-                )}
-              </View>
-
-              {/* Province */}
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Tỉnh/TP</Text>
-                {editMode ? (
-                  <TextInput
-                    style={styles.infoInput}
-                    value={editProvince}
-                    onChangeText={setEditProvince}
-                    placeholder="Tỉnh / Thành phố"
-                  />
-                ) : (
-                  <Text style={styles.infoValue}>{authUser?.province || '—'}</Text>
                 )}
               </View>
             </View>
@@ -540,6 +663,221 @@ export default function ProfileScreen({
                 <Text style={styles.confirmLogoutBtnText}>Đăng xuất</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL CHỌN TỈNH / THÀNH PHỐ & PHƯỜNG / XÃ SAU SÁP NHẬP */}
+      <Modal
+        visible={pickerMode !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPickerMode(null)}
+      >
+        <View style={styles.pickerBackdrop}>
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() => setPickerMode(null)}
+          />
+          <View style={styles.pickerSheet}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.pickerHeader}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.pickerTitle}>
+                  {pickerMode === 'province'
+                    ? 'Chọn Tỉnh / Thành phố'
+                    : `Chọn Phường / Xã (${editProvince})`}
+                </Text>
+                <Text style={styles.pickerSubtitle}>
+                  {pickerMode === 'province'
+                    ? 'Danh sách 34 Tỉnh / Thành phố sau sáp nhập'
+                    : `Danh sách Phường / Xã mới trực thuộc ${editProvince}`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.pickerCloseBtn}
+                onPress={() => setPickerMode(null)}
+              >
+                <Ionicons name="close" size={20} color="#475569" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pickerStepTabs}>
+              <TouchableOpacity
+                style={[
+                  styles.pickerStepTab,
+                  pickerMode === 'province' && styles.pickerStepTabActive,
+                ]}
+                onPress={() => {
+                  setPickerSearch('');
+                  setPickerMode('province');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.pickerStepTabText,
+                    pickerMode === 'province' && styles.pickerStepTabTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  1. {editProvince || 'Tỉnh / Thành phố'}
+                </Text>
+              </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={14} color="#cbd5e1" />
+              <TouchableOpacity
+                style={[
+                  styles.pickerStepTab,
+                  pickerMode === 'ward' && styles.pickerStepTabActive,
+                  !editProvince && { opacity: 0.5 },
+                ]}
+                disabled={!editProvince}
+                onPress={() => {
+                  if (!editProvince) return;
+                  setPickerSearch('');
+                  setPickerMode('ward');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.pickerStepTabText,
+                    pickerMode === 'ward' && styles.pickerStepTabTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  2. {editWard || 'Phường / Xã'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pickerSearchBox}>
+              <Ionicons name="search-outline" size={16} color="#64748b" />
+              <TextInput
+                style={styles.pickerSearchInput}
+                placeholder={
+                  pickerMode === 'province'
+                    ? 'Tìm Tỉnh / Thành phố...'
+                    : `Tìm Phường / Xã thuộc ${editProvince}...`
+                }
+                placeholderTextColor="#94a3b8"
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+                autoCorrect={false}
+              />
+              {pickerSearch.length > 0 ? (
+                <TouchableOpacity onPress={() => setPickerSearch('')}>
+                  <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {pickerMode === 'province' ? (
+              <FlatList
+                data={filteredProvinces}
+                keyExtractor={(item) => String(item.code)}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 20, gap: 7 }}
+                renderItem={({ item }) => {
+                  const isSelected =
+                    selectedProvinceObj?.code === item.code ||
+                    editProvince.trim().toLowerCase() === item.name.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.pickerOptionItem,
+                        isSelected && styles.pickerOptionItemActive,
+                      ]}
+                      onPress={() => handleSelectProvince(item, true)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.pickerOptionTitle,
+                            isSelected && styles.pickerOptionTitleActive,
+                          ]}
+                        >
+                          {item.name}
+                        </Text>
+                        {item.mergedFrom ? (
+                          <Text style={styles.pickerOptionSub}>{item.mergedFrom}</Text>
+                        ) : null}
+                      </View>
+                      <Ionicons
+                        name={isSelected ? 'checkmark-circle' : 'chevron-forward'}
+                        size={18}
+                        color={isSelected ? '#ea580c' : '#cbd5e1'}
+                      />
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            ) : (
+              <FlatList
+                data={filteredWards}
+                keyExtractor={(item, idx) => `${item}-${idx}`}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 20, gap: 7 }}
+                ListHeaderComponent={
+                  loadingWards ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+                      <ActivityIndicator size="small" color="#ea580c" />
+                      <Text style={{ fontSize: 12, color: '#ea580c' }}>
+                        Đang đồng bộ danh sách Phường/Xã...
+                      </Text>
+                    </View>
+                  ) : undefined
+                }
+                renderItem={({ item }) => {
+                  const isSelected = editWard.trim().toLowerCase() === item.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.pickerOptionItem,
+                        isSelected && styles.pickerOptionItemActive,
+                      ]}
+                      onPress={() => handleSelectWard(item)}
+                    >
+                      <Text
+                        style={[
+                          styles.pickerOptionTitle,
+                          { flex: 1 },
+                          isSelected && styles.pickerOptionTitleActive,
+                        ]}
+                      >
+                        {item}
+                      </Text>
+                      {isSelected ? (
+                        <Ionicons name="checkmark-circle" size={18} color="#16a34a" />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={{ alignItems: 'center', paddingVertical: 24, gap: 8 }}>
+                    <Text style={{ fontSize: 12.5, color: '#64748b' }}>
+                      Không tìm thấy "{pickerSearch.trim()}".
+                    </Text>
+                    {pickerSearch.trim().length >= 2 ? (
+                      <TouchableOpacity
+                        style={{
+                          backgroundColor: '#ea580c',
+                          paddingHorizontal: 14,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                        }}
+                        onPress={() => handleSelectWard(pickerSearch.trim())}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                          Sử dụng "{pickerSearch.trim()}"
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                }
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -1069,5 +1407,147 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#dc2626',
+  },
+  selectorBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 6,
+  },
+  selectorBtnText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
+    textAlign: 'right',
+  },
+  selectorPlaceholderText: {
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    minHeight: '55%',
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 18,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 10,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  pickerSubtitle: {
+    fontSize: 11.5,
+    color: '#64748b',
+  },
+  pickerCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerStepTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 10,
+    gap: 6,
+  },
+  pickerStepTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  pickerStepTabActive: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  pickerStepTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  pickerStepTabTextActive: {
+    color: '#ea580c',
+    fontWeight: '800',
+  },
+  pickerSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 42,
+    marginBottom: 10,
+    gap: 8,
+  },
+  pickerSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0f172a',
+    paddingVertical: 0,
+  },
+  pickerOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 8,
+  },
+  pickerOptionItemActive: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+  },
+  pickerOptionTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  pickerOptionTitleActive: {
+    color: '#ea580c',
+    fontWeight: '800',
+  },
+  pickerOptionSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
   },
 });

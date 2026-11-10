@@ -30,7 +30,7 @@ import { getAllSubCategories } from '../services/subCategories';
 const { Text } = Typography;
 const { TextArea } = Input;
 
-const API_BASE_URL = 'https://cityfix-backend-80ar.onrender.com';
+const API_BASE_URL = 'http://180.93.125.111';
 
 // ==================== TYPES ====================
 

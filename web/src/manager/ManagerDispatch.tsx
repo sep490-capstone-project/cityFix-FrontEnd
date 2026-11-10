@@ -14,6 +14,8 @@ import {
   deleteTicketStep,
   getTicketSteps,
   getTicketById,
+  extractTicketImages,
+  normalizeManagerTicket,
   updateStepDependencies,
   ManagerTicketItem,
   SuggestedDepartment,
@@ -55,6 +57,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
   // 2. Vé đang chọn thao tác
   const [selectedTicket, setSelectedTicket] = useState<ManagerTicketItem | null>(null);
+  const [selectedImageIdx, setSelectedImageIdx] = useState<number>(0);
+  const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
+  const [loadingTicketDetail, setLoadingTicketDetail] = useState<boolean>(false);
   const [modalView, setModalView] = useState<ModalView>('dispatch');
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -113,14 +118,48 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       // 1. Tickets (hỗ trợ cả Array trực tiếp và cấu trúc phân trang PageManagerTickets)
       if (ticketsRes.status === 'fulfilled' && ticketsRes.value) {
         const val = ticketsRes.value as any;
-        const list = Array.isArray(val)
+        const rawList = Array.isArray(val)
           ? val
           : Array.isArray(val.content)
             ? val.content
             : Array.isArray(val.data)
               ? val.data
               : [];
+        const list: ManagerTicketItem[] = rawList.map(normalizeManagerTicket);
         setTickets(list);
+
+        // Nếu API danh sách (initiated) lược bỏ trường ảnh, tự động lấy bổ sung từ chi tiết vé
+        const missingImgTickets = list
+          .filter((t) => extractTicketImages(t).length === 0 && (t.id || t.ticketId))
+          .slice(0, 25);
+        if (missingImgTickets.length > 0) {
+          Promise.allSettled(
+            missingImgTickets.map((t) => getTicketById((t.id || t.ticketId)!))
+          ).then((detailResults) => {
+            const detailMap = new Map<string, ManagerTicketItem>();
+            detailResults.forEach((res) => {
+              if (res.status === 'fulfilled' && res.value) {
+                const detailId = res.value.id || res.value.ticketId;
+                if (detailId) detailMap.set(detailId, normalizeManagerTicket(res.value));
+              }
+            });
+            if (detailMap.size > 0) {
+              setTickets((prev) =>
+                prev.map((item) => {
+                  const id = item.id || item.ticketId || '';
+                  const detail = detailMap.get(id);
+                  return detail ? normalizeManagerTicket({ ...item, ...detail }) : item;
+                })
+              );
+              setSelectedTicket((prev) => {
+                if (!prev) return prev;
+                const id = prev.id || prev.ticketId || '';
+                const detail = detailMap.get(id);
+                return detail ? normalizeManagerTicket({ ...prev, ...detail }) : prev;
+              });
+            }
+          });
+        }
       } else {
         setTickets([]);
       }
@@ -445,9 +484,40 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
 
   // Khi chọn một vé để điều phối / duyệt
   async function selectTicketForAction(ticket: ManagerTicketItem) {
-    setSelectedTicket(ticket);
+    const normalizedTicket = normalizeManagerTicket(ticket);
+    setSelectedTicket(normalizedTicket);
+    setSelectedImageIdx(0);
+    setZoomImageUrl(null);
     setModalView('dispatch');
     setFeedback(null);
+
+    const targetTicketId = normalizedTicket.id || normalizedTicket.ticketId || '';
+    if (targetTicketId) {
+      setLoadingTicketDetail(true);
+      getTicketById(targetTicketId)
+        .then((fullTicket) => {
+          if (fullTicket) {
+            const merged = normalizeManagerTicket({ ...normalizedTicket, ...fullTicket });
+            setSelectedTicket((prev) => {
+              if (!prev) return prev;
+              const prevId = prev.id || prev.ticketId || '';
+              return prevId === targetTicketId ? normalizeManagerTicket({ ...prev, ...merged }) : prev;
+            });
+            setTickets((prev) =>
+              prev.map((item) => {
+                const itemId = item.id || item.ticketId || '';
+                return itemId === targetTicketId ? normalizeManagerTicket({ ...item, ...merged }) : item;
+              })
+            );
+          }
+        })
+        .catch(() => {
+          // Ignore detail fetch error if list item already has info
+        })
+        .finally(() => {
+          setLoadingTicketDetail(false);
+        });
+    }
 
     // 1. Danh mục sự cố
     let currentCatId = ticket.categoryId || '';
@@ -1035,14 +1105,44 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
               )}
               {filteredTickets.map((t) => {
                 const ticketId = t.id || t.ticketId || '';
+                const rowImages = extractTicketImages(t);
+                const rowThumb = rowImages[0] || '';
                 return (
                   <tr key={ticketId} className="hover:bg-orange-50/40 transition-colors">
                     <td className="px-4 py-3.5 font-mono-cf text-[12px] font-bold text-gray-700">
-                      <div className="flex items-center gap-2">
-                        {t.isLifeThreatening && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" title="Sự cố khẩn cấp" />
+                      <div className="flex items-center gap-2.5">
+                        {rowThumb ? (
+                          <button
+                            type="button"
+                            onClick={() => setZoomImageUrl(rowThumb)}
+                            title="Bấm để xem ảnh phản ánh của người dân"
+                            className="relative w-10 h-10 rounded-lg overflow-hidden border border-gray-200 bg-gray-100 flex-shrink-0 group cursor-pointer shadow-2xs"
+                          >
+                            <img
+                              src={rowThumb}
+                              alt="Ảnh phản ánh"
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform"
+                            />
+                            {rowImages.length > 1 && (
+                              <span className="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold px-1 rounded-tl">
+                                +{rowImages.length - 1}
+                              </span>
+                            )}
+                          </button>
+                        ) : (
+                          <div
+                            className="w-10 h-10 rounded-lg border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-gray-300 text-xs flex-shrink-0"
+                            title="Chưa có ảnh đính kèm"
+                          >
+                            🖼️
+                          </div>
                         )}
-                        <span className="text-gray-900">#{ticketId.slice(0, 8)}</span>
+                        <div className="flex items-center gap-1.5">
+                          {t.isLifeThreatening && (
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" title="Sự cố khẩn cấp" />
+                          )}
+                          <span className="text-gray-900">#{ticketId.slice(0, 8)}</span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3.5 max-w-[220px]">
@@ -1243,20 +1343,77 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         </span>
                       </div>
 
-                      {/* Ảnh hiện trường */}
-                      {selectedTicket.imageUrl ? (
-                        <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video group shadow-xs">
-                          <img
-                            src={selectedTicket.imageUrl}
-                            alt="Hiện trường sự cố"
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                        </div>
-                      ) : (
-                        <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-400 text-[12px] bg-white">
-                          Không có ảnh đính kèm hiện trường
-                        </div>
-                      )}
+                      {/* Ảnh hiện trường do người dân báo cáo */}
+                      {(() => {
+                        const ticketImages = extractTicketImages(selectedTicket);
+                        const activeImg = ticketImages[selectedImageIdx] || ticketImages[0] || '';
+
+                        if (activeImg) {
+                          return (
+                            <div className="space-y-2">
+                              <div
+                                onClick={() => setZoomImageUrl(activeImg)}
+                                className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video group cursor-pointer shadow-xs"
+                              >
+                                <img
+                                  src={activeImg}
+                                  alt="Hiện trường sự cố do người dân báo cáo"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                                  🔍 Bấm để phóng to ảnh hiện trường
+                                </div>
+                                <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                  📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
+                                </span>
+                              </div>
+
+                              {ticketImages.length > 1 && (
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                  {ticketImages.map((imgUrl, idx) => {
+                                    const isCurrent = idx === selectedImageIdx;
+                                    return (
+                                      <button
+                                        key={`${imgUrl}-${idx}`}
+                                        type="button"
+                                        onClick={() => setSelectedImageIdx(idx)}
+                                        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all cursor-pointer ${
+                                          isCurrent
+                                            ? 'border-orange-500 ring-2 ring-orange-500/25 scale-[1.02]'
+                                            : 'border-slate-200 opacity-70 hover:opacity-100'
+                                        }`}
+                                      >
+                                        <img
+                                          src={imgUrl}
+                                          alt={`Ảnh hiện trường ${idx + 1}`}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        if (loadingTicketDetail) {
+                          return (
+                            <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-500 text-[12px] bg-white flex flex-col items-center justify-center gap-2 aspect-video">
+                              <svg className="w-5 h-5 animate-spin text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeLinecap="round" />
+                              </svg>
+                              <span>Đang tải ảnh hiện trường từ báo cáo...</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-400 text-[12px] bg-white">
+                            Không có ảnh đính kèm hiện trường
+                          </div>
+                        );
+                      })()}
 
                       {/* Mô tả sự cố */}
                       <div>
@@ -2345,6 +2502,30 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal phóng to ảnh hiện trường */}
+      {zoomImageUrl && (
+        <div
+          onClick={() => setZoomImageUrl(null)}
+          className="fixed inset-0 z-[10000] bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 cursor-zoom-out"
+        >
+          <div className="relative max-w-5xl max-h-[90vh] flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setZoomImageUrl(null)}
+              className="absolute -top-10 right-0 text-white hover:text-orange-400 text-sm font-bold flex items-center gap-1.5 cursor-pointer bg-white/10 px-3 py-1.5 rounded-xl border border-white/15"
+            >
+              <span>✕</span> Đóng ảnh
+            </button>
+            <img
+              src={zoomImageUrl}
+              alt="Ảnh hiện trường phóng to"
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/15 cursor-default"
+            />
           </div>
         </div>
       )}

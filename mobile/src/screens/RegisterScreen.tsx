@@ -15,9 +15,19 @@ import {
   Easing,
   Keyboard,
   StatusBar,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiError, register } from '../api';
+import {
+  VN_PROVINCES_2025,
+  Province2025,
+  getWardsForProvince2025,
+  formatWardName,
+  formatProvinceName,
+  formatStandardAddress,
+} from '../constants/vnProvinces2025';
 
 interface Props {
   navigate: (screen: string) => void;
@@ -27,38 +37,16 @@ interface Props {
 
 const EMAIL_DOMAINS = ['@gmail.com', '@icloud.com', '@outlook.com', '@edu.vn'];
 
-const QUICK_PROVINCES = [
-  'TP. Hồ Chí Minh',
-  'Hà Nội',
-  'Đà Nẵng',
-  'Bình Dương',
-  'Đồng Nai',
-  'Cần Thơ',
-];
+const QUICK_PROVINCE_CODES = [79, 1, 48, 31, 92, 75, 46]; // TP.HCM, Hà Nội, Đà Nẵng, Hải Phòng, Cần Thơ, Đồng Nai, Huế
 
-const QUICK_WARDS_BY_PROVINCE: Record<string, string[]> = {
-  'TP. Hồ Chí Minh': [
-    'Phường Bến Nghé, Quận 1',
-    'Quận 3',
-    'Quận 7',
-    'Quận Bình Thạnh',
-    'TP. Thủ Đức',
-    'Quận Gò Vấp',
-  ],
-  'Hà Nội': [
-    'Quận Hoàn Kiếm',
-    'Quận Ba Đình',
-    'Quận Cầu Giấy',
-    'Quận Đống Đa',
-    'Quận Thanh Xuân',
-  ],
-  'Đà Nẵng': [
-    'Quận Hải Châu',
-    'Quận Sơn Trà',
-    'Quận Thanh Khê',
-    'Quận Ngũ Hành Sơn',
-  ],
-};
+function removeVietnameseTones(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+}
 
 interface FieldProps {
   label: string;
@@ -267,6 +255,91 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState('');
 
+  // Picker modal state for 2025 Merged Provinces & Wards
+  const [pickerMode, setPickerMode] = useState<'province' | 'ward' | null>(null);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [availableWards, setAvailableWards] = useState<string[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
+
+  const selectedProvinceObj = useMemo<Province2025 | undefined>(
+    () =>
+      VN_PROVINCES_2025.find(
+        (p) => p.name.toLowerCase() === province.trim().toLowerCase(),
+      ),
+    [province],
+  );
+
+  const quickProvinces = useMemo(
+    () =>
+      QUICK_PROVINCE_CODES.map((code) =>
+        VN_PROVINCES_2025.find((p) => p.code === code),
+      ).filter(Boolean) as Province2025[],
+    [],
+  );
+
+  // Load merged wards whenever selectedProvinceObj changes
+  useEffect(() => {
+    let active = true;
+    if (!selectedProvinceObj) {
+      setAvailableWards([]);
+      return;
+    }
+    setAvailableWards(selectedProvinceObj.defaultWards);
+    setLoadingWards(true);
+    getWardsForProvince2025(selectedProvinceObj)
+      .then((wards) => {
+        if (active) setAvailableWards(wards);
+      })
+      .finally(() => {
+        if (active) setLoadingWards(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProvinceObj]);
+
+  const handleSelectProvince = (prov: Province2025, autoOpenWard = false) => {
+    Keyboard.dismiss();
+    const formatted = formatProvinceName(prov.name);
+    const isDifferent = formatted !== province;
+    setProvince(formatted);
+    if (isDifferent) {
+      setWard('');
+    }
+    if (errors.province) setErrors((prev) => ({ ...prev, province: '' }));
+    setPickerSearch('');
+    if (autoOpenWard) {
+      setPickerMode('ward');
+    } else {
+      setPickerMode(null);
+    }
+  };
+
+  const handleSelectWard = (w: string) => {
+    Keyboard.dismiss();
+    const formatted = formatWardName(w);
+    setWard(formatted);
+    if (errors.ward) setErrors((prev) => ({ ...prev, ward: '' }));
+    setPickerSearch('');
+    setPickerMode(null);
+  };
+
+  const filteredProvinces = useMemo(() => {
+    const q = removeVietnameseTones(pickerSearch.trim());
+    if (!q) return VN_PROVINCES_2025;
+    return VN_PROVINCES_2025.filter(
+      (p) =>
+        removeVietnameseTones(p.name).includes(q) ||
+        (p.mergedFrom && removeVietnameseTones(p.mergedFrom).includes(q)),
+    );
+  }, [pickerSearch]);
+
+  const filteredWards = useMemo(() => {
+    const q = removeVietnameseTones(pickerSearch.trim());
+    if (!q) return availableWards;
+    return availableWards.filter((w) => removeVietnameseTones(w).includes(q));
+  }, [availableWards, pickerSearch]);
+
   // 1. Floating Ambient Orbs
   const orb1Anim = useRef(new Animated.Value(0)).current;
   const orb2Anim = useRef(new Animated.Value(0)).current;
@@ -448,8 +521,21 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
       e.phone = 'Số điện thoại gồm 10 chữ số và bắt đầu bằng số 0.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       e.email = 'Địa chỉ email chưa đúng định dạng.';
-    if (!province.trim()) e.province = 'Vui lòng nhập Tỉnh / Thành phố.';
-    if (!ward.trim()) e.ward = 'Vui lòng nhập Phường / Quận.';
+    if (!province.trim()) {
+      e.province = 'Vui lòng chọn Tỉnh / Thành phố.';
+    } else if (
+      (province.includes('Hồ Chí Minh') || province.includes('Hà Nội') || province.includes('Đà Nẵng') || province.includes('Hải Phòng') || province.includes('Cần Thơ') || province.includes('Huế')) &&
+      !province.startsWith('TP.')
+    ) {
+      e.province = 'Thành phố trực thuộc TW phải bắt đầu bằng "TP." (VD: TP. Hồ Chí Minh)';
+    }
+
+    if (!ward.trim()) {
+      e.ward = 'Vui lòng chọn Phường / Xã (sau sáp nhập).';
+    } else if (/phường/i.test(ward) && !ward.startsWith('P.')) {
+      e.ward = 'Tên phường bắt buộc phải ghi đúng "P." (VD: P. Bến Thành)';
+    }
+
     if (password.length < 8) e.password = 'Mật khẩu cần tối thiểu 8 ký tự.';
     if (!confirmPw || confirmPw !== password) e.confirmPw = 'Mật khẩu xác nhận chưa trùng khớp.';
     return e;
@@ -471,9 +557,9 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
         fullName,
         phoneNumber: phone,
         email,
-        province,
-        ward,
-        address,
+        province: formatProvinceName(province),
+        ward: formatWardName(ward),
+        address: formatStandardAddress(address),
         password,
       });
       try {
@@ -504,7 +590,10 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
   const isPwMatched = confirmPw.length > 0 && confirmPw === password;
 
   const emailPrefix = email.split('@')[0].trim();
-  const suggestedWards = QUICK_WARDS_BY_PROVINCE[province.trim()] || [];
+  const suggestedWards = useMemo(
+    () => (selectedProvinceObj ? availableWards.slice(0, 6) : []),
+    [selectedProvinceObj, availableWards],
+  );
 
   return (
     <KeyboardAvoidingView
@@ -722,107 +811,152 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
               <Text style={styles.sectionTitle}>2. KHU VỰC CƯ TRÚ</Text>
             </View>
 
-            <AnimatedField
-              label="TỈNH / THÀNH PHỐ"
-              required
-              placeholder="TP. Hồ Chí Minh"
-              icon="business-outline"
-              iconFocused="business"
-              value={province}
-              isValid={province.trim().length >= 2}
-              onChange={(v) => {
-                setProvince(v);
-                if (errors.province) setErrors((prev) => ({ ...prev, province: '' }));
-              }}
-              error={errors.province}
-              childrenBelow={
-                <View style={styles.quickPillsWrap}>
-                  {QUICK_PROVINCES.map((prov) => {
-                    const isSelected = province.trim().toLowerCase() === prov.toLowerCase();
-                    return (
-                      <TouchableOpacity
-                        key={prov}
-                        style={[
-                          styles.quickPill,
-                          isSelected && styles.quickPillActive,
-                        ]}
-                        onPress={() => {
-                          setProvince(prov);
-                          if (errors.province) setErrors((prev) => ({ ...prev, province: '' }));
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name={isSelected ? 'checkmark-circle' : 'location-outline'}
-                          size={12}
-                          color={isSelected ? '#ea580c' : '#64748b'}
-                        />
-                        <Text
-                          style={[
-                            styles.quickPillText,
-                            isSelected && styles.quickPillTextActive,
-                          ]}
-                        >
-                          {prov}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              }
-            />
+            {/* TỈNH / THÀNH PHỐ SELECTOR */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>
+                  TỈNH / THÀNH PHỐ<Text style={styles.requiredStar}> *</Text>
+                </Text>
+              </View>
 
-            <AnimatedField
-              label="PHƯỜNG / QUẬN / THÀNH PHỐ"
-              required
-              placeholder="Phường Bến Nghé, Quận 1"
-              icon="map-outline"
-              iconFocused="map"
-              value={ward}
-              isValid={ward.trim().length >= 2}
-              onChange={(v) => {
-                setWard(v);
-                if (errors.ward) setErrors((prev) => ({ ...prev, ward: '' }));
-              }}
-              error={errors.ward}
-              childrenBelow={
-                suggestedWards.length > 0 ? (
-                  <View style={styles.quickPillsWrap}>
-                    {suggestedWards.map((w) => {
-                      const isSelected = ward.trim().toLowerCase() === w.toLowerCase();
-                      return (
-                        <TouchableOpacity
-                          key={w}
-                          style={[
-                            styles.quickPill,
-                            isSelected && styles.quickPillActive,
-                          ]}
-                          onPress={() => {
-                            setWard(w);
-                            if (errors.ward) setErrors((prev) => ({ ...prev, ward: '' }));
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons
-                            name={isSelected ? 'checkmark-circle' : 'navigate-outline'}
-                            size={11}
-                            color={isSelected ? '#ea580c' : '#64748b'}
-                          />
-                          <Text
-                            style={[
-                              styles.quickPillText,
-                              isSelected && styles.quickPillTextActive,
-                            ]}
-                          >
-                            {w}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPickerSearch('');
+                  setPickerMode('province');
+                }}
+                style={[
+                  styles.inputWrapper,
+                  pickerMode === 'province' && styles.inputWrapperFocused,
+                  errors.province ? styles.inputWrapperError : null,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.inputIconWrap,
+                    province ? styles.inputIconWrapFocused : null,
+                    errors.province ? styles.inputIconWrapError : null,
+                  ]}
+                >
+                  <Ionicons
+                    name={province ? 'business' : 'business-outline'}
+                    size={16}
+                    color={errors.province ? '#dc2626' : province ? '#ea580c' : '#64748b'}
+                  />
+                </View>
+
+                <Text
+                  style={[
+                    styles.selectorValueText,
+                    !province && styles.selectorPlaceholderText,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {province || 'Bấm để chọn Tỉnh / Thành phố'}
+                </Text>
+
+                {province ? (
+                  <View style={styles.selectorRightRow}>
+                    <Ionicons name="checkmark-circle" size={17} color="#16a34a" />
+                    <Ionicons name="chevron-down" size={16} color="#64748b" />
                   </View>
-                ) : null
-              }
-            />
+                ) : (
+                  <View style={styles.selectorChevronBadge}>
+                    <Text style={styles.selectorChevronText}>Chọn</Text>
+                    <Ionicons name="chevron-down" size={14} color="#ea580c" />
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {errors.province ? (
+                <View style={styles.fieldErrorRow}>
+                  <Ionicons name="alert-circle" size={13} color="#dc2626" />
+                  <Text style={styles.errorText}>{errors.province}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* PHƯỜNG / XÃ (SAU SÁP NHẬP) SELECTOR */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>
+                  PHƯỜNG / XÃ (SAU SÁP NHẬP)<Text style={styles.requiredStar}> *</Text>
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPickerSearch('');
+                  if (!province.trim()) {
+                    setErrors((prev) => ({
+                      ...prev,
+                      province: 'Vui lòng chọn Tỉnh / Thành phố trước khi chọn Phường / Xã.',
+                    }));
+                    setPickerMode('province');
+                    return;
+                  }
+                  setPickerMode('ward');
+                }}
+                style={[
+                  styles.inputWrapper,
+                  pickerMode === 'ward' && styles.inputWrapperFocused,
+                  !province && styles.selectorDisabledWrapper,
+                  errors.ward ? styles.inputWrapperError : null,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.inputIconWrap,
+                    ward ? styles.inputIconWrapFocused : null,
+                    errors.ward ? styles.inputIconWrapError : null,
+                  ]}
+                >
+                  <Ionicons
+                    name={ward ? 'map' : 'map-outline'}
+                    size={16}
+                    color={errors.ward ? '#dc2626' : ward ? '#ea580c' : '#64748b'}
+                  />
+                </View>
+
+                <Text
+                  style={[
+                    styles.selectorValueText,
+                    !ward && styles.selectorPlaceholderText,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {ward
+                    ? ward
+                    : province
+                    ? `Chọn Phường / Xã thuộc ${province}...`
+                    : 'Vui lòng chọn Tỉnh / Thành phố ở trên trước'}
+                </Text>
+
+                {ward ? (
+                  <View style={styles.selectorRightRow}>
+                    <Ionicons name="checkmark-circle" size={17} color="#16a34a" />
+                    <Ionicons name="chevron-down" size={16} color="#64748b" />
+                  </View>
+                ) : (
+                  <View style={styles.selectorChevronBadge}>
+                    <Text style={styles.selectorChevronText}>
+                      {province ? 'Danh sách' : 'Chưa mở'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color="#ea580c" />
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {errors.ward ? (
+                <View style={styles.fieldErrorRow}>
+                  <Ionicons name="alert-circle" size={13} color="#dc2626" />
+                  <Text style={styles.errorText}>{errors.ward}</Text>
+                </View>
+              ) : null}
+            </View>
 
             <AnimatedField
               label="ĐỊA CHỈ CHI TIẾT"
@@ -848,28 +982,11 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
               },
             ]}
           >
-            <View style={styles.sectionHeaderRow}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionIconBox}>
-                  <Ionicons name="shield-checkmark" size={14} color="#ea580c" />
-                </View>
-                <Text style={styles.sectionTitle}>3. THIẾT LẬP BẢO MẬT</Text>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconBox}>
+                <Ionicons name="shield-checkmark" size={14} color="#ea580c" />
               </View>
-
-              <TouchableOpacity
-                style={styles.syncShowPwBtn}
-                onPress={() => setShowBothPasswords((p) => !p)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={showBothPasswords ? 'eye-off-outline' : 'eye-outline'}
-                  size={13}
-                  color="#ea580c"
-                />
-                <Text style={styles.syncShowPwText}>
-                  {showBothPasswords ? 'Ẩn mật khẩu' : 'Hiện cả 2 ô'}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>3. THIẾT LẬP BẢO MẬT</Text>
             </View>
 
             <AnimatedField
@@ -880,8 +997,6 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
               icon="lock-closed-outline"
               iconFocused="lock-closed"
               value={password}
-              externalShowPw={showBothPasswords}
-              onToggleShowPw={() => setShowBothPasswords((p) => !p)}
               onChange={(v) => {
                 setPassword(v);
                 if (errors.password) setErrors((prev) => ({ ...prev, password: '' }));
@@ -973,8 +1088,6 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
               icon="key-outline"
               iconFocused="key"
               value={confirmPw}
-              externalShowPw={showBothPasswords}
-              onToggleShowPw={() => setShowBothPasswords((p) => !p)}
               onChange={(v) => {
                 setConfirmPw(v);
                 if (errors.confirmPw) setErrors((prev) => ({ ...prev, confirmPw: '' }));
@@ -1037,6 +1150,310 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
           </Animated.View>
         </Animated.View>
       </ScrollView>
+
+      {/* MODAL CHỌN TỈNH / THÀNH PHỐ & PHƯỜNG / XÃ SAU SÁP NHẬP */}
+      <Modal
+        visible={pickerMode !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPickerMode(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={styles.modalDismissArea}
+            onPress={() => setPickerMode(null)}
+          />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandleBar} />
+
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleCol}>
+                <View style={styles.modalTitleBadgeRow}>
+                  <Ionicons
+                    name={pickerMode === 'province' ? 'business' : 'map'}
+                    size={16}
+                    color="#ea580c"
+                  />
+                  <Text style={styles.modalTitle}>
+                    {pickerMode === 'province'
+                      ? 'Chọn Tỉnh / Thành phố'
+                      : `Chọn Phường / Xã (${province})`}
+                  </Text>
+                </View>
+                <Text style={styles.modalSubtitle}>
+                  {pickerMode === 'province'
+                    ? 'Danh sách 34 Tỉnh / Thành phố Việt Nam sau sáp nhập hành chính'
+                    : selectedProvinceObj?.mergedFrom
+                    ? `${selectedProvinceObj.mergedFrom} · ${availableWards.length} đơn vị cấp xã/phường mới`
+                    : `Danh sách Phường / Xã mới trực thuộc ${province} sau sáp nhập`}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setPickerMode(null)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color="#475569" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Step Switcher Tabs inside Modal */}
+            <View style={styles.modalStepTabs}>
+              <TouchableOpacity
+                style={[
+                  styles.modalStepTab,
+                  pickerMode === 'province' && styles.modalStepTabActive,
+                ]}
+                onPress={() => {
+                  setPickerSearch('');
+                  setPickerMode('province');
+                }}
+                activeOpacity={0.75}
+              >
+                <Ionicons
+                  name="business-outline"
+                  size={13}
+                  color={pickerMode === 'province' ? '#ea580c' : '#64748b'}
+                />
+                <Text
+                  style={[
+                    styles.modalStepTabText,
+                    pickerMode === 'province' && styles.modalStepTabTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  1. {province || 'Tỉnh / Thành phố'}
+                </Text>
+              </TouchableOpacity>
+
+              <Ionicons name="chevron-forward" size={14} color="#cbd5e1" />
+
+              <TouchableOpacity
+                style={[
+                  styles.modalStepTab,
+                  pickerMode === 'ward' && styles.modalStepTabActive,
+                  !province && { opacity: 0.5 },
+                ]}
+                disabled={!province}
+                onPress={() => {
+                  if (!province) return;
+                  setPickerSearch('');
+                  setPickerMode('ward');
+                }}
+                activeOpacity={0.75}
+              >
+                <Ionicons
+                  name="map-outline"
+                  size={13}
+                  color={pickerMode === 'ward' ? '#ea580c' : '#64748b'}
+                />
+                <Text
+                  style={[
+                    styles.modalStepTabText,
+                    pickerMode === 'ward' && styles.modalStepTabTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  2. {ward || 'Phường / Xã mới'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <View style={styles.modalSearchBox}>
+              <Ionicons name="search-outline" size={17} color="#64748b" />
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder={
+                  pickerMode === 'province'
+                    ? 'Tìm nhanh Tỉnh / Thành phố (hoặc tên tỉnh cũ)...'
+                    : `Tìm Phường / Xã thuộc ${province}...`
+                }
+                placeholderTextColor="#94a3b8"
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+                autoCorrect={false}
+              />
+              {pickerSearch.length > 0 ? (
+                <TouchableOpacity onPress={() => setPickerSearch('')}>
+                  <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* List Content */}
+            {pickerMode === 'province' ? (
+              <FlatList
+                data={filteredProvinces}
+                keyExtractor={(item) => String(item.code)}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalListContent}
+                renderItem={({ item }) => {
+                  const isSelected =
+                    province.trim().toLowerCase() === item.name.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.modalOptionItem,
+                        isSelected && styles.modalOptionItemActive,
+                      ]}
+                      onPress={() => handleSelectProvince(item, true)}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.modalOptionIcon,
+                          isSelected && styles.modalOptionIconActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'location' : 'location-outline'}
+                          size={16}
+                          color={isSelected ? '#ea580c' : '#64748b'}
+                        />
+                      </View>
+                      <View style={styles.modalOptionTextCol}>
+                        <Text
+                          style={[
+                            styles.modalOptionTitle,
+                            isSelected && styles.modalOptionTitleActive,
+                          ]}
+                        >
+                          {item.name}
+                        </Text>
+                        {item.mergedFrom ? (
+                          <Text style={styles.modalOptionSub}>
+                            {item.mergedFrom}
+                          </Text>
+                        ) : (
+                          <Text style={styles.modalOptionSub}>
+                            Giữ nguyên địa giới hành chính
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.modalOptionRight}>
+                        {isSelected ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color="#ea580c"
+                          />
+                        ) : (
+                          <Ionicons
+                            name="chevron-forward"
+                            size={16}
+                            color="#cbd5e1"
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.modalEmptyWrap}>
+                    <Ionicons name="search-outline" size={28} color="#cbd5e1" />
+                    <Text style={styles.modalEmptyText}>
+                      Không tìm thấy Tỉnh / Thành phố phù hợp.
+                    </Text>
+                  </View>
+                }
+              />
+            ) : (
+              <FlatList
+                data={filteredWards}
+                keyExtractor={(item, idx) => `${item}-${idx}`}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalListContent}
+                ListHeaderComponent={
+                  loadingWards ? (
+                    <View style={styles.wardLoadingBanner}>
+                      <ActivityIndicator size="small" color="#ea580c" />
+                      <Text style={styles.wardLoadingText}>
+                        Đang đồng bộ đầy đủ danh sách Phường/Xã mới...
+                      </Text>
+                    </View>
+                  ) : undefined
+                }
+                renderItem={({ item }) => {
+                  const isSelected =
+                    ward.trim().toLowerCase() === item.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.modalOptionItem,
+                        isSelected && styles.modalOptionItemActive,
+                      ]}
+                      onPress={() => handleSelectWard(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.modalOptionIcon,
+                          isSelected && styles.modalOptionIconActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'navigate' : 'navigate-outline'}
+                          size={15}
+                          color={isSelected ? '#ea580c' : '#64748b'}
+                        />
+                      </View>
+                      <View style={styles.modalOptionTextCol}>
+                        <Text
+                          style={[
+                            styles.modalOptionTitle,
+                            isSelected && styles.modalOptionTitleActive,
+                          ]}
+                        >
+                          {item}
+                        </Text>
+                        <Text style={styles.modalOptionSub}>
+                          Trực thuộc {province} (sau sáp nhập)
+                        </Text>
+                      </View>
+                      {isSelected ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color="#16a34a"
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.modalEmptyWrap}>
+                    <Ionicons name="map-outline" size={28} color="#cbd5e1" />
+                    <Text style={styles.modalEmptyText}>
+                      Không tìm thấy "{pickerSearch.trim()}" trong danh sách gợi ý.
+                    </Text>
+                    {pickerSearch.trim().length >= 2 ? (
+                      <TouchableOpacity
+                        style={styles.customWardUseBtn}
+                        onPress={() => handleSelectWard(pickerSearch.trim())}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name="add-circle-outline"
+                          size={16}
+                          color="#ffffff"
+                        />
+                        <Text style={styles.customWardUseBtnText}>
+                          Sử dụng "{pickerSearch.trim()}"
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                }
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1544,5 +1961,300 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#94a3b8',
     fontWeight: '500',
+  },
+  mergerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  mergerBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  mergedFromHint: {
+    fontSize: 10,
+    color: '#ea580c',
+    fontWeight: '600',
+    maxWidth: '58%',
+  },
+  selectorValueText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  selectorPlaceholderText: {
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  selectorDisabledWrapper: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    opacity: 0.85,
+  },
+  selectorRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 6,
+  },
+  selectorChevronBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 6,
+  },
+  selectorChevronText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  moreWardsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+  },
+  moreWardsPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ea580c',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalDismissArea: {
+    flex: 1,
+  },
+  modalSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    maxHeight: '82%',
+    minHeight: '58%',
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 18,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 16,
+  },
+  modalHandleBar: {
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#cbd5e1',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 10,
+  },
+  modalTitleCol: {
+    flex: 1,
+    gap: 3,
+  },
+  modalTitleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modalTitle: {
+    fontSize: 16.5,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalSubtitle: {
+    fontSize: 11.5,
+    color: '#64748b',
+    lineHeight: 16,
+  },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalStepTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 5,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 12,
+    gap: 6,
+  },
+  modalStepTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+  },
+  modalStepTabActive: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    shadowColor: '#ea580c',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  modalStepTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    flexShrink: 1,
+  },
+  modalStepTabTextActive: {
+    color: '#ea580c',
+    fontWeight: '800',
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1.2,
+    borderColor: '#e2e8f0',
+    borderRadius: 13,
+    paddingHorizontal: 12,
+    height: 44,
+    marginBottom: 10,
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13.5,
+    color: '#0f172a',
+    paddingVertical: 0,
+  },
+  modalListContent: {
+    paddingBottom: 20,
+    gap: 7,
+  },
+  modalOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 10,
+  },
+  modalOptionItemActive: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+  },
+  modalOptionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOptionIconActive: {
+    backgroundColor: '#ffedd5',
+    borderColor: '#fdba74',
+  },
+  modalOptionTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  modalOptionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  modalOptionTitleActive: {
+    color: '#ea580c',
+    fontWeight: '800',
+  },
+  modalOptionSub: {
+    fontSize: 11.5,
+    color: '#64748b',
+  },
+  modalOptionRight: {
+    marginLeft: 4,
+  },
+  wardLoadingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff7ed',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  wardLoadingText: {
+    fontSize: 12,
+    color: '#ea580c',
+    fontWeight: '600',
+  },
+  modalEmptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    gap: 8,
+  },
+  modalEmptyText: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  customWardUseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    backgroundColor: '#ea580c',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  customWardUseBtnText: {
+    color: '#ffffff',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
 });

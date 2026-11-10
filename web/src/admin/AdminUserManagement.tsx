@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { message } from 'antd';
 import { BuildingIcon } from '../components/Icons';
@@ -15,6 +15,15 @@ import {
   formatDepartmentLevel,
   ApiError,
 } from '../services';
+import {
+  VN_PROVINCES_2025,
+  Province2025,
+  getWardsForProvince2025,
+  findProvince2025ByName,
+  formatWardName,
+  formatProvinceName,
+  formatStandardAddress,
+} from '../constants/vnProvinces2025';
 
 type ModalMode = 'view' | 'create' | 'edit' | null;
 
@@ -89,7 +98,7 @@ const EMPTY_FORM = {
   email: '',
   password: '',
   phoneNumber: '',
-  province: 'Tp Ho Chi Minh',
+  province: 'TP. Hồ Chí Minh',
   ward: '',
   address: '',
   role: 'STAFF',
@@ -111,6 +120,33 @@ export default function UserManagement() {
   const [deptSearch, setDeptSearch] = useState('');
   const [roleF, setRoleF] = useState<string>('all');
   const [formError, setFormError] = useState('');
+  const [availableWards, setAvailableWards] = useState<string[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
+
+  const selectedProvinceObj = useMemo<Province2025 | undefined>(
+    () => findProvince2025ByName(form.province),
+    [form.province],
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedProvinceObj) {
+      setAvailableWards([]);
+      return;
+    }
+    setAvailableWards(selectedProvinceObj.defaultWards);
+    setLoadingWards(true);
+    getWardsForProvince2025(selectedProvinceObj)
+      .then((wards) => {
+        if (active) setAvailableWards(wards);
+      })
+      .finally(() => {
+        if (active) setLoadingWards(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProvinceObj]);
 
   async function fetchUsers() {
     setLoading(true);
@@ -232,12 +268,13 @@ export default function UserManagement() {
   function openEdit(u: AdminUser) {
     const userRole = extractUserRole(u).toUpperCase();
     const deptIds = extractUserDepartmentIds(u);
+    const matchedProvince = findProvince2025ByName(u.province);
     setForm({
       fullName: u.fullName || '',
       email: u.email || '',
       password: '',
       phoneNumber: u.phoneNumber || u.phone || '',
-      province: u.province || 'Tp Ho Chi Minh',
+      province: matchedProvince ? matchedProvince.name : (u.province || 'TP. Hồ Chí Minh'),
       ward: u.ward || '',
       address: u.address || '',
       role: userRole,
@@ -282,15 +319,19 @@ export default function UserManagement() {
       const payloadDepartmentId = selectedDeptIds.length === 1 ? selectedDeptIds[0] : undefined;
       const payloadDepartmentIds = selectedDeptIds.length > 1 ? selectedDeptIds : undefined;
 
+      const formattedProvince = formatProvinceName(form.province);
+      const formattedWard = formatWardName(form.ward);
+      const formattedAddress = formatStandardAddress(form.address);
+
       if (modal === 'create') {
         const created = await createAdminUser({
           email: form.email,
           password: form.password,
           fullName: form.fullName,
           phoneNumber: form.phoneNumber,
-          province: form.province,
-          ward: form.ward,
-          address: form.address,
+          province: formattedProvince,
+          ward: formattedWard,
+          address: formattedAddress,
           roleId: form.roleId || undefined,
           role: form.role,
           departmentId: payloadDepartmentId,
@@ -302,6 +343,9 @@ export default function UserManagement() {
           {
             ...created,
             role: form.role,
+            province: formattedProvince,
+            ward: formattedWard,
+            address: formattedAddress,
             departmentId: payloadDepartmentId,
             departmentIds: selectedDeptIds,
             createdAt: new Date().toLocaleDateString('vi-VN'),
@@ -314,9 +358,9 @@ export default function UserManagement() {
           email: form.email,
           fullName: form.fullName,
           phoneNumber: form.phoneNumber,
-          province: form.province,
-          ward: form.ward,
-          address: form.address,
+          province: formattedProvince,
+          ward: formattedWard,
+          address: formattedAddress,
           roleId: form.roleId || undefined,
           role: form.role,
           departmentId: payloadDepartmentId,
@@ -331,6 +375,9 @@ export default function UserManagement() {
                   ...x,
                   ...updated,
                   ...form,
+                  province: formattedProvince,
+                  ward: formattedWard,
+                  address: formattedAddress,
                   departmentId: payloadDepartmentId,
                   departmentIds: selectedDeptIds,
                   updatedAt: new Date().toLocaleDateString('vi-VN'),
@@ -876,24 +923,58 @@ export default function UserManagement() {
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                       Tỉnh / Thành phố
                     </label>
-                    <input
+                    <select
                       value={form.province}
-                      onChange={(e) => setField('province', e.target.value)}
-                      placeholder="Tp Ho Chi Minh"
-                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-xs text-gray-900 outline-none focus:border-orange-500 transition-colors"
-                    />
+                      onChange={(e) => {
+                        const nextProv = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          province: nextProv,
+                          ward: f.province !== nextProv ? '' : f.ward,
+                        }));
+                        setFormError('');
+                      }}
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-xs text-gray-900 outline-none focus:border-orange-500 transition-colors cursor-pointer"
+                    >
+                      <option value="">— Chọn Tỉnh / Thành phố —</option>
+                      {form.province &&
+                      !VN_PROVINCES_2025.some((p) => p.name === form.province) ? (
+                        <option value={form.province}>{form.province}</option>
+                      ) : null}
+                      {VN_PROVINCES_2025.map((p) => (
+                        <option key={p.code} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                      Phường / Xã
+                      Phường / Xã (sau sáp nhập)
                     </label>
-                    <input
+                    <select
                       value={form.ward}
+                      disabled={!form.province}
                       onChange={(e) => setField('ward', e.target.value)}
-                      placeholder="Phường 6 hoặc Phường Bến Nghé"
-                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-xs text-gray-900 outline-none focus:border-orange-500 transition-colors"
-                    />
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-xs text-gray-900 outline-none focus:border-orange-500 transition-colors cursor-pointer disabled:opacity-60"
+                    >
+                      <option value="">
+                        {!form.province
+                          ? '— Chọn Tỉnh / Thành phố trước —'
+                          : loadingWards
+                          ? 'Đang tải danh sách Phường / Xã...'
+                          : `— Chọn Phường / Xã (${form.province}) —`}
+                      </option>
+                      {form.ward && !availableWards.includes(form.ward) ? (
+                        <option value={form.ward}>{form.ward}</option>
+                      ) : null}
+                      {availableWards.map((w) => (
+                        <option key={w} value={w}>
+                          {w}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1.5">

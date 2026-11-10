@@ -615,6 +615,8 @@ export async function analyzeReportImage(
 export interface CreateTicketRequest {
   description: string;
   imageUrl: string;
+  imageUrls?: string[];
+  images?: string[];
   subCategoryIds: string[];
   priority: string;
   priorityReasoning?: string;
@@ -668,9 +670,20 @@ export async function createTicket(
     token = await AsyncStorage.getItem('accessToken');
   }
 
+  const resolvedImageUrls =
+    Array.isArray(data.imageUrls) && data.imageUrls.length > 0
+      ? data.imageUrls.filter(Boolean)
+      : Array.isArray(data.images) && data.images.length > 0
+        ? data.images.filter(Boolean)
+        : data.imageUrl
+          ? [data.imageUrl]
+          : [];
+
   const payloadBody = {
     description: data.description,
-    imageUrl: data.imageUrl,
+    imageUrl: data.imageUrl || resolvedImageUrls[0] || '',
+    imageUrls: resolvedImageUrls,
+    images: resolvedImageUrls,
     categoryId: data.categoryId || (Array.isArray(data.subCategoryIds) && data.subCategoryIds[0]) || '',
     subCategoryIds: Array.isArray(data.subCategoryIds) && data.subCategoryIds.length > 0
       ? data.subCategoryIds
@@ -879,6 +892,9 @@ export interface ReportedTicket {
     status?: string;
     dependsOnStepIds?: string[];
     deadline?: string;
+    notes?: string;
+    startedAt?: string | null;
+    completedAt?: string | null;
     evidences?: Array<{
       evidenceId?: string;
       imageUrl?: string;
@@ -957,6 +973,106 @@ export async function getMyReportedTickets(
   }
 
   return payload.data;
+}
+
+/* =========================================================
+   LIFE-THREATENING TICKETS IN SAME WARD
+   GET /api/v1/tickets/life-threatening
+   Lấy danh sách sự cố nguy hiểm đến tính mạng (SOS) cùng Phường với người dùng hiện tại
+   ========================================================= */
+
+export async function getLifeThreateningTickets(
+  accessToken?: string | null,
+  page: number = 0,
+  size: number = 10
+): Promise<PageResponse<ReportedTicket>> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token) {
+    return {
+      totalPages: 0,
+      totalElements: 0,
+      size,
+      content: [],
+      number: 0,
+      numberOfElements: 0,
+      first: true,
+      last: true,
+      empty: true,
+    };
+  }
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  const url = `${API_BASE_URL}/api/v1/tickets/life-threatening?${queryParams.toString()}`;
+  console.log('🚨 GET LIFE THREATENING TICKETS URL:', url);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: '*/*',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const text = await response.text();
+    console.log('🚨 GET LIFE THREATENING STATUS:', response.status);
+
+    let payload: any = null;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // not json
+    }
+
+    if (!response.ok || !payload?.success) {
+      console.warn('⚠️ Lỗi lấy danh sách sự cố khẩn cấp:', payload?.message || response.status);
+      return {
+        totalPages: 0,
+        totalElements: 0,
+        size,
+        content: [],
+        number: 0,
+        numberOfElements: 0,
+        first: true,
+        last: true,
+        empty: true,
+      };
+    }
+
+    const data = payload.data || {};
+    return {
+      totalPages: data.page?.totalPages ?? data.totalPages ?? 0,
+      totalElements: data.page?.totalElements ?? data.totalElements ?? 0,
+      size: data.page?.size ?? data.size ?? size,
+      content: Array.isArray(data.content) ? data.content : [],
+      number: data.page?.number ?? data.number ?? page,
+      numberOfElements: Array.isArray(data.content) ? data.content.length : 0,
+      first: (data.page?.number ?? 0) === 0,
+      last: true,
+      empty: !Array.isArray(data.content) || data.content.length === 0,
+    };
+  } catch (err) {
+    console.error('❌ Error fetching life threatening tickets:', err);
+    return {
+      totalPages: 0,
+      totalElements: 0,
+      size,
+      content: [],
+      number: 0,
+      numberOfElements: 0,
+      first: true,
+      last: true,
+      empty: true,
+    };
+  }
 }
 
 /* =========================================================
