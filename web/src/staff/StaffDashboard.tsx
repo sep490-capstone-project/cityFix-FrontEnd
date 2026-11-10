@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { message } from 'antd';
 import { User, statusInfo, priorityInfo, DEPARTMENTS } from '../data';
-import { getStaffAssignedTickets, getStaffTicketSteps, StaffTicketItem, StaffTicketStep } from '../services';
+import { getStaffAssignedTickets, getStaffTicketSteps, StaffTicketItem, StaffTicketStep, matchesSearch } from '../services';
 import {
   BuildingIcon,
   AlertTriangleIcon,
@@ -157,13 +157,20 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
     }
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim();
       list = list.filter((t) => {
-        const id = (t.id || t.ticketId || '').toLowerCase();
-        const cat = (t.categoryName || '').toLowerCase();
-        const desc = (t.description || '').toLowerCase();
-        const addr = (t.address || '').toLowerCase();
-        return id.includes(q) || cat.includes(q) || desc.includes(q) || addr.includes(q);
+        const shortId = (t.id || t.ticketId || '').slice(0, 8);
+        return (
+          matchesSearch(t.id, q) ||
+          matchesSearch(t.ticketId, q) ||
+          matchesSearch(shortId, q) ||
+          matchesSearch(t.categoryName, q) ||
+          matchesSearch(t.subCategoryName, q) ||
+          matchesSearch(t.description, q) ||
+          matchesSearch(t.address, q) ||
+          matchesSearch(t.ward, q) ||
+          matchesSearch(t.province, q)
+        );
       });
     }
 

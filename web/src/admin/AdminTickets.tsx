@@ -1,698 +1,842 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { message } from 'antd';
 import {
-  MapPinIcon,
-  BuildingIcon,
-  UserIcon,
-  SlidersIcon,
-} from '../components/Icons';
-import {
-  TICKETS as MOCK_TICKETS,
-  PROVINCE_WARDS,
-  STATUS_MAP,
-  SEV_MAP,
+  Ticket,
+  Department,
+  STATUS_META,
+  SEVERITY_META,
   StatusKey,
   Severity,
-  DangerLevel,
-  getDept,
-  getCat,
   statusInfo,
-  sevInfo,
-  Ticket as MockTicket,
+  priorityInfo,
 } from '../data';
-import { getDepartments, DepartmentItem } from '../services/departments';
-import { getDepartmentTicketsForAdmin, ManagerTicketItem, extractTicketImages } from '../services/manager';
+import {
+  getAccessToken,
+  fetchAllDepartmentsForAdmin,
+  fetchSystemLocationsForAdmin,
+  SystemLocationPair,
+  matchesSearch,
+  matchesLocation,
+  normalizeLocationKey,
+  getAdminCategories,
+  AdminCategory,
+  getAdminTickets,
+  getAdminDashboardSummary,
+  mapAdminTicketToUiTicket,
+  AdminDashboardSummaryResponse,
+} from '../services';
 import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
 
 interface Props {
-  onOpenTicket: (id: string, ticketObj?: MockTicket) => void;
+  onOpenTicket: (id: string, ticketObj?: Ticket) => void;
 }
 
-type TabFilter = 'all' | 'sos' | 'pending' | 'in_progress' | 'resolved';
+const BACKEND_STATUS_KEYS: StatusKey[] = [
+  'INITIATED',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'RESOLVED',
+  'COMPLETED',
+  'REJECTED',
+  'CANCELLED',
+];
 
-function parseLocationFromAddress(address?: string): { province: string; ward: string } {
-  if (!address) return { province: 'Chưa xác định', ward: '—' };
-  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
-  const wardMatch = address.match(/(Phường\s+[^,]+|P\.\s*[^,]+|Xã\s+[^,]+|Thị trấn\s+[^,]+)/i);
-  const ward = wardMatch ? wardMatch[0].trim() : parts.length >= 2 ? parts[parts.length - 2] : '—';
+export default function AdminTickets({ onOpenTicket }: Props) {
+  const [rawTickets, setRawTickets] = useState<Ticket[]>([]);
+  const [summary, setSummary] = useState<AdminDashboardSummaryResponse | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [categories, setCategories] = useState<AdminCategory[]>([]);
+  const [dbLocations, setDbLocations] = useState<SystemLocationPair[]>([]);
 
-  const lower = address.toLowerCase();
-  let province = parts.length >= 1 ? parts[parts.length - 1] : 'Chưa xác định';
-  if (lower.includes('hồ chí minh') || lower.includes('tp.hcm') || lower.includes('tphcm')) {
-    province = 'TP. Hồ Chí Minh';
-  } else if (lower.includes('hà nội') || lower.includes('ha noi')) {
-    province = 'TP. Hà Nội';
-  } else if (lower.includes('đà nẵng') || lower.includes('da nang')) {
-    province = 'TP. Đà Nẵng';
-  } else if (lower.includes('cần thơ')) {
-    province = 'TP. Cần Thơ';
-  } else if (lower.includes('hải phòng')) {
-    province = 'TP. Hải Phòng';
-  }
-  return { province, ward };
-}
-
-export default function TicketList({ onOpenTicket }: Props) {
-  const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<TabFilter>('all');
-  const [statusF, setStatusF] = useState<StatusKey | 'all'>('all');
-  const [sevF, setSevF] = useState<Severity | 'all'>('all');
-  const [deptF, setDeptF] = useState<string>('all');
-  const [provinceF, setProvinceF] = useState<string>('all');
-  const [wardF, setWardF] = useState<string>('all');
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  const [rawTickets, setRawTickets] = useState<MockTicket[]>([]);
-  const [departments, setDepartments] = useState<DepartmentItem[]>([]);
-  const [departmentsMap, setDepartmentsMap] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [isUsingMock, setIsUsingMock] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<string>('Vừa xong');
 
-  const mapApiTicketToMockTicket = useCallback((t: ManagerTicketItem, deptNameFallback?: string): MockTicket => {
-    let mappedSeverity: Severity = 'MEDIUM';
-    const prio = (t.priority || t.severity || '').toUpperCase();
-    if (prio === 'CRITICAL' || prio === 'HIGH' || prio === 'MEDIUM' || prio === 'LOW') {
-      mappedSeverity = prio as Severity;
+  const [search, setSearch] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState<string>('ALL');
+  const [wardFilter, setWardFilter] = useState<string>('ALL');
+  const [deptFilter, setDeptFilter] = useState<string>('ALL');
+  const [catFilter, setCatFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<StatusKey | 'ALL'>('ALL');
+  const [severityFilter, setSeverityFilter] = useState<Severity | 'ALL'>('ALL');
+  const [onlySOS, setOnlySOS] = useState(false);
+  const [quickTicket, setQuickTicket] = useState<Ticket | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  // Tải danh sách Cơ quan, Danh mục, Tổng quan KPI & Địa bàn thực tế từ API (100% không dùng mock)
+  const loadMetadata = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const [deptsRes, catsRes, summaryRes, locsRes] = await Promise.all([
+        fetchAllDepartmentsForAdmin(),
+        getAdminCategories().catch(() => []),
+        getAdminDashboardSummary().catch(() => null),
+        fetchSystemLocationsForAdmin(),
+      ]);
+      setDepartments(deptsRes || []);
+      setCategories(Array.isArray(catsRes) ? catsRes : []);
+      if (summaryRes) {
+        setSummary(summaryRes);
+      }
+      setDbLocations(locsRes || []);
+    } catch {
+      // ignore metadata error
     }
-
-    let mappedDanger: DangerLevel = 'SAFE';
-    if (t.isLifeThreatening || prio === 'CRITICAL') {
-      mappedDanger = 'CRITICAL';
-    } else if (t.dangerLevel) {
-      mappedDanger = t.dangerLevel;
-    } else if (mappedSeverity === 'HIGH') {
-      mappedDanger = 'DANGEROUS';
-    }
-
-    const categoryName =
-      t.categoryName ||
-      (t.categories && t.categories[0]?.categoryName) ||
-      (t.subCategories && t.subCategories[0]?.subCategoryName) ||
-      (t.subCategories && t.subCategories[0]?.name) ||
-      'Hạ tầng đô thị';
-
-    const addr = t.address || 'Chưa cập nhật địa chỉ';
-    const { province, ward } = parseLocationFromAddress(addr);
-
-    const formattedDate = t.createdAt
-      ? new Date(t.createdAt).toLocaleString('vi-VN', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : 'Vừa xong';
-
-    return {
-      ticketId: t.ticketId || (t.id ? `CF-${t.id.slice(0, 6).toUpperCase()}` : 'CF-LIVE'),
-      rawId: t.id || t.ticketId,
-      userId: t.creatorFullName || t.createdBy || 'Cư dân',
-      reporterName: t.creatorFullName,
-      reporterPhone: t.creatorPhoneNumber,
-      departmentId: t.departmentId || 'D-LIVE',
-      departmentName: t.departmentName || deptNameFallback,
-      categoryId: t.categoryId || (t.categories && t.categories[0]?.categoryId) || 'CAT001',
-      categoryName,
-      assigneeId: t.assigneeName || (t.assigneeId ? `CB-${t.assigneeId.slice(0, 4)}` : undefined),
-      description: t.description || categoryName,
-      imageUrl: extractTicketImages(t)[0] || undefined,
-      evidenceUrls: extractTicketImages(t),
-      severity: mappedSeverity,
-      dangerLevel: mappedDanger,
-      locationMethod: t.locationMethod || 'AUTO_GPS',
-      location: {
-        lat: t.latitude || 10.7769,
-        lng: t.longitude || 106.7009,
-      },
-      address: addr,
-      province,
-      ward,
-      status: (t.status as StatusKey) || 'IN_PROGRESS',
-      createdAt: formattedDate,
-      updatedAt: formattedDate,
-      isLifeThreatening: Boolean(t.isLifeThreatening || prio === 'CRITICAL'),
-      needsManualReview: t.status === 'INITIATED',
-      deadline: t.deadline ? new Date(t.deadline).toLocaleDateString('vi-VN') : undefined,
-    };
   }, []);
 
-  const fetchTickets = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const deptsRes = await getDepartments({ page: 0, size: 50 });
-      let depts: DepartmentItem[] = [];
-      if (Array.isArray(deptsRes)) {
-        depts = deptsRes;
-      } else if (deptsRes && Array.isArray((deptsRes as any).content)) {
-        depts = (deptsRes as any).content;
-      }
+  useEffect(() => {
+    loadMetadata();
+  }, [loadMetadata]);
 
-      setDepartments(depts);
-      const deptMap: Record<string, string> = {};
-      depts.forEach((d) => {
-        deptMap[d.departmentId] = d.name;
-      });
-      setDepartmentsMap(deptMap);
-
-      const promises = depts.slice(0, 10).map(async (d) => {
-        try {
-          const res = await getDepartmentTicketsForAdmin({
-            departmentId: d.departmentId,
-            size: 50,
-          });
-          const items: ManagerTicketItem[] = res.content || [];
-          return items.map((item) => mapApiTicketToMockTicket(item, d.name));
-        } catch {
-          return [] as MockTicket[];
-        }
-      });
-
-      const results = await Promise.all(promises);
-      const combined = results.flat();
-
-      if (combined.length > 0) {
-        setRawTickets(combined);
-        setIsUsingMock(false);
-      } else {
-        setRawTickets(MOCK_TICKETS);
-        setIsUsingMock(true);
-      }
-      setLastRefreshed(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }));
-    } catch {
-      setRawTickets(MOCK_TICKETS);
-      setIsUsingMock(true);
-      setLastRefreshed(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }));
-    } finally {
-      setIsLoading(false);
+  // Gọi API GET /api/v1/admin/tickets
+  const loadTickets = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) {
+      setLoading(false);
+      return;
     }
-  }, [mapApiTicketToMockTicket]);
+
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await getAdminTickets({
+        departmentId:
+          deptFilter !== 'ALL' && deptFilter !== 'UNASSIGNED' ? deptFilter : undefined,
+        unassigned: deptFilter === 'UNASSIGNED' ? true : undefined,
+        categoryId: catFilter !== 'ALL' ? catFilter : undefined,
+        status:
+          statusFilter !== 'ALL' && BACKEND_STATUS_KEYS.includes(statusFilter)
+            ? statusFilter
+            : undefined,
+        priority: severityFilter !== 'ALL' ? severityFilter : undefined,
+        isLifeThreatening: onlySOS ? true : undefined,
+        page: 0,
+        size: 200,
+        sort: 'createdAt,desc',
+      });
+
+      const deptNameMap = new Map(departments.map((d) => [d.departmentId, d.name]));
+      const mapped = (res.content || []).map((item) => {
+        const uiTicket = mapAdminTicketToUiTicket(item);
+        if (
+          (!uiTicket.departmentName || uiTicket.departmentName === uiTicket.departmentId) &&
+          uiTicket.departmentId &&
+          deptNameMap.has(uiTicket.departmentId)
+        ) {
+          uiTicket.departmentName = deptNameMap.get(uiTicket.departmentId);
+        }
+        return uiTicket;
+      });
+
+      setRawTickets(mapped);
+      setLastRefreshed(
+        new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      );
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : 'Không thể tải danh sách hồ sơ từ máy chủ.');
+      setRawTickets([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    deptFilter,
+    catFilter,
+    statusFilter,
+    severityFilter,
+    onlySOS,
+    departments,
+  ]);
 
   useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+    loadTickets();
+  }, [loadTickets]);
 
-  const tabCounts = useMemo(() => {
-    const sosCount = rawTickets.filter((t) => t.isLifeThreatening || t.severity === 'CRITICAL').length;
-    const pendingCount = rawTickets.filter((t) => t.status === 'INITIATED' || t.status === 'PENDING_REVIEW').length;
-    const inProgressCount = rawTickets.filter(
-      (t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED' || t.status === 'OPEN'
-    ).length;
-    const resolvedCount = rawTickets.filter((t) => t.status === 'COMPLETED' || t.status === 'RESOLVED').length;
-    return {
-      all: rawTickets.length,
-      sos: sosCount,
-      pending: pendingCount,
-      in_progress: inProgressCount,
-      resolved: resolvedCount,
+  // Danh sách Tỉnh/Thành phố thực tế 100% từ dữ liệu hệ thống (không dùng mock)
+  const provinceList = useMemo(() => {
+    const map = new Map<string, string>();
+    const addProv = (p?: string) => {
+      if (!p || p === 'Chưa xác định') return;
+      const key = normalizeLocationKey(p);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, p);
     };
-  }, [rawTickets]);
+    dbLocations.forEach((loc) => addProv(loc.province));
+    rawTickets.forEach((t) => addProv(t.province));
+    return Array.from(map.values());
+  }, [dbLocations, rawTickets]);
 
-  // Available Wards based on selected Province
-  const availableWards = useMemo(() => {
-    if (provinceF === 'all') {
-      const allStatic = Object.values(PROVINCE_WARDS).flat();
-      const fromTickets = rawTickets.map((t) => t.ward).filter((w) => w && w !== '—');
-      return Array.from(new Set([...allStatic, ...fromTickets]));
-    }
-    const staticForProv = PROVINCE_WARDS[provinceF] || [];
-    const fromTickets = rawTickets
-      .filter((t) => t.province === provinceF)
-      .map((t) => t.ward)
-      .filter((w) => w && w !== '—');
-    return Array.from(new Set([...staticForProv, ...fromTickets]));
-  }, [provinceF, rawTickets]);
+  // Danh sách Phường/Xã thực tế 100% từ dữ liệu hệ thống (theo Tỉnh/TP đã chọn, không dùng mock)
+  const wardList = useMemo(() => {
+    const map = new Map<string, string>();
+    const addWard = (p?: string, w?: string) => {
+      if (!w || w === 'Chưa xác định') return;
+      if (provinceFilter !== 'ALL' && !matchesLocation(p, provinceFilter)) return;
+      const key = normalizeLocationKey(w);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, w);
+    };
+    dbLocations.forEach((loc) => addWard(loc.province, loc.ward));
+    rawTickets.forEach((t) => addWard(t.province, t.ward));
+    return Array.from(map.values());
+  }, [provinceFilter, dbLocations, rawTickets]);
 
+  // Lọc chính xác theo từ khóa tìm kiếm (hỗ trợ cả mã rút gọn #..., danh mục, cơ quan, cán bộ, người gửi) & địa bàn
   const filteredTickets = useMemo(() => {
+    const q = search.trim();
     return rawTickets.filter((t) => {
-      if (activeTab === 'sos') {
-        if (!t.isLifeThreatening && t.severity !== 'CRITICAL') return false;
-      } else if (activeTab === 'pending') {
-        if (t.status !== 'INITIATED' && t.status !== 'PENDING_REVIEW') return false;
-      } else if (activeTab === 'in_progress') {
-        if (t.status !== 'IN_PROGRESS' && t.status !== 'ASSIGNED' && t.status !== 'OPEN') return false;
-      } else if (activeTab === 'resolved') {
-        if (t.status !== 'COMPLETED' && t.status !== 'RESOLVED') return false;
-      }
+      const shortId = t.ticketId.length > 12 ? `#${t.ticketId.slice(0, 8)}` : t.ticketId;
+      const deptName =
+        t.departmentName ||
+        departments.find((d) => d.departmentId === t.departmentId)?.name ||
+        '';
+      const catName = t.categoryName || '';
 
-      if (statusF !== 'all' && t.status !== statusF) return false;
-      if (sevF !== 'all' && t.severity !== sevF) return false;
-      if (deptF !== 'all' && t.departmentId !== deptF) return false;
+      const matchKeyword =
+        !q ||
+        matchesSearch(t.ticketId, q) ||
+        matchesSearch(shortId, q) ||
+        matchesSearch(t.description, q) ||
+        matchesSearch(catName, q) ||
+        matchesSearch(t.subCategoryName, q) ||
+        matchesSearch(t.address, q) ||
+        matchesSearch(t.ward, q) ||
+        matchesSearch(t.province, q) ||
+        matchesSearch(deptName, q) ||
+        matchesSearch(t.assigneeName, q) ||
+        matchesSearch(t.reporterName, q) ||
+        matchesSearch(t.reporterPhone, q) ||
+        matchesSearch(t.reporterEmail, q);
 
-      if (provinceF !== 'all') {
-        const pNorm = (t.province || '').toLowerCase();
-        if (!pNorm.includes(provinceF.toLowerCase())) return false;
-      }
-      if (wardF !== 'all') {
-        const wNorm = (t.ward || t.address || '').toLowerCase();
-        if (!wNorm.includes(wardF.toLowerCase())) return false;
-      }
+      const matchProv =
+        provinceFilter === 'ALL' ||
+        matchesLocation(t.province, provinceFilter) ||
+        matchesLocation(t.address, provinceFilter);
 
-      if (search.trim()) {
-        const query = search.toLowerCase();
-        const matchId = t.ticketId.toLowerCase().includes(query);
-        const matchDesc = t.description.toLowerCase().includes(query);
-        const matchAddr = t.address.toLowerCase().includes(query);
-        const matchWard = t.ward.toLowerCase().includes(query);
-        const matchProv = t.province.toLowerCase().includes(query);
-        const matchDept = (t.departmentName || departmentsMap[t.departmentId] || '').toLowerCase().includes(query);
-        if (!matchId && !matchDesc && !matchAddr && !matchWard && !matchProv && !matchDept) {
-          return false;
-        }
-      }
+      const matchWard =
+        wardFilter === 'ALL' ||
+        matchesLocation(t.ward, wardFilter) ||
+        matchesLocation(t.address, wardFilter);
 
-      return true;
+      const matchDept =
+        deptFilter === 'ALL'
+          ? true
+          : deptFilter === 'UNASSIGNED'
+          ? !t.departmentId
+          : t.departmentId === deptFilter;
+
+      const matchCat = catFilter === 'ALL' || t.categoryId === catFilter;
+      const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
+      const matchSev = severityFilter === 'ALL' || t.severity === severityFilter;
+      const matchSos = !onlySOS || t.isLifeThreatening;
+
+      return (
+        matchKeyword &&
+        matchProv &&
+        matchWard &&
+        matchDept &&
+        matchCat &&
+        matchStatus &&
+        matchSev &&
+        matchSos
+      );
     });
-  }, [rawTickets, activeTab, statusF, sevF, deptF, provinceF, wardF, search, departmentsMap]);
+  }, [
+    rawTickets,
+    search,
+    provinceFilter,
+    wardFilter,
+    deptFilter,
+    catFilter,
+    statusFilter,
+    severityFilter,
+    onlySOS,
+    departments,
+  ]);
 
-  const totalItems = filteredTickets.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const paginatedTickets = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredTickets.slice(start, start + pageSize);
-  }, [filteredTickets, currentPage, pageSize]);
-
-  const handleResetFilters = () => {
-    setSearch('');
-    setActiveTab('all');
-    setStatusF('all');
-    setSevF('all');
-    setDeptF('all');
-    setProvinceF('all');
-    setWardF('all');
-    setCurrentPage(1);
-  };
-
-  const isFiltered = Boolean(
-    search ||
-      activeTab !== 'all' ||
-      statusF !== 'all' ||
-      sevF !== 'all' ||
-      deptF !== 'all' ||
-      provinceF !== 'all' ||
-      wardF !== 'all'
+  const totalElements = filteredTickets.length;
+  const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const tickets = useMemo(
+    () => filteredTickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredTickets, currentPage],
   );
 
-  const handleExportCSV = () => {
-    if (filteredTickets.length === 0) {
-      message.warning('Không có dữ liệu để xuất file.');
-      return;
+  // Số liệu 4 thẻ KPI đầu trang từ API summary
+  const kpiTotal = summary?.ticketSummary?.totalTickets ?? rawTickets.length;
+  const kpiPending =
+    summary?.ticketSummary?.initiatedTickets ??
+    rawTickets.filter((t) => t.status === 'INITIATED').length;
+  const kpiInProgress =
+    summary?.ticketSummary != null
+      ? (summary.ticketSummary.assignedTickets ?? 0) + (summary.ticketSummary.inProgressTickets ?? 0)
+      : rawTickets.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED').length;
+  const kpiDone =
+    summary?.ticketSummary != null
+      ? (summary.ticketSummary.resolvedTickets ?? 0) + (summary.ticketSummary.completedTickets ?? 0)
+      : rawTickets.filter((t) => t.status === 'RESOLVED' || t.status === 'COMPLETED').length;
+  const kpiSos =
+    summary?.ticketSummary?.lifeThreateningTickets ??
+    rawTickets.filter((t) => t.isLifeThreatening).length;
+  const kpiRate =
+    summary?.ticketSummary?.overallResolutionRate != null
+      ? Math.round(summary.ticketSummary.overallResolutionRate)
+      : kpiTotal > 0
+      ? Math.round((kpiDone / kpiTotal) * 100)
+      : 0;
+
+  function resetAllFilters() {
+    setSearch('');
+    setProvinceFilter('ALL');
+    setWardFilter('ALL');
+    setDeptFilter('ALL');
+    setCatFilter('ALL');
+    setStatusFilter('ALL');
+    setSeverityFilter('ALL');
+    setOnlySOS(false);
+    setPage(1);
+  }
+
+  const hasActiveFilter =
+    search !== '' ||
+    provinceFilter !== 'ALL' ||
+    wardFilter !== 'ALL' ||
+    deptFilter !== 'ALL' ||
+    catFilter !== 'ALL' ||
+    statusFilter !== 'ALL' ||
+    severityFilter !== 'ALL' ||
+    onlySOS;
+
+  async function fetchExportList(): Promise<Ticket[]> {
+    return filteredTickets;
+  }
+
+  async function handleExportCSV() {
+    setExporting(true);
+    try {
+      const rowsToExport = await fetchExportList();
+      downloadCsvFile(
+        'CityFix_Tra_Cuu_Ho_So',
+        [
+          'Mã Hồ sơ',
+          'Danh mục',
+          'Nội dung sự cố',
+          'Cơ quan phụ trách',
+          'Địa chỉ',
+          'Phường/Xã',
+          'Tỉnh/Thành phố',
+          'Độ ưu tiên',
+          'Khẩn cấp SOS',
+          'Trạng thái',
+          'Người gửi',
+          'Số điện thoại',
+          'Thời gian tạo',
+        ],
+        rowsToExport.map((t) => [
+          t.ticketId,
+          t.categoryName || 'Chưa phân loại',
+          t.description,
+          t.departmentName || 'Chưa phân tuyến',
+          t.address,
+          t.ward,
+          t.province,
+          priorityInfo(t.severity).label,
+          t.isLifeThreatening ? 'SOS Khẩn cấp' : 'Bình thường',
+          statusInfo(t.status).label,
+          t.reporterName || 'Người dân',
+          t.reporterPhone || '—',
+          t.createdAt,
+        ]),
+      );
+      message.success(`Đã xuất ${rowsToExport.length} hồ sơ ra file CSV!`);
+    } finally {
+      setExporting(false);
     }
+  }
 
-    const headers = [
-      'Mã hồ sơ',
-      'Nội dung sự cố',
-      'Địa chỉ',
-      'Phường/Xã',
-      'Tỉnh/Thành phố',
-      'Cơ quan phụ trách',
-      'Cán bộ',
-      'Mức độ',
-      'Trạng thái',
-      'Ngày tạo',
-    ];
-    const rows = filteredTickets.map((t) => [
-      t.ticketId,
-      t.description || '',
-      t.address || '',
-      t.ward || '',
-      t.province || '',
-      t.departmentName || departmentsMap[t.departmentId] || getDept(t.departmentId)?.name || 'Chưa phân công',
-      t.assigneeId || 'Chưa phân công',
-      sevInfo(t.severity).label,
-      statusInfo(t.status).label,
-      t.createdAt,
-    ]);
-
-    downloadCsvFile('CityFix_Danh_Sach_Ho_So', headers, rows);
-    message.success(`Đã xuất ${filteredTickets.length} hồ sơ ra file CSV!`);
-  };
-
-  const handleExportExcel = () => {
-    if (filteredTickets.length === 0) {
-      message.warning('Không có dữ liệu để xuất file.');
-      return;
+  async function handleExportExcel() {
+    setExporting(true);
+    try {
+      const rowsToExport = await fetchExportList();
+      downloadExcelReport(
+        'CityFix_Danh_Sach_Ho_So_He_Thong',
+        'DANH SÁCH TRA CỨU HỒ SƠ SỰ CỐ TOÀN HỆ THỐNG',
+        `Tổng số kết quả: ${rowsToExport.length} hồ sơ • Tỷ lệ hoàn thành toàn hệ thống: ${kpiRate}%`,
+        [
+          {
+            heading: 'Danh sách Hồ sơ theo Bộ lọc hiện tại',
+            headers: [
+              'Mã hồ sơ',
+              'Danh mục',
+              'Nội dung phản ánh',
+              'Địa chỉ',
+              'Cơ quan phụ trách',
+              'Độ ưu tiên',
+              'Trạng thái',
+              'Thời gian tạo',
+            ],
+            rows: rowsToExport.map((t) => [
+              t.ticketId,
+              t.categoryName || 'Chưa phân loại',
+              t.description,
+              t.address,
+              t.departmentName || 'Chưa phân tuyến',
+              priorityInfo(t.severity).label,
+              statusInfo(t.status).label,
+              t.createdAt,
+            ]),
+          },
+        ],
+      );
+      message.success(`Đã xuất Báo cáo Excel (${rowsToExport.length} hồ sơ) thành công!`);
+    } finally {
+      setExporting(false);
     }
-
-    downloadExcelReport(
-      'CityFix_Danh_Sach_Ho_So',
-      'DANH SÁCH HỒ SƠ SỰ CỐ HỆ THỐNG CITYFIX',
-      `Tổng số: ${filteredTickets.length} hồ sơ`,
-      [
-        {
-          heading: 'Danh sách hồ sơ sự cố',
-          headers: [
-            'Mã hồ sơ',
-            'Nội dung sự cố',
-            'Địa chỉ',
-            'Phường / Xã',
-            'Tỉnh / Thành phố',
-            'Cơ quan phụ trách',
-            'Cán bộ',
-            'Mức độ',
-            'Trạng thái',
-            'Ngày tiếp nhận',
-          ],
-          rows: filteredTickets.map((t) => [
-            t.ticketId,
-            t.description || '',
-            t.address || '',
-            t.ward || '',
-            t.province || '',
-            t.departmentName || departmentsMap[t.departmentId] || getDept(t.departmentId)?.name || 'Chưa phân công',
-            t.assigneeId || 'Chưa phân công',
-            sevInfo(t.severity).label,
-            statusInfo(t.status).label,
-            t.createdAt,
-          ]),
-        },
-      ]
-    );
-    message.success(`Đã xuất ${filteredTickets.length} hồ sơ ra file Excel (.xls)!`);
-  };
+  }
 
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
-      {/* 1. HEADER & STATUS TABS */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
-                Tra cứu Hồ sơ Sự cố Toàn Hệ thống
-              </h1>
-              {isUsingMock ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                  Dữ liệu Mẫu Hệ thống
-                </span>
-              ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Dữ liệu Trực tuyến API ({rawTickets.length} hồ sơ)
-                </span>
-              )}
-            </div>
-            <p className="text-[12px] text-gray-500 mt-1">
-              Giám sát và tra cứu thông tin hồ sơ sự cố theo địa bàn Tỉnh/Thành phố → Phường/Xã (Chế độ Xem - Read-only)
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-            <span className="text-[11px] text-gray-400 hidden md:inline">
-              Cập nhật: <strong className="text-gray-600">{lastRefreshed}</strong>
+      {/* =========================================================================
+          1. CLEAN COMMAND HEADER (ĐỒNG BỘ VỚI MANAGER & STAFF)
+         ========================================================================= */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
+              Tra cứu & Giám sát Hồ sơ Sự cố
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+              Toàn hệ thống ({totalElements} kết quả)
             </span>
-            <button
-              onClick={fetchTickets}
-              disabled={isLoading}
-              className="px-3 py-2 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              {isLoading ? 'Đang tải...' : '↻ Làm mới'}
-            </button>
-            <button
-              onClick={handleExportCSV}
-              className="px-3 py-2 text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors cursor-pointer"
-            >
-              Xuất CSV
-            </button>
-            <button
-              onClick={handleExportExcel}
-              className="px-3.5 py-2 text-[12px] font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors cursor-pointer"
-            >
-              Xuất Excel (.xls)
-            </button>
           </div>
+          <p className="text-[12px] text-gray-500 mt-1">
+            Tra cứu tập trung toàn bộ hồ sơ sự cố theo Cơ quan phụ trách, Danh mục, Tỉnh/Thành phố, Phường/Xã và Trạng thái xử lý thực tế
+          </p>
         </div>
 
-        {/* Clean Status Tabs */}
-        <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl text-[12px] font-semibold flex-wrap gap-0.5">
-            {[
-              { key: 'all', label: `Tất cả (${tabCounts.all})` },
-              { key: 'sos', label: `Khẩn cấp SOS (${tabCounts.sos})` },
-              { key: 'pending', label: `Chờ duyệt (${tabCounts.pending})` },
-              { key: 'in_progress', label: `Đang xử lý (${tabCounts.in_progress})` },
-              { key: 'resolved', label: `Đã hoàn thành (${tabCounts.resolved})` },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => {
-                  setActiveTab(tab.key as TabFilter);
-                  setCurrentPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  activeTab === tab.key
-                    ? 'bg-white text-orange-600 shadow-2xs font-bold'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          <span className="text-[11px] text-gray-400 hidden sm:inline mr-1">
+            Cập nhật: <strong className="text-gray-600 font-semibold">{lastRefreshed}</strong>
+          </span>
 
-          {isFiltered && (
-            <button
-              onClick={handleResetFilters}
-              className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 underline cursor-pointer"
-            >
-              Đặt lại bộ lọc
-            </button>
-          )}
+          <button
+            onClick={() => {
+              loadMetadata();
+              loadTickets();
+            }}
+            disabled={loading}
+            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <RefreshIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-orange-500' : 'text-gray-500'}`} />
+            <span>{loading ? 'Đang tải...' : 'Làm mới'}</span>
+          </button>
+
+          <button
+            onClick={handleExportCSV}
+            disabled={exporting || totalElements === 0}
+            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Xuất CSV
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || totalElements === 0}
+            className="px-3.5 py-1.5 text-[12px] font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+          >
+            Xuất Báo cáo (.xls)
+          </button>
         </div>
       </div>
 
-      {/* 2. FILTER BAR (Province -> Ward + Department + Status + Search) */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
-          {/* Search (4 cols) */}
-          <div className="lg:col-span-4">
+      {/* =========================================================================
+          2. 4 THẺ KPI TƯƠNG TÁC (ĐỒNG BỘ STYLE VỚI MANAGER & STAFF)
+         ========================================================================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          {
+            label: 'Tổng Hồ Sơ Hệ Thống',
+            val: kpiTotal,
+            sub: `Tỷ lệ hoàn thành: ${kpiRate}%`,
+            valCls: 'text-gray-900',
+            subCls: 'text-orange-600 font-semibold',
+            active: statusFilter === 'ALL' && !onlySOS,
+            onClick: () => {
+              setStatusFilter('ALL');
+              setOnlySOS(false);
+              setPage(1);
+            },
+          },
+          {
+            label: 'Chờ Duyệt / Mới Tạo',
+            val: kpiPending,
+            sub: 'Hồ sơ mới khởi tạo (INITIATED)',
+            valCls: 'text-amber-600',
+            subCls: 'text-gray-500',
+            active: statusFilter === 'INITIATED' && !onlySOS,
+            onClick: () => {
+              setStatusFilter('INITIATED');
+              setOnlySOS(false);
+              setPage(1);
+            },
+          },
+          {
+            label: 'Đang Giải Quyết',
+            val: kpiInProgress,
+            sub: 'Đã phân công & đang thực hiện',
+            valCls: 'text-orange-600',
+            subCls: 'text-gray-500',
+            active: statusFilter === 'IN_PROGRESS' && !onlySOS,
+            onClick: () => {
+              setStatusFilter('IN_PROGRESS');
+              setOnlySOS(false);
+              setPage(1);
+            },
+          },
+          {
+            label: 'Sự Cố Khẩn Cấp (SOS)',
+            val: kpiSos,
+            sub: `${kpiDone} hồ sơ đã hoàn thành trên hệ thống`,
+            valCls: 'text-red-600',
+            subCls: onlySOS ? 'text-red-600 font-bold' : 'text-emerald-600 font-semibold',
+            active: onlySOS,
+            onClick: () => {
+              setOnlySOS((v) => !v);
+              setPage(1);
+            },
+          },
+        ].map((kpi) => (
+          <div
+            key={kpi.label}
+            onClick={kpi.onClick}
+            className={`bg-white border rounded-2xl p-5 shadow-xs cursor-pointer transition-all flex flex-col justify-between ${
+              kpi.active
+                ? 'border-orange-400 ring-2 ring-orange-500/15'
+                : 'border-gray-200 hover:border-orange-200'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                {kpi.label}
+              </span>
+              <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 text-[10px] font-bold">
+                Lọc nhanh
+              </span>
+            </div>
+
+            <div className="my-2 flex items-baseline gap-1.5">
+              <span className={`font-display text-3xl font-black ${kpi.valCls}`}>
+                {kpi.val}
+              </span>
+              <span className="text-xs text-gray-400">hồ sơ</span>
+            </div>
+
+            <div className={`text-[11px] pt-2 border-t border-gray-100 truncate ${kpi.subCls}`}>
+              {kpi.sub}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* =========================================================================
+          3. BỘ LỌC CHUYÊN SÂU ĐA CHIỀU (100% DỮ LIỆU THẬT TỪ API)
+         ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-xs space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+          {/* Tìm kiếm */}
+          <div className="relative lg:col-span-2">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <SearchIcon />
+            </span>
             <input
-              type="text"
-              placeholder="Tìm mã hồ sơ, nội dung, địa chỉ..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setCurrentPage(1);
+                setPage(1);
               }}
-              className="w-full px-3.5 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:border-orange-500 transition-colors"
+              placeholder="Tìm mã (#...), nội dung, danh mục, địa chỉ, cơ quan, người gửi..."
+              className="w-full pl-9 pr-4 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 outline-none focus:border-orange-500 focus:bg-white transition-all"
             />
           </div>
 
-          {/* 1. Province Filter (2 cols) */}
-          <div className="lg:col-span-2">
-            <select
-              value={provinceF}
-              onChange={(e) => {
-                setProvinceF(e.target.value);
-                setWardF('all');
-                setCurrentPage(1);
-              }}
-              className="w-full text-[12px] text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-500 cursor-pointer"
-            >
-              <option value="all">Tất cả Tỉnh/TP</option>
-              <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh</option>
-              <option value="TP. Hà Nội">TP. Hà Nội</option>
-              <option value="TP. Đà Nẵng">TP. Đà Nẵng</option>
-            </select>
-          </div>
+          {/* Cơ quan phụ trách */}
+          <select
+            value={deptFilter}
+            onChange={(e) => {
+              setDeptFilter(e.target.value);
+              setPage(1);
+            }}
+            className="text-[12px] border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-gray-700 outline-none focus:border-orange-500 focus:bg-white cursor-pointer"
+          >
+            <option value="ALL">Tất cả Cơ quan ({departments.length})</option>
+            <option value="UNASSIGNED">Chưa phân tuyến</option>
+            {departments.map((d) => (
+              <option key={d.departmentId} value={d.departmentId}>
+                {d.name}
+              </option>
+            ))}
+          </select>
 
-          {/* 2. Ward Filter (2 cols) */}
-          <div className="lg:col-span-2">
-            <select
-              value={wardF}
-              onChange={(e) => {
-                setWardF(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full text-[12px] text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-500 cursor-pointer"
-            >
-              <option value="all">Tất cả Phường/Xã</option>
-              {availableWards.map((w) => (
-                <option key={w} value={w}>
-                  {w}
+          {/* Danh mục sự cố */}
+          <select
+            value={catFilter}
+            onChange={(e) => {
+              setCatFilter(e.target.value);
+              setPage(1);
+            }}
+            className="text-[12px] border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-gray-700 outline-none focus:border-orange-500 focus:bg-white cursor-pointer"
+          >
+            <option value="ALL">Tất cả Danh mục ({categories.length})</option>
+            {categories.map((c) => {
+              const cid = c.id || c.categoryId || '';
+              return (
+                <option key={cid} value={cid}>
+                  {c.name}
                 </option>
-              ))}
-            </select>
+              );
+            })}
+          </select>
+
+          {/* Tỉnh / Thành phố */}
+          <select
+            value={provinceFilter}
+            onChange={(e) => {
+              setProvinceFilter(e.target.value);
+              setWardFilter('ALL');
+              setPage(1);
+            }}
+            className="text-[12px] border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-gray-700 outline-none focus:border-orange-500 focus:bg-white cursor-pointer"
+          >
+            <option value="ALL">Tất cả Tỉnh / Thành phố ({provinceList.length})</option>
+            {provinceList.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+
+          {/* Phường / Xã */}
+          <select
+            value={wardFilter}
+            onChange={(e) => {
+              setWardFilter(e.target.value);
+              setPage(1);
+            }}
+            className="text-[12px] border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-gray-700 outline-none focus:border-orange-500 focus:bg-white cursor-pointer"
+          >
+            <option value="ALL">
+              {provinceFilter === 'ALL'
+                ? `Tất cả Phường / Xã (${wardList.length})`
+                : `Phường / Xã (${provinceFilter}) (${wardList.length})`}
+            </option>
+            {wardList.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Các nút chọn nhanh Trạng thái & Mức độ ưu tiên (Đồng bộ style với Manager) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
+          <div className="flex flex-wrap items-center gap-1 text-[11px] font-semibold">
+            <button
+              onClick={() => {
+                setStatusFilter('ALL');
+                setPage(1);
+              }}
+              className={`px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                statusFilter === 'ALL'
+                  ? 'bg-orange-600 text-white font-bold shadow-2xs'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              Tất cả trạng thái ({kpiTotal})
+            </button>
+            {BACKEND_STATUS_KEYS.map((key) => {
+              const val = STATUS_META[key];
+              if (!val) return null;
+              const active = statusFilter === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setStatusFilter(key);
+                    setPage(1);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-orange-600 text-white font-bold shadow-2xs'
+                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : val.dot}`} />
+                  {val.label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Department Filter (2 cols) */}
-          <div className="lg:col-span-2">
+          <div className="flex items-center gap-2">
             <select
-              value={deptF}
+              value={severityFilter}
               onChange={(e) => {
-                setDeptF(e.target.value);
-                setCurrentPage(1);
+                setSeverityFilter(e.target.value as Severity | 'ALL');
+                setPage(1);
               }}
-              className="w-full text-[12px] text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-500 cursor-pointer"
+              className="text-[11px] border border-gray-200 rounded-lg px-2.5 py-1 bg-gray-50 text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
             >
-              <option value="all">Tất cả Cơ quan</option>
-              {departments.length > 0 ? (
-                departments.map((d) => (
-                  <option key={d.departmentId} value={d.departmentId}>
-                    {d.name}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="D001">Sở Giao thông Vận tải TP.HCM</option>
-                  <option value="D002">UBND Phường Võ Thị Sáu</option>
-                  <option value="D003">Tổng Công ty Điện lực TP.HCM</option>
-                  <option value="D005">Sở Xây dựng TP. Hà Nội</option>
-                  <option value="D007">Sở Tài nguyên & Môi trường Đà Nẵng</option>
-                </>
-              )}
-            </select>
-          </div>
-
-          {/* Severity Filter (2 cols) */}
-          <div className="lg:col-span-2">
-            <select
-              value={sevF}
-              onChange={(e) => {
-                setSevF(e.target.value as any);
-                setCurrentPage(1);
-              }}
-              className="w-full text-[12px] text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-orange-500 cursor-pointer"
-            >
-              <option value="all">Mọi mức độ</option>
-              {Object.entries(SEV_MAP).map(([k, v]) => (
+              <option value="ALL">Mọi độ ưu tiên</option>
+              {Object.entries(SEVERITY_META).map(([k, v]) => (
                 <option key={k} value={k}>
-                  {v.label}
+                  Mức độ: {v.label}
                 </option>
               ))}
             </select>
+
+            {hasActiveFilter && (
+              <button
+                onClick={resetAllFilters}
+                className="text-[11px] font-semibold text-red-600 hover:text-red-700 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
+              >
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 3. DATA TABLE */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs relative">
-        {isLoading && (
-          <div className="absolute inset-0 bg-white/70 z-20 flex flex-col items-center justify-center gap-2">
-            <div className="w-7 h-7 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
-            <span className="text-[11px] font-semibold text-gray-600">Đang tải dữ liệu...</span>
-          </div>
-        )}
+      {/* Thông báo lỗi nếu có */}
+      {errorMsg && (
+        <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center justify-between">
+          <span>{errorMsg}</span>
+          <button
+            onClick={loadTickets}
+            className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 font-semibold hover:bg-red-100 cursor-pointer"
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
 
+      {/* =========================================================================
+          4. BẢNG DANH SÁCH HỒ SƠ (ĐỒNG BỘ STYLE VỚI MANAGER TICKETS)
+         ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[980px] border-collapse">
+          <table className="w-full text-left">
             <thead>
-              <tr className="bg-gray-50/80 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200">
-                <th className="py-3 px-4">Mã hồ sơ</th>
-                <th className="py-3 px-4">Sự cố & Danh mục</th>
-                <th className="py-3 px-4">Địa bàn (Phường/Xã, Tỉnh/TP)</th>
-                <th className="py-3 px-4">Đơn vị phụ trách</th>
-                <th className="py-3 px-3 text-center">Mức độ</th>
-                <th className="py-3 px-4 text-center">Trạng thái</th>
-                <th className="py-3 px-4">Ngày gửi</th>
-                <th className="py-3 px-4 text-right">Thao tác</th>
+              <tr className="border-b border-gray-200 bg-gray-50/80">
+                {[
+                  'Mã Hồ sơ',
+                  'Nội dung & Danh mục',
+                  'Địa bàn hành chính',
+                  'Cơ quan phụ trách',
+                  'Độ ưu tiên',
+                  'Trạng thái',
+                  'Thời gian tạo',
+                  'Thao tác',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-[0.14em] whitespace-nowrap"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
-
-            <tbody className="divide-y divide-gray-100 text-[12px]">
-              {paginatedTickets.length === 0 ? (
+            <tbody className="divide-y divide-gray-100">
+              {tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center">
-                    <div className="max-w-xs mx-auto space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center mx-auto text-gray-400">
-                        <SlidersIcon className="w-5 h-5" />
-                      </div>
-                      <p className="font-bold text-gray-700">Không tìm thấy hồ sơ phù hợp</p>
-                      {isFiltered && (
-                        <button
-                          onClick={handleResetFilters}
-                          className="px-3 py-1.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-200 text-[11px] font-bold hover:bg-orange-100 cursor-pointer"
-                        >
-                          Đặt lại bộ lọc
-                        </button>
-                      )}
-                    </div>
+                  <td colSpan={8} className="text-center py-12 text-gray-400 text-xs">
+                    {loading
+                      ? 'Đang tải danh sách hồ sơ từ máy chủ...'
+                      : 'Không tìm thấy hồ sơ sự cố nào phù hợp với điều kiện lọc.'}
                   </td>
                 </tr>
               ) : (
-                paginatedTickets.map((t) => {
+                tickets.map((t) => {
+                  const st = statusInfo(t.status);
+                  const pi = priorityInfo(t.severity);
                   const deptName =
                     t.departmentName ||
-                    departmentsMap[t.departmentId] ||
-                    getDept(t.departmentId)?.name ||
-                    'Chưa phân công';
-                  const catName = t.categoryName || getCat(t.categoryId)?.name || 'Hạ tầng đô thị';
-                  const sev = sevInfo(t.severity);
-                  const st = statusInfo(t.status);
+                    departments.find((d) => d.departmentId === t.departmentId)?.name ||
+                    t.departmentId ||
+                    'Chưa phân tuyến';
+                  const catName = t.categoryName || t.categoryId || 'Chưa phân loại';
 
                   return (
                     <tr
                       key={t.ticketId}
-                      onClick={() => onOpenTicket(t.ticketId, t)}
-                      className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                      onClick={() => setQuickTicket(t)}
+                      className="hover:bg-orange-50/40 transition-colors cursor-pointer"
                     >
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
                           {t.isLifeThreatening && (
-                            <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Khẩn cấp SOS" />
+                            <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-mono text-[9px] font-bold">
+                              SOS
+                            </span>
                           )}
-                          <span className="font-mono text-[11px] font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded group-hover:bg-orange-100 group-hover:text-orange-700">
-                            {t.ticketId}
+                          <span
+                            className="font-mono text-xs font-bold text-orange-600"
+                            title={t.ticketId}
+                          >
+                            {t.ticketId.length > 12 ? `#${t.ticketId.slice(0, 8)}` : t.ticketId}
                           </span>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 max-w-[260px]">
-                        <p className="font-semibold text-gray-900 group-hover:text-orange-600 truncate">
-                          {t.description || catName}
-                        </p>
-                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{catName}</p>
-                      </td>
-
-                      <td className="py-3.5 px-4 max-w-[200px]">
-                        <div className="flex items-center gap-1.5 text-gray-800 font-medium">
-                          <MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                          <span className="truncate">{t.ward}</span>
-                        </div>
-                        <p className="text-[11px] text-gray-400 truncate pl-5">{t.province}</p>
-                      </td>
-
-                      <td className="py-3.5 px-4 max-w-[200px]">
-                        <div className="flex items-center gap-1.5 text-gray-800 font-medium">
-                          <BuildingIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                          <span className="truncate">{deptName}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5 pl-5">
-                          <UserIcon className="w-3 h-3 text-gray-300" />
-                          <span className="truncate">{t.assigneeId || 'Chưa phân công'}</span>
+                      <td className="px-4 py-3.5 max-w-[280px]">
+                        <p className="text-[13px] font-bold text-gray-900 truncate">{t.description}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-semibold">
+                            {catName}
+                          </span>
+                          <span className="text-[11px] text-gray-400 truncate">{t.address}</span>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sev.cls}`}>
-                          {sev.label}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <p className="text-xs font-semibold text-gray-800">{t.ward}</p>
+                        <p className="text-[11px] text-gray-400">{t.province}</p>
+                      </td>
+
+                      <td className="px-4 py-3.5">
+                        <span className="text-xs font-semibold text-gray-700">{deptName}</span>
+                        {t.assigneeName && (
+                          <p className="text-[11px] text-gray-400 mt-0.5">Cán bộ: {t.assigneeName}</p>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${pi.cls}`}>
+                          {pi.label}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border inline-flex items-center gap-1.5 ${st.cls}`}>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${st.cls}`}
+                        >
                           <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                           {st.label}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono text-[11px] text-gray-400 whitespace-nowrap">
-                        {t.createdAt}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className="font-mono text-[11px] text-gray-400">{t.createdAt}</span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenTicket(t.ticketId, t);
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors cursor-pointer"
+                          onClick={() => onOpenTicket(t.ticketId, t)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 transition-colors cursor-pointer"
                         >
-                          Xem →
+                          Chi tiết →
                         </button>
                       </td>
                     </tr>
@@ -703,53 +847,186 @@ export default function TicketList({ onOpenTicket }: Props) {
           </table>
         </div>
 
-        {/* Pagination Footer */}
-        <div className="px-5 py-3 bg-gray-50/70 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[12px] text-gray-500">
-          <div className="flex items-center gap-3">
-            <span>
-              Hiển thị{' '}
-              <strong className="text-gray-900">
-                {totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1} -{' '}
-                {Math.min(currentPage * pageSize, totalItems)}
-              </strong>{' '}
-              / <strong className="text-gray-900">{totalItems}</strong> hồ sơ
-            </span>
-
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-[11px] font-bold text-gray-700 outline-none cursor-pointer"
-            >
-              <option value={10}>10 / trang</option>
-              <option value={20}>20 / trang</option>
-              <option value={50}>50 / trang</option>
-            </select>
-          </div>
-
+        {/* Phân trang */}
+        <div className="px-5 py-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 bg-gray-50/40">
+          <span>
+            Hiển thị{' '}
+            <strong className="text-gray-800">
+              {totalElements === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–
+              {Math.min(currentPage * PAGE_SIZE, totalElements)}
+            </strong>{' '}
+            trên tổng <strong className="text-gray-800">{totalElements}</strong> hồ sơ sự cố
+          </span>
           <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 text-[11px] font-semibold cursor-pointer"
+              disabled={currentPage <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 cursor-pointer"
             >
-              ← Trước
+              ‹ Trang trước
             </button>
-            <span className="px-2.5 py-1 text-[11px] font-bold text-gray-700">
-              Trang {currentPage} / {totalPages}
+            <span className="px-2.5 py-1 font-mono font-semibold text-gray-700">
+              {currentPage} / {totalPages}
             </span>
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 text-[11px] font-semibold cursor-pointer"
+              disabled={currentPage >= totalPages || loading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="px-3 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 cursor-pointer"
             >
-              Sau →
+              Trang sau ›
             </button>
           </div>
         </div>
       </div>
+
+      {/* Quick-View Drawer Xem nhanh Hồ sơ */}
+      {quickTicket && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-[1px] animate-fade-in"
+          onClick={() => setQuickTicket(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white h-full shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/60">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-extrabold text-orange-600">
+                    {quickTicket.ticketId.length > 12
+                      ? `#${quickTicket.ticketId.slice(0, 8)}`
+                      : quickTicket.ticketId}
+                  </span>
+                  {quickTicket.isLifeThreatening && (
+                    <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
+                      SOS KHẨN CẤP
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Xem nhanh thông tin hồ sơ (Chế độ Quản trị viên)
+                </p>
+              </div>
+              <button
+                onClick={() => setQuickTicket(null)}
+                className="w-8 h-8 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-800 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {quickTicket.imageUrl && (
+                <div className="rounded-xl overflow-hidden border border-gray-200 h-44 bg-gray-100">
+                  <img
+                    src={quickTicket.imageUrl}
+                    alt={quickTicket.ticketId}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+
+              <div>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                    statusInfo(quickTicket.status).cls
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusInfo(quickTicket.status).dot}`} />
+                  {statusInfo(quickTicket.status).label}
+                </span>
+                <h4 className="font-display text-sm font-bold text-gray-900 mt-2.5 leading-snug">
+                  {quickTicket.description}
+                </h4>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100 space-y-2.5 text-xs">
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-400">Danh mục:</span>
+                  <span className="font-semibold text-gray-800 text-right">
+                    {quickTicket.categoryName || quickTicket.categoryId || 'Chưa phân loại'}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-400">Cơ quan phụ trách:</span>
+                  <span className="font-semibold text-orange-600 text-right">
+                    {quickTicket.departmentName ||
+                      departments.find((d) => d.departmentId === quickTicket.departmentId)?.name ||
+                      quickTicket.departmentId ||
+                      'Chưa phân tuyến'}
+                  </span>
+                </div>
+                {quickTicket.assigneeName && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-400">Cán bộ xử lý:</span>
+                    <span className="font-semibold text-gray-800 text-right">
+                      {quickTicket.assigneeName}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-400">Địa chỉ hiện trường:</span>
+                  <span className="font-medium text-gray-800 text-right">{quickTicket.address}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-400">Địa bàn hành chính:</span>
+                  <span className="font-semibold text-gray-800 text-right">
+                    {quickTicket.ward} · {quickTicket.province}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-400">Người phản ánh:</span>
+                  <span className="font-medium text-gray-800">
+                    {quickTicket.reporterName ?? 'Người dân'} ({quickTicket.reporterPhone ?? '—'})
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-gray-400">Thời điểm gửi:</span>
+                  <span className="font-mono text-gray-700">{quickTicket.createdAt}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
+              <button
+                onClick={() => setQuickTicket(null)}
+                className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={() => {
+                  const target = quickTicket;
+                  setQuickTicket(null);
+                  onOpenTicket(target.ticketId, target);
+                }}
+                className="flex-1 py-2 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold text-center transition-colors cursor-pointer"
+              >
+                Xem đầy đủ Chi tiết & Nhật ký Xử lý →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function RefreshIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+    </svg>
   );
 }

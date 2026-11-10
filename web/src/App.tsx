@@ -12,7 +12,7 @@ import AdminSteps from './admin/AdminSteps';
 import Settings, { SettingsTab } from './admin/AdminSettings';
 import StaffApp from './staff/StaffApp';
 import ManagerApp from './manager/ManagerApp';
-import { TICKETS, Ticket } from './data';
+import { Ticket } from './data';
 import cityfixLogo from './assets/cityfix-logo.png';
 import { logout, getAccessToken, decodeJwt, getProfile } from './services';
 
@@ -52,61 +52,83 @@ function MainApp() {
   const selectedId = reduxState.selectedTicketId;
   const settingsTab = reduxState.settingsTab;
 
-  // Tự động phục hồi phiên đăng nhập nếu đã có token
+  // Tự động phục hồi phiên đăng nhập nếu đã có token hợp lệ
   useEffect(() => {
+    const currentPath = window.location.pathname;
     const token = getAccessToken();
-    if (!token && !reduxState.userEmail) return;
-    if (!token && reduxState.userEmail) { setAuthPage('app'); return; }
 
-    try {
-      const decoded = decodeJwt(token as string);
-      if (decoded) {
-        const now = Date.now() / 1000;
-        if (decoded.exp && decoded.exp < now) {
-          logout();
-          dispatch(resetUser());
-          return;
-        }
-
-        const email = decoded.sub || decoded.email || '';
-        const roleCandidate =
-          decoded.role ||
-          (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
-          decoded.roleName ||
-          (Array.isArray(decoded.authorities) ? decoded.authorities[0] : decoded.authorities) ||
-          decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
-          decoded.scope ||
-          '';
-        const rawRole = String(roleCandidate).toUpperCase();
-        const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
-        const uid = decoded.userId || decoded.sub || 'U006';
-
-        dispatch(setUserInfo({ email, role, userId: uid }));
-        setAuthPage('app');
-
-        getProfile(token as string)
-          .then((p) => {
-            if (p?.roleName) {
-              const profRole = p.roleName.toUpperCase();
-              const resolvedRole = profRole.includes('MANAGER')
-                ? 'MANAGER'
-                : profRole.includes('STAFF')
-                ? 'STAFF'
-                : 'ADMIN';
-              dispatch(
-                setUserInfo({
-                  email: p.email || email,
-                  role: resolvedRole,
-                  userId: p.userId || uid,
-                })
-              );
-            }
-          })
-          .catch(() => {});
+    // 1. Không có token: đảm bảo ở trạng thái login
+    if (!token) {
+      if (reduxState.userEmail) {
+        dispatch(resetUser());
       }
+      setAuthPage('login');
+      return;
+    }
+
+    // 2. Có token: giải mã và kiểm tra hạn sử dụng
+    try {
+      const decoded = decodeJwt(token);
+      if (!decoded) {
+        logout();
+        dispatch(resetUser());
+        setAuthPage('login');
+        return;
+      }
+
+      const now = Date.now() / 1000;
+      if (decoded.exp && decoded.exp < now) {
+        logout();
+        dispatch(resetUser());
+        setAuthPage('login');
+        return;
+      }
+
+      const email = decoded.sub || decoded.email || '';
+      const roleCandidate =
+        decoded.role ||
+        (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
+        decoded.roleName ||
+        (Array.isArray(decoded.authorities) ? decoded.authorities[0] : decoded.authorities) ||
+        decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+        decoded.scope ||
+        '';
+      const rawRole = String(roleCandidate).toUpperCase();
+      const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
+      const uid = decoded.userId || decoded.sub || 'U006';
+
+      dispatch(setUserInfo({ email, role, userId: uid }));
+
+      // Nếu người dùng đang truy cập trực tiếp URL /login thì hiển thị trang login
+      if (currentPath === '/login') {
+        setAuthPage('login');
+      } else {
+        setAuthPage('app');
+      }
+
+      getProfile(token)
+        .then((p) => {
+          if (p?.roleName) {
+            const profRole = p.roleName.toUpperCase();
+            const resolvedRole = profRole.includes('MANAGER')
+              ? 'MANAGER'
+              : profRole.includes('STAFF')
+              ? 'STAFF'
+              : 'ADMIN';
+            dispatch(
+              setUserInfo({
+                email: p.email || email,
+                role: resolvedRole,
+                userId: p.userId || uid,
+              })
+            );
+          }
+        })
+        .catch(() => {});
     } catch {
       logout();
       dispatch(resetUser());
+      setAuthPage('login');
     }
   }, [dispatch]);
 
@@ -155,8 +177,7 @@ function MainApp() {
       if (ticketObj) {
         setSelectedTicketObj(ticketObj);
       } else if (id) {
-        const matched = TICKETS.find((t) => t.ticketId === id);
-        if (matched) setSelectedTicketObj(matched);
+        setSelectedTicketObj(null);
       }
     }
     dispatch(setCurrentPage({ page: p, id }));
@@ -192,17 +213,43 @@ function MainApp() {
   }
 
   if (authPage === 'app' && userRole === 'MANAGER') {
-    return <><RouteSync authPage={authPage} setAuthPage={setAuthPage} /><ManagerApp userId={userId} onLogout={handleLogout} /></>;
+    return (
+      <>
+        <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
+        <ManagerApp userId={userId} onLogout={handleLogout} />
+      </>
+    );
   }
 
   if (authPage === 'app' && userRole === 'STAFF') {
-    return <><RouteSync authPage={authPage} setAuthPage={setAuthPage} /><StaffApp userId={userId} onLogout={handleLogout} /></>;
+    return (
+      <>
+        <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
+        <StaffApp userId={userId} onLogout={handleLogout} />
+      </>
+    );
+  }
+
+  // Nếu authPage không phải là 'app', luôn an toàn hiển thị trang Login
+  if (authPage !== 'app') {
+    return (
+      <>
+        <RouteSync authPage={authPage} setAuthPage={setAuthPage} />
+        <Login
+          onLogin={handleLogin}
+          onGoRegister={() => {
+            setVerifyEmailTarget('');
+            setAuthPage('register');
+          }}
+        />
+      </>
+    );
   }
 
   const ticket =
     (selectedTicketObj && (selectedTicketObj.ticketId === selectedId || !selectedId)
       ? selectedTicketObj
-      : TICKETS.find((t) => t.ticketId === selectedId)) ?? TICKETS[0];
+      : null);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -235,36 +282,50 @@ function MainApp() {
         {/* Nav */}
         <nav className="flex-1 px-2.5 py-3 space-y-1 overflow-y-auto scrollbar-hide">
           {NAV.map(item => {
-            const isActive = page === item.key || (page === 'ticket-detail' && item.key === 'tickets');
+            const active = page === item.key || (item.key === 'tickets' && page === 'ticket-detail');
             const Icon = item.icon;
+            const isSettings = item.key === 'settings';
+
             return (
               <div key={item.key}>
                 <button
                   onClick={() => {
-                    if (item.hasSubmenu) { setSettingsOpen(o => !o); navigate('settings'); }
-                    else navigate(item.key as Page);
+                    if (isSettings) {
+                      setSettingsOpen(!settingsOpen);
+                      navigate('settings');
+                    } else {
+                      navigate(item.key as Page);
+                    }
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                    isActive
+                    active
                       ? 'bg-orange-50 border border-orange-200 text-orange-600 font-bold'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-transparent font-medium'
                   }`}
                 >
-                  <span className={`flex-shrink-0 ${isActive ? 'text-orange-600' : 'text-gray-400'}`}><Icon /></span>
-                  {!collapsed && <span className="text-[13px] flex-1">{item.label}</span>}
-                  {!collapsed && item.hasSubmenu && (
-                    <span className={`text-gray-400 transition-transform ${settingsOpen ? 'rotate-90' : ''}`}><ChevRIcon /></span>
+                  <span className={`flex-shrink-0 ${active ? 'text-orange-600' : 'text-gray-400'}`}>
+                    <Icon />
+                  </span>
+                  {!collapsed && (
+                    <>
+                      <span className="text-[13px] flex-1">{item.label}</span>
+                      {item.hasSubmenu && (
+                        <span className="text-gray-400 text-xs">
+                          {settingsOpen ? '▲' : '▼'}
+                        </span>
+                      )}
+                    </>
                   )}
                 </button>
 
-                {/* Settings submenu */}
-                {item.hasSubmenu && settingsOpen && !collapsed && (
-                  <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-200 pl-3">
+                {/* Submenu for Settings */}
+                {isSettings && settingsOpen && !collapsed && (
+                  <div className="ml-7 mt-1 space-y-1 border-l-2 border-gray-100 pl-2">
                     {[
-                      { label: 'Danh mục sự cố', sub: 'categories' as SettingsTab },
-                      { label: 'Danh mục con',   sub: 'subcategories' as SettingsTab },
-                      { label: 'Cơ quan',          sub: 'departments' as SettingsTab },
-                      { label: 'Quy tắc định tuyến', sub: 'routing' as SettingsTab },
+                      { sub: 'categories' as SettingsTab,    label: 'Danh mục sự cố' },
+                      { sub: 'subcategories' as SettingsTab, label: 'Danh mục con' },
+                      { sub: 'departments' as SettingsTab,   label: 'Cơ quan' },
+                      { sub: 'routing' as SettingsTab,       label: 'Quy tắc định tuyến' },
                     ].map(s => {
                       const isSubActive = page === 'settings' && settingsTab === s.sub;
                       return (
@@ -341,7 +402,7 @@ function MainApp() {
         <main className="flex-1 overflow-y-auto scrollbar-thin workspace-bg">
           {page === 'dashboard' && <Dashboard onOpenTicket={(id, tObj) => navigate('ticket-detail', id, tObj)} onViewAll={() => navigate('tickets')} />}
           {page === 'tickets' && <TicketList onOpenTicket={(id, tObj) => navigate('ticket-detail', id, tObj)} />}
-          {page === 'ticket-detail' && <TicketDetail ticket={ticket} onBack={() => navigate(previousAdminPage || 'dashboard')} />}
+          {page === 'ticket-detail' && <TicketDetail ticket={ticket} ticketId={selectedId || selectedTicketObj?.ticketId} onBack={() => navigate(previousAdminPage || 'dashboard')} />}
           {page === 'analytics' && <Analytics />}
           {page === 'users' && <UserManagement />}
           {page === 'steps' && <AdminSteps />}
@@ -380,4 +441,3 @@ function BellIcon()   { return <svg width="16" height="16" viewBox="0 0 24 24" f
 function ChevLIcon()  { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>; }
 function ChevRIcon()  { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>; }
 function LogoutIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>; }
-

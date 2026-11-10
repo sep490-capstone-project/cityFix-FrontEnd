@@ -24,13 +24,14 @@ import {
   SearchOutlined,
 } from '@ant-design/icons';
 
-import { getAccessToken } from '../services';
+import { APP_CONFIG } from '../config';
+import { getAccessToken, matchesSearch } from '../services';
 import { getAllSubCategories } from '../services/subCategories';
 
 const { Text } = Typography;
 const { TextArea } = Input;
 
-const API_BASE_URL = 'http://180.93.125.111';
+const API_BASE_URL = APP_CONFIG.API_BASE_URL.replace(/\/+$/, '');
 
 // ==================== TYPES ====================
 
@@ -48,6 +49,7 @@ interface AdminSubCategory {
   name: string;
   description?: string;
   active?: boolean;
+  isActive?: boolean;
 }
 
 interface ApiResponse<T> {
@@ -72,9 +74,7 @@ async function requestApi<T>(
   const token = getAccessToken();
 
   if (!token) {
-    throw new Error(
-      'Không tìm thấy access token. Vui lòng đăng nhập lại.',
-    );
+    throw new Error('Không tìm thấy access token. Vui lòng đăng nhập lại.');
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -82,9 +82,7 @@ async function requestApi<T>(
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
-      ...(options.body
-        ? { 'Content-Type': 'application/json' }
-        : {}),
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       ...options.headers,
     },
   });
@@ -101,9 +99,7 @@ async function requestApi<T>(
 
   if (!response.ok || payload?.success === false) {
     throw new Error(
-      payload?.message ||
-        text ||
-        `Yêu cầu thất bại (${response.status})`,
+      payload?.message || text || `Yêu cầu thất bại (${response.status})`,
     );
   }
 
@@ -111,14 +107,11 @@ async function requestApi<T>(
 }
 
 const adminStepApi = {
-  getAll: () =>
-    requestApi<AdminStep[]>('/api/v1/admin/steps'),
+  getAll: () => requestApi<AdminStep[]>('/api/v1/admin/steps'),
 
   getBySubCategory: (subCategoryId: string) =>
     requestApi<AdminStep[]>(
-      `/api/v1/admin/steps/sub-category/${encodeURIComponent(
-        subCategoryId,
-      )}`,
+      `/api/v1/admin/steps/sub-category/${encodeURIComponent(subCategoryId)}`,
     ),
 
   create: (values: StepFormValues) =>
@@ -128,40 +121,33 @@ const adminStepApi = {
     }),
 
   update: (id: string, values: StepFormValues) =>
-    requestApi<AdminStep>(
-      `/api/v1/admin/steps/${encodeURIComponent(id)}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(values),
-      },
-    ),
+    requestApi<AdminStep>(`/api/v1/admin/steps/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(values),
+    }),
 
   delete: (id: string) =>
-    requestApi<unknown>(
-      `/api/v1/admin/steps/${encodeURIComponent(id)}`,
-      { method: 'DELETE' },
-    ),
+    requestApi<unknown>(`/api/v1/admin/steps/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 };
 
 // ==================== PAGE ====================
 
 export default function AdminSteps() {
   const [steps, setSteps] = useState<AdminStep[]>([]);
-  const [subCategories, setSubCategories] = useState<
-    AdminSubCategory[]
-  >([]);
+  const [subCategories, setSubCategories] = useState<AdminSubCategory[]>([]);
 
   const [loading, setLoading] = useState(false);
-  const [loadingSubCategories, setLoadingSubCategories] =
-    useState(false);
+  const [loadingSubCategories, setLoadingSubCategories] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingStep, setEditingStep] =
-    useState<AdminStep | null>(null);
+  const [editingStep, setEditingStep] = useState<AdminStep | null>(null);
 
-  const [filterSubCategoryId, setFilterSubCategoryId] =
-    useState<string | undefined>(undefined);
+  const [filterSubCategoryId, setFilterSubCategoryId] = useState<
+    string | undefined
+  >(undefined);
   const [searchText, setSearchText] = useState('');
 
   const [form] = Form.useForm<StepFormValues>();
@@ -180,13 +166,9 @@ export default function AdminSteps() {
         response &&
         typeof response === 'object' &&
         'data' in response &&
-        Array.isArray(
-          (response as { data?: unknown }).data,
-        )
+        Array.isArray((response as { data?: unknown }).data)
       ) {
-        items = (response as {
-          data: AdminSubCategory[];
-        }).data;
+        items = (response as { data: AdminSubCategory[] }).data;
       }
 
       setSubCategories(items);
@@ -201,38 +183,38 @@ export default function AdminSteps() {
     }
   }, []);
 
-  const loadSteps = useCallback(
-    async (subCategoryId?: string) => {
-      setLoading(true);
+  const loadSteps = useCallback(async (subCategoryId?: string) => {
+    setLoading(true);
 
-      try {
-        const result = subCategoryId
-          ? await adminStepApi.getBySubCategory(subCategoryId)
-          : await adminStepApi.getAll();
+    try {
+      const result = subCategoryId
+        ? await adminStepApi.getBySubCategory(subCategoryId)
+        : await adminStepApi.getAll();
 
-        setSteps(
-          Array.isArray(result.data) ? result.data : [],
-        );
-      } catch (error) {
-        message.error(
-          error instanceof Error
-            ? error.message
-            : 'Không thể tải danh sách Step.',
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+      setSteps(Array.isArray(result.data) ? result.data : []);
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'Không thể tải danh sách Step.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadSubCategories();
     void loadSteps();
   }, [loadSubCategories, loadSteps]);
 
+  const filterSubCategoryOptions = subCategories.map((item) => ({
+    value: item.subCategoryId,
+    label: item.name,
+  }));
+
   const subCategoryOptions = subCategories
-    .filter((item) => item.active !== false)
+    .filter((item) => (item.isActive ?? item.active) !== false)
     .map((item) => ({
       value: item.subCategoryId,
       label: item.name,
@@ -281,11 +263,7 @@ export default function AdminSteps() {
       };
 
       if (editingStep) {
-        await adminStepApi.update(
-          editingStep.stepId,
-          payload,
-        );
-
+        await adminStepApi.update(editingStep.stepId, payload);
         message.success('Cập nhật Step thành công.');
       } else {
         await adminStepApi.create(payload);
@@ -302,9 +280,7 @@ export default function AdminSteps() {
       ]);
     } catch (error) {
       message.error(
-        error instanceof Error
-          ? error.message
-          : 'Không thể lưu Step.',
+        error instanceof Error ? error.message : 'Không thể lưu Step.',
       );
     } finally {
       setSaving(false);
@@ -322,33 +298,61 @@ export default function AdminSteps() {
       ]);
     } catch (error) {
       message.error(
-        error instanceof Error
-          ? error.message
-          : 'Không thể xóa Step.',
+        error instanceof Error ? error.message : 'Không thể xóa Step.',
       );
     }
   };
 
   const getSubCategoryName = (id: string) => {
     return (
-      subCategories.find(
-        (item) => item.subCategoryId === id,
-      )?.name ?? id
+      subCategories.find((item) => item.subCategoryId === id)?.name ?? id
     );
   };
 
-  const filteredSteps = steps.filter((step) => {
-    const keyword = searchText.trim().toLowerCase();
+  // ── Tính toán dữ liệu cho Sơ đồ Tiến trình Quy trình (Workflow Pipeline Diagram) ──
+  const activeSubCategory = filterSubCategoryId
+    ? subCategories.find((s) => s.subCategoryId === filterSubCategoryId)
+    : null;
 
-    const subCategoryName = getSubCategoryName(
-      step.subCategoryId,
-    ).toLowerCase();
+  const pipelineSteps = React.useMemo(() => {
+    if (filterSubCategoryId) {
+      return steps.filter((s) => s.subCategoryId === filterSubCategoryId);
+    }
+    const firstSubWithSteps = subCategories.find((sc) =>
+      steps.some((s) => s.subCategoryId === sc.subCategoryId),
+    );
+    if (firstSubWithSteps) {
+      return steps.filter((s) => s.subCategoryId === firstSubWithSteps.subCategoryId);
+    }
+    return steps.slice(0, 6);
+  }, [steps, filterSubCategoryId, subCategories]);
+
+  const pipelineSubCategoryName =
+    activeSubCategory?.name ||
+    (pipelineSteps.length > 0
+      ? getSubCategoryName(pipelineSteps[0].subCategoryId)
+      : 'Quy trình Tiêu chuẩn');
+
+  const totalSlaHours = pipelineSteps.reduce(
+    (acc, cur) => acc + (Number(cur.duration) || 0),
+    0,
+  );
+
+  const filteredSteps = steps.filter((step) => {
+    if (filterSubCategoryId && step.subCategoryId !== filterSubCategoryId) {
+      return false;
+    }
+
+    const keyword = searchText.trim();
+    if (!keyword) return true;
+
+    const subCategoryName = getSubCategoryName(step.subCategoryId);
 
     return (
-      !keyword ||
-      step.stepName?.toLowerCase().includes(keyword) ||
-      step.description?.toLowerCase().includes(keyword) ||
-      subCategoryName.includes(keyword)
+      matchesSearch(step.stepId, keyword) ||
+      matchesSearch(step.stepName, keyword) ||
+      matchesSearch(step.description, keyword) ||
+      matchesSearch(subCategoryName, keyword)
     );
   });
 
@@ -377,9 +381,7 @@ export default function AdminSteps() {
       title: 'Danh mục con',
       dataIndex: 'subCategoryId',
       key: 'subCategoryId',
-      render: (id: string) => (
-        <Text>{getSubCategoryName(id)}</Text>
-      ),
+      render: (id: string) => <Text>{getSubCategoryName(id)}</Text>,
     },
     {
       title: 'Thời lượng',
@@ -412,10 +414,7 @@ export default function AdminSteps() {
             okButtonProps={{ danger: true }}
             onConfirm={() => handleDelete(record.stepId)}
           >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-            />
+            <Button danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
@@ -468,7 +467,7 @@ export default function AdminSteps() {
           description="Thời lượng của mỗi bước được tính bằng đơn vị Giờ (h). Tổng thời lượng của các bước đang hoạt động sẽ được Backend tự động tính cho danh mục con tương ứng."
         />
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Select
             allowClear
             showSearch
@@ -476,7 +475,7 @@ export default function AdminSteps() {
             placeholder="Lọc theo danh mục con"
             value={filterSubCategoryId}
             loading={loadingSubCategories}
-            options={subCategoryOptions}
+            options={filterSubCategoryOptions}
             onChange={(value: string | undefined) => {
               setFilterSubCategoryId(value);
               void loadSteps(value);
@@ -487,13 +486,145 @@ export default function AdminSteps() {
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="Tìm tên bước, mô tả..."
+            placeholder="Tìm mã bước, tên bước, mô tả, danh mục con..."
             value={searchText}
-            onChange={(event) =>
-              setSearchText(event.target.value)
-            }
-            style={{ width: 280, maxWidth: '100%' }}
+            onChange={(event) => setSearchText(event.target.value)}
+            style={{ width: 320, maxWidth: '100%' }}
           />
+
+          {(filterSubCategoryId || searchText.trim()) && (
+            <Button
+              danger
+              type="text"
+              onClick={() => {
+                setFilterSubCategoryId(undefined);
+                setSearchText('');
+                void loadSteps(undefined);
+              }}
+            >
+              Xóa bộ lọc
+            </Button>
+          )}
+        </div>
+
+        {/* =========================================================================
+            SƠ ĐỒ TIẾN TRÌNH QUY TRÌNH (WORKFLOW PIPELINE DIAGRAM)
+           ========================================================================= */}
+        <div className="bg-slate-50/70 border border-gray-200 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
+                <h3 className="font-display text-sm font-bold text-gray-900">
+                  Sơ đồ Tiến trình Quy trình Xử lý (Workflow Pipeline)
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100/70 text-orange-700 border border-orange-200">
+                  {pipelineSubCategoryName}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Mô hình hóa chuỗi các bước nghiệp vụ hiện trường và thời lượng SLA cam kết
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-3 py-1 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold shadow-2xs">
+                Số bước: <strong className="text-orange-600">{pipelineSteps.length}</strong> bước
+              </span>
+              <span className="px-3 py-1 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold shadow-2xs">
+                Tổng SLA: <strong className="text-emerald-600">{totalSlaHours}h</strong> (~{(totalSlaHours / 24).toFixed(1)} ngày)
+              </span>
+            </div>
+          </div>
+
+          {/* Flowchart Nodes */}
+          {pipelineSteps.length === 0 ? (
+            <div className="p-8 text-center text-xs text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+              Chưa có bước quy trình nào được định nghĩa cho danh mục này. Nhấn <strong>Thêm Step</strong> để khởi tạo bước đầu tiên.
+            </div>
+          ) : (
+            <div className="overflow-x-auto pb-2 scrollbar-thin">
+              <div className="flex items-center gap-2 min-w-max py-2">
+                {/* Start Node: Tiếp nhận sự cố */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="w-28 bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex flex-col items-center text-center">
+                    <span className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center mb-1.5 shadow-2xs">
+                      📍
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-800 leading-tight">
+                      Tiếp nhận sự cố
+                    </span>
+                    <span className="text-[9px] text-slate-400 mt-0.5">Điểm khởi tạo</span>
+                  </div>
+
+                  {/* Flow Arrow */}
+                  <div className="flex items-center text-orange-400 px-1">
+                    <svg width="22" height="16" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="0" y1="8" x2="20" y2="8" strokeDasharray="3 2" />
+                      <polyline points="14 2 20 8 14 14" />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Pipeline Step Nodes */}
+                {pipelineSteps.map((s, idx) => {
+                  return (
+                    <React.Fragment key={s.stepId || idx}>
+                      <div className="w-48 bg-white border border-gray-200 hover:border-orange-300 hover:shadow-xs rounded-xl p-3.5 shadow-2xs transition-all flex flex-col justify-between group flex-shrink-0">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-mono-cf text-[11px] font-black flex items-center justify-center shadow-2xs">
+                              {String(idx + 1).padStart(2, '0')}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">
+                              ⏱️ {s.duration ?? 0}h
+                            </span>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-gray-900 line-clamp-1 group-hover:text-orange-600 transition-colors">
+                            {s.stepName || `Bước #${idx + 1}`}
+                          </h4>
+
+                          <p className="text-[11px] text-gray-500 line-clamp-2 mt-1 leading-snug">
+                            {s.description || 'Không có mô tả chi tiết'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-1 pt-2.5 mt-2 border-t border-gray-100">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(s)}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-semibold text-gray-600 hover:text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer"
+                          >
+                            Sửa
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Flow Arrow to next node */}
+                      <div className="flex items-center text-orange-400 px-1 flex-shrink-0">
+                        <svg width="22" height="16" viewBox="0 0 24 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="0" y1="8" x2="20" y2="8" strokeDasharray="3 2" />
+                          <polyline points="14 2 20 8 14 14" />
+                        </svg>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* Final End Node */}
+                <div className="w-28 bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 shadow-2xs flex flex-col items-center text-center flex-shrink-0">
+                  <span className="w-7 h-7 rounded-full bg-emerald-500 text-white text-xs font-bold flex items-center justify-center mb-1.5 shadow-2xs">
+                    ✓
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-900 leading-tight">
+                    Hoàn tất & Đóng
+                  </span>
+                  <span className="text-[9px] text-emerald-600 mt-0.5">Nghiệm thu sự cố</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <Table<AdminStep>
@@ -508,7 +639,7 @@ export default function AdminSteps() {
             showTotal: (total) => `Tổng ${total} Step`,
           }}
           locale={{
-            emptyText: 'Chưa có dữ liệu Step.',
+            emptyText: 'Chưa có dữ liệu Step phù hợp.',
           }}
         />
       </div>
@@ -573,10 +704,7 @@ export default function AdminSteps() {
             <Input placeholder="Ví dụ: Tiếp nhận phản ánh" />
           </Form.Item>
 
-          <Form.Item
-            name="description"
-            label="Mô tả"
-          >
+          <Form.Item name="description" label="Mô tả">
             <TextArea
               rows={3}
               placeholder="Mô tả nội dung thực hiện bước này"
@@ -597,8 +725,8 @@ export default function AdminSteps() {
               min={0}
               precision={0}
               style={{ width: '100%' }}
-              placeholder="Nhập số giờ (VD: 24)"
               addonAfter="giờ"
+              placeholder="Nhập thời lượng thực hiện"
             />
           </Form.Item>
         </Form>

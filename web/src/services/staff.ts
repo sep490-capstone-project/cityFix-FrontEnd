@@ -55,6 +55,7 @@ export interface StaffTicketItem {
   address?: string;
   province?: string;
   ward?: string;
+  subCategoryName?: string;
   district?: string;
   latitude?: number;
   longitude?: number;

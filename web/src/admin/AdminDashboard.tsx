@@ -1,711 +1,1067 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  BuildingIcon,
-  UserIcon,
-  TicketIcon,
-  SlidersIcon,
-  MapPinIcon,
-} from '../components/Icons';
-import {
-  TICKETS as MOCK_TICKETS,
-  DEPARTMENTS as MOCK_DEPTS,
-  CATEGORIES as MOCK_CATS,
-  ROUTING_RULES as MOCK_RULES,
-  USERS as MOCK_USERS,
-  getDept,
-  getCat,
-  statusInfo,
-  Ticket as MockTicket,
-  StatusKey,
-  Severity,
-  DangerLevel,
-} from '../data';
-import { getDepartments, DepartmentItem } from '../services/departments';
-import { getDepartmentTicketsForAdmin, ManagerTicketItem, extractTicketImages } from '../services/manager';
-import { getAdminCategories } from '../services/categories';
-import { getRoutingRules } from '../services/routingRules';
-import { getAdminUsers } from '../services/users';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { message } from 'antd';
-import { downloadExcelReport } from '../utils/exportFile';
+import {
+  Ticket,
+  Department,
+  statusInfo,
+  priorityInfo,
+} from '../data';
+import {
+  getAccessToken,
+  fetchAllDepartmentsForAdmin,
+  fetchSystemLocationsForAdmin,
+  SystemLocationPair,
+  matchesSearch,
+  matchesLocation,
+  normalizeLocationKey,
+  getAdminDashboardSummary,
+  getAdminTickets,
+  mapAdminTicketToUiTicket,
+  AdminDashboardSummaryResponse,
+} from '../services';
+import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
 
 interface Props {
-  onOpenTicket: (id: string, ticketObj?: MockTicket) => void;
-  onViewAll: () => void;
+  onOpenTicket: (id: string, ticketObj?: Ticket) => void;
+  onViewAll?: () => void;
 }
 
-interface DeptPerformanceItem {
-  deptId: string;
-  name: string;
-  level?: string;
-  total: number;
-  inProgress: number;
-  completed: number;
-  pct: number;
-}
+type TicketTabKey = 'all' | 'pending' | 'in_progress' | 'critical' | 'completed';
+type DeptLevelTab = 'ALL' | 'CITY' | 'WARD';
 
-type FilterTab = 'all' | 'sos' | 'pending' | 'in_progress' | 'completed';
-
-function parseLocationFromAddress(address?: string): { province: string; ward: string } {
-  if (!address) return { province: 'Chưa xác định', ward: '—' };
-  const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
-  const wardMatch = address.match(/(Phường\s+[^,]+|P\.\s*[^,]+|Xã\s+[^,]+|Thị trấn\s+[^,]+)/i);
-  const ward = wardMatch ? wardMatch[0].trim() : parts.length >= 2 ? parts[parts.length - 2] : '—';
-
-  const lower = address.toLowerCase();
-  let province = parts.length >= 1 ? parts[parts.length - 1] : 'Chưa xác định';
-  if (lower.includes('hồ chí minh') || lower.includes('tp.hcm') || lower.includes('tphcm')) {
-    province = 'TP. Hồ Chí Minh';
-  } else if (lower.includes('hà nội') || lower.includes('ha noi')) {
-    province = 'TP. Hà Nội';
-  } else if (lower.includes('đà nẵng') || lower.includes('da nang')) {
-    province = 'TP. Đà Nẵng';
-  } else if (lower.includes('cần thơ')) {
-    province = 'TP. Cần Thơ';
-  } else if (lower.includes('hải phòng')) {
-    province = 'TP. Hải Phòng';
-  }
-  return { province, ward };
-}
-
-export default function Dashboard({ onOpenTicket, onViewAll }: Props) {
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isUsingMock, setIsUsingMock] = useState<boolean>(false);
-  const [tickets, setTickets] = useState<MockTicket[]>([]);
-  const [deptPerf, setDeptPerf] = useState<DeptPerformanceItem[]>([]);
-  const [departmentsMap, setDepartmentsMap] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<FilterTab>('all');
+export default function AdminDashboard({ onOpenTicket, onViewAll }: Props) {
+  const [summary, setSummary] = useState<AdminDashboardSummaryResponse | null>(null);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [systemLocations, setSystemLocations] = useState<SystemLocationPair[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<string>('Vừa xong');
 
-  // System-wide summary counts
-  const [systemStats, setSystemStats] = useState({
-    totalDepts: MOCK_DEPTS.length,
-    cityDepts: MOCK_DEPTS.filter((d) => d.level === 'CITY').length,
-    wardDepts: MOCK_DEPTS.filter((d) => d.level === 'WARD').length,
-    totalUsers: MOCK_USERS.length,
-    totalCategories: MOCK_CATS.length,
-    totalRules: MOCK_RULES.length,
-  });
+  // Bộ lọc cho cột Danh sách Hồ sơ mới nhất
+  const [activeTab, setActiveTab] = useState<TicketTabKey>('all');
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterDept, setFilterDept] = useState('ALL');
+  const [filterProvince, setFilterProvince] = useState('ALL');
+  const [filterWard, setFilterWard] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 7;
 
-  const mapApiTicketToMockTicket = useCallback((t: ManagerTicketItem, deptNameFallback?: string): MockTicket => {
-    let mappedSeverity: Severity = 'MEDIUM';
-    const prio = (t.priority || t.severity || '').toUpperCase();
-    if (prio === 'CRITICAL' || prio === 'HIGH' || prio === 'MEDIUM' || prio === 'LOW') {
-      mappedSeverity = prio as Severity;
+  // Bộ lọc cho cột Tình trạng Giải quyết theo Đơn vị
+  const [deptSearch, setDeptSearch] = useState('');
+  const [deptLevelFilter, setDeptLevelFilter] = useState<DeptLevelTab>('ALL');
+
+  const loadDashboardData = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) {
+      setLoading(false);
+      return;
     }
 
-    let mappedDanger: DangerLevel = 'SAFE';
-    if (t.isLifeThreatening || prio === 'CRITICAL') {
-      mappedDanger = 'CRITICAL';
-    } else if (t.dangerLevel) {
-      mappedDanger = t.dangerLevel;
-    } else if (mappedSeverity === 'HIGH') {
-      mappedDanger = 'DANGEROUS';
-    }
-
-    const categoryName =
-      t.categoryName ||
-      (t.categories && t.categories[0]?.categoryName) ||
-      (t.subCategories && t.subCategories[0]?.subCategoryName) ||
-      (t.subCategories && t.subCategories[0]?.name) ||
-      'Hạ tầng đô thị';
-
-    const addr = t.address || 'Chưa cập nhật địa chỉ';
-    const { province, ward } = parseLocationFromAddress(addr);
-
-    const formattedDate = t.createdAt
-      ? new Date(t.createdAt).toLocaleString('vi-VN', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : 'Vừa xong';
-
-    return {
-      ticketId: t.ticketId || (t.id ? `CF-${t.id.slice(0, 6).toUpperCase()}` : 'CF-LIVE'),
-      rawId: t.id || t.ticketId,
-      userId: t.creatorFullName || t.createdBy || 'Cư dân',
-      reporterName: t.creatorFullName,
-      reporterPhone: t.creatorPhoneNumber,
-      departmentId: t.departmentId || 'D-LIVE',
-      departmentName: t.departmentName || deptNameFallback,
-      categoryId: t.categoryId || (t.categories && t.categories[0]?.categoryId) || 'CAT001',
-      categoryName,
-      assigneeId: t.assigneeName || (t.assigneeId ? `CB-${t.assigneeId.slice(0, 4)}` : undefined),
-      description: t.description || categoryName,
-      imageUrl: extractTicketImages(t)[0] || undefined,
-      evidenceUrls: extractTicketImages(t),
-      severity: mappedSeverity,
-      dangerLevel: mappedDanger,
-      locationMethod: t.locationMethod || 'AUTO_GPS',
-      location: {
-        lat: t.latitude || 10.7769,
-        lng: t.longitude || 106.7009,
-      },
-      address: addr,
-      province,
-      ward,
-      status: (t.status as StatusKey) || 'IN_PROGRESS',
-      createdAt: formattedDate,
-      updatedAt: formattedDate,
-      isLifeThreatening: Boolean(t.isLifeThreatening || prio === 'CRITICAL'),
-      needsManualReview: t.status === 'INITIATED',
-      deadline: t.deadline ? new Date(t.deadline).toLocaleDateString('vi-VN') : undefined,
-    };
-  }, []);
-
-  const fetchDashboardData = useCallback(async () => {
-    setIsLoading(true);
+    setLoading(true);
+    setErrorMsg(null);
     try {
-      const [deptsRes, catsRes, rulesRes, usersRes] = await Promise.all([
-        getDepartments({ page: 0, size: 50 }).catch(() => null),
-        getAdminCategories().catch(() => null),
-        getRoutingRules({ page: 0, size: 100 }).catch(() => null),
-        getAdminUsers().catch(() => null),
+      const [summaryRes, ticketsPageRes, deptsRes, locsRes] = await Promise.all([
+        getAdminDashboardSummary().catch((err) => {
+          console.warn('Lỗi tải summary dashboard:', err);
+          return null;
+        }),
+        getAdminTickets({ page: 0, size: 100, sort: 'createdAt,desc' }).catch((err) => {
+          console.warn('Lỗi tải danh sách hồ sơ mới nhất:', err);
+          return null;
+        }),
+        fetchAllDepartmentsForAdmin(),
+        fetchSystemLocationsForAdmin(),
       ]);
 
-      let depts: DepartmentItem[] = [];
-      if (Array.isArray(deptsRes)) {
-        depts = deptsRes;
-      } else if (deptsRes && Array.isArray((deptsRes as any).content)) {
-        depts = (deptsRes as any).content;
+      if (summaryRes) {
+        setSummary(summaryRes);
       }
 
-      const rulesList = Array.isArray(rulesRes)
-        ? rulesRes
-        : Array.isArray((rulesRes as any)?.content)
-        ? (rulesRes as any).content
-        : MOCK_RULES;
+      const mappedDepts: Department[] = deptsRes || [];
+      setDepartments(mappedDepts);
+      setSystemLocations(locsRes || []);
 
-      const catsList = Array.isArray(catsRes) && catsRes.length > 0 ? catsRes : MOCK_CATS;
-      const usersList = Array.isArray(usersRes) && usersRes.length > 0 ? usersRes : MOCK_USERS;
-
-      if (depts.length > 0) {
-        setSystemStats({
-          totalDepts: depts.length,
-          cityDepts: depts.filter((d) => d.level === 'CITY').length,
-          wardDepts: depts.filter((d) => d.level === 'WARD').length,
-          totalUsers: usersList.length,
-          totalCategories: catsList.length,
-          totalRules: rulesList.length,
+      if (ticketsPageRes && Array.isArray(ticketsPageRes.content)) {
+        const deptNameMap = new Map(mappedDepts.map((d) => [d.departmentId, d.name]));
+        const mappedTickets = ticketsPageRes.content.map((item) => {
+          const uiTicket = mapAdminTicketToUiTicket(item);
+          if (
+            (!uiTicket.departmentName || uiTicket.departmentName === uiTicket.departmentId) &&
+            uiTicket.departmentId &&
+            deptNameMap.has(uiTicket.departmentId)
+          ) {
+            uiTicket.departmentName = deptNameMap.get(uiTicket.departmentId);
+          }
+          return uiTicket;
         });
-      }
-
-      if (!depts || depts.length === 0) {
-        throw new Error('Chưa có dữ liệu cơ quan từ API');
-      }
-
-      const deptNames: Record<string, string> = {};
-      depts.forEach((d) => {
-        deptNames[d.departmentId] = d.name;
-      });
-      setDepartmentsMap(deptNames);
-
-      const ticketPromises = depts.slice(0, 8).map(async (d) => {
-        try {
-          const res = await getDepartmentTicketsForAdmin({
-            departmentId: d.departmentId,
-            size: 50,
-          });
-          return {
-            dept: d,
-            tickets: res.content || [],
-          };
-        } catch {
-          return {
-            dept: d,
-            tickets: [] as ManagerTicketItem[],
-          };
-        }
-      });
-
-      const results = await Promise.all(ticketPromises);
-      const allApiTickets: MockTicket[] = [];
-      const computedDeptPerf: DeptPerformanceItem[] = [];
-
-      results.forEach(({ dept, tickets: deptTickets }) => {
-        const total = deptTickets.length;
-        const inProgress = deptTickets.filter(
-          (t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED'
-        ).length;
-        const completed = deptTickets.filter(
-          (t) => t.status === 'COMPLETED' || t.status === 'RESOLVED'
-        ).length;
-        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-        computedDeptPerf.push({
-          deptId: dept.departmentId,
-          name: dept.name,
-          level: dept.level,
-          total,
-          inProgress,
-          completed,
-          pct,
-        });
-
-        deptTickets.forEach((t) => {
-          allApiTickets.push(mapApiTicketToMockTicket(t, dept.name));
-        });
-      });
-
-      if (allApiTickets.length > 0) {
-        setTickets(allApiTickets);
-        setDeptPerf(computedDeptPerf);
-        setIsUsingMock(false);
+        setTickets(mappedTickets);
       } else {
-        setTickets(MOCK_TICKETS);
-        setDeptPerf(
-          MOCK_DEPTS.slice(0, 5).map((d, i) => ({
-            deptId: d.departmentId,
-            name: d.name,
-            level: d.level,
-            total: 12 - i,
-            inProgress: 3,
-            completed: 9 - i,
-            pct: Math.round(((9 - i) / (12 - i)) * 100),
-          }))
-        );
-        setIsUsingMock(true);
+        setTickets([]);
       }
-      setLastRefreshed(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }));
-    } catch {
-      setTickets(MOCK_TICKETS);
-      setDeptPerf(
-        MOCK_DEPTS.slice(0, 5).map((d, i) => ({
-          deptId: d.departmentId,
-          name: d.name,
-          level: d.level,
-          total: 12 - i,
-          inProgress: 3,
-          completed: 9 - i,
-          pct: Math.round(((9 - i) / (12 - i)) * 100),
-        }))
+
+      if (!summaryRes && !ticketsPageRes) {
+        setErrorMsg('Không thể tải dữ liệu tổng quan từ máy chủ. Vui lòng thử lại.');
+      }
+
+      setLastRefreshed(
+        new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
       );
-      setIsUsingMock(true);
-      setLastRefreshed(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }));
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : 'Lỗi tải dữ liệu tổng quan hệ thống.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [mapApiTicketToMockTicket]);
+  }, []);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    loadDashboardData();
+  }, [loadDashboardData]);
 
-  // Derived ticket counts
-  const sosTickets = useMemo(() => tickets.filter((t) => t.isLifeThreatening || t.severity === 'CRITICAL'), [tickets]);
-  const pendingReview = useMemo(
-    () => tickets.filter((t) => t.status === 'PENDING_REVIEW' || t.status === 'INITIATED'),
-    [tickets]
+  // ── KPI tổng hợp từ API GET /api/v1/admin/dashboard/summary ────────────────
+  const totalTickets = summary?.ticketSummary?.totalTickets ?? tickets.length;
+  const completedTickets =
+    summary?.ticketSummary != null
+      ? (summary.ticketSummary.resolvedTickets ?? 0) + (summary.ticketSummary.completedTickets ?? 0)
+      : tickets.filter((t) => t.status === 'RESOLVED' || t.status === 'COMPLETED').length;
+  const inProgressTickets =
+    summary?.ticketSummary != null
+      ? (summary.ticketSummary.assignedTickets ?? 0) + (summary.ticketSummary.inProgressTickets ?? 0)
+      : tickets.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED').length;
+  const pendingTickets =
+    summary?.ticketSummary != null
+      ? summary.ticketSummary.initiatedTickets ?? 0
+      : tickets.filter((t) => t.status === 'INITIATED' || t.status === 'PENDING_REVIEW' || t.status === 'OPEN').length;
+  const unassignedCount = summary?.ticketSummary?.unassignedTickets ?? 0;
+  const sosCount =
+    summary?.ticketSummary != null
+      ? summary.ticketSummary.lifeThreateningTickets ?? 0
+      : tickets.filter((t) => t.isLifeThreatening && t.status !== 'COMPLETED' && t.status !== 'RESOLVED').length;
+
+  const completionRate =
+    summary?.ticketSummary?.overallResolutionRate != null
+      ? Math.round(summary.ticketSummary.overallResolutionRate)
+      : totalTickets > 0
+      ? Math.round((completedTickets / totalTickets) * 100)
+      : 0;
+  const inProgressPct = totalTickets > 0 ? Math.round((inProgressTickets / totalTickets) * 100) : 0;
+  const pendingPct = totalTickets > 0 ? Math.max(0, 100 - completionRate - inProgressPct) : 0;
+
+  const totalDepts = summary?.configSummary?.totalDepartments ?? departments.length;
+  const cityDeptsCount = departments.filter((d) => d.level === 'CITY').length;
+  const wardDeptsCount = departments.filter((d) => d.level === 'WARD').length;
+
+  const totalUsersCount = summary?.accountSummary?.totalUsers ?? 0;
+  const activeUsersCount = summary?.accountSummary?.activeUsers ?? 0;
+  const staffAndManagerCount =
+    (summary?.accountSummary?.staffCount ?? 0) + (summary?.accountSummary?.managerCount ?? 0);
+
+  const totalCategoriesCount = summary?.configSummary?.totalCategories ?? 0;
+  const totalSubCategoriesCount = summary?.configSummary?.totalSubCategories ?? 0;
+  const totalRoutingRulesCount = summary?.configSummary?.totalRoutingRules ?? 0;
+  const totalStepsCount = summary?.configSummary?.totalSteps ?? 0;
+
+  // Danh sách Tỉnh/Thành phố & Phường/Xã thực tế trích xuất từ API (100% không dùng mock)
+  const actualProvinces = useMemo(() => {
+    const map = new Map<string, string>();
+    const addProv = (p?: string) => {
+      if (!p || p === 'Chưa xác định') return;
+      const key = normalizeLocationKey(p);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, p);
+    };
+    systemLocations.forEach((loc) => addProv(loc.province));
+    tickets.forEach((t) => addProv(t.province));
+    return Array.from(map.values());
+  }, [systemLocations, tickets]);
+
+  const actualWards = useMemo(() => {
+    const map = new Map<string, string>();
+    const addWard = (p?: string, w?: string) => {
+      if (!w || w === 'Chưa xác định') return;
+      if (filterProvince !== 'ALL' && !matchesLocation(p, filterProvince)) return;
+      const key = normalizeLocationKey(w);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, w);
+    };
+    systemLocations.forEach((loc) => addWard(loc.province, loc.ward));
+    tickets.forEach((t) => addWard(t.province, t.ward));
+    return Array.from(map.values());
+  }, [systemLocations, tickets, filterProvince]);
+
+  // Phân nhóm theo Tab
+  const pendingList = useMemo(
+    () => tickets.filter((t) => t.status === 'INITIATED' || t.status === 'PENDING_REVIEW' || t.status === 'OPEN'),
+    [tickets],
   );
-  const inProgress = useMemo(
-    () => tickets.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED' || t.status === 'OPEN'),
-    [tickets]
+  const inProgressList = useMemo(
+    () => tickets.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED'),
+    [tickets],
   );
-  const completed = useMemo(
-    () => tickets.filter((t) => t.status === 'COMPLETED' || t.status === 'RESOLVED'),
-    [tickets]
+  const criticalList = useMemo(
+    () => tickets.filter((t) => t.isLifeThreatening || t.severity === 'CRITICAL'),
+    [tickets],
+  );
+  const completedList = useMemo(
+    () => tickets.filter((t) => t.status === 'RESOLVED' || t.status === 'COMPLETED'),
+    [tickets],
   );
 
-  const displayedTickets = useMemo(() => {
-    let list = tickets;
-    if (activeTab === 'sos') {
-      list = sosTickets;
-    } else if (activeTab === 'pending') {
-      list = pendingReview;
-    } else if (activeTab === 'in_progress') {
-      list = inProgress;
-    } else if (activeTab === 'completed') {
-      list = completed;
+  // Lọc danh sách hồ sơ mới nhất
+  const filteredTickets = useMemo(() => {
+    let base = tickets;
+    if (activeTab === 'pending') base = pendingList;
+    else if (activeTab === 'in_progress') base = inProgressList;
+    else if (activeTab === 'critical') base = criticalList;
+    else if (activeTab === 'completed') base = completedList;
+
+    return base.filter((t) => {
+      const q = filterSearch.trim();
+      const shortId = t.ticketId.length > 10 ? `#${t.ticketId.slice(0, 8)}` : t.ticketId;
+      const matchSearch =
+        !q ||
+        matchesSearch(t.ticketId, q) ||
+        matchesSearch(shortId, q) ||
+        matchesSearch(t.description, q) ||
+        matchesSearch(t.categoryName, q) ||
+        matchesSearch(t.subCategoryName, q) ||
+        matchesSearch(t.address, q) ||
+        matchesSearch(t.ward, q) ||
+        matchesSearch(t.province, q) ||
+        matchesSearch(t.departmentName, q) ||
+        matchesSearch(t.assigneeName, q) ||
+        matchesSearch(t.reporterName, q) ||
+        matchesSearch(t.reporterPhone, q);
+
+      const matchDept =
+        filterDept === 'ALL'
+          ? true
+          : filterDept === 'UNASSIGNED'
+          ? !t.departmentId
+          : t.departmentId === filterDept;
+
+      const matchProvince = matchesLocation(t.province, filterProvince);
+      const matchWard = matchesLocation(t.ward, filterWard);
+
+      return matchSearch && matchDept && matchProvince && matchWard;
+    });
+  }, [
+    tickets,
+    activeTab,
+    pendingList,
+    inProgressList,
+    criticalList,
+    completedList,
+    filterSearch,
+    filterDept,
+    filterProvince,
+    filterWard,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedTickets = filteredTickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Tiến độ xử lý theo từng cơ quan từ summary.departmentSummaries
+  const deptProgress = useMemo(() => {
+    const levelMap = new Map<string, 'CITY' | 'WARD'>();
+    departments.forEach((d) => levelMap.set(d.departmentId, d.level));
+
+    if (summary?.departmentSummaries && summary.departmentSummaries.length > 0) {
+      return summary.departmentSummaries
+        .map((ds) => {
+          const deptId = String(ds.departmentId || '');
+          const name = ds.departmentName || 'Chưa phân công';
+          const isWardByName = /ubnd|phường|xã/i.test(name);
+          const level = levelMap.get(deptId) || (isWardByName ? 'WARD' : 'CITY');
+          const total = Number(ds.totalAssignedTickets ?? 0);
+          const inProg = Number(ds.inProgressTickets ?? 0);
+          const done = Number(ds.resolvedOrCompletedTickets ?? 0);
+          const overdue = Number(ds.overdueTickets ?? 0);
+          const pct =
+            ds.resolutionRate != null
+              ? Math.round(ds.resolutionRate)
+              : total > 0
+              ? Math.round((done / total) * 100)
+              : 0;
+
+          return {
+            departmentId: deptId,
+            name,
+            level,
+            total,
+            inProg,
+            done,
+            overdue,
+            pct,
+          };
+        })
+        .sort((a, b) => b.total - a.total);
     }
-    return list.slice(0, 7);
-  }, [tickets, activeTab, sosTickets, pendingReview, inProgress, completed]);
 
-  const completionPct = tickets.length > 0 ? Math.round((completed.length / tickets.length) * 100) : 0;
+    return departments
+      .map((d) => {
+        const dTickets = tickets.filter((t) => t.departmentId === d.departmentId);
+        const done = dTickets.filter((t) => t.status === 'RESOLVED' || t.status === 'COMPLETED').length;
+        const inProg = dTickets.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'ASSIGNED').length;
+        const total = dTickets.length;
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        return {
+          departmentId: d.departmentId,
+          name: d.name,
+          level: d.level,
+          total,
+          done,
+          inProg,
+          overdue: 0,
+          pct,
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [summary, departments, tickets]);
 
-  const handleExportDashboard = () => {
-    downloadExcelReport(
+  const filteredDepts = useMemo(() => {
+    return deptProgress.filter((d) => {
+      const matchLevel = deptLevelFilter === 'ALL' || d.level === deptLevelFilter;
+      const q = deptSearch.trim();
+      const matchName =
+        !q ||
+        matchesSearch(d.name, q) ||
+        matchesSearch(d.departmentId, q);
+      return matchLevel && matchName;
+    });
+  }, [deptProgress, deptLevelFilter, deptSearch]);
+
+  // Xuất CSV & Excel đồng bộ với Manager & Staff
+  const handleExportCsv = () => {
+    downloadCsvFile(
       'CityFix_Tong_Quan_He_Thong',
+      [
+        'Mã hồ sơ',
+        'Danh mục',
+        'Nội dung phản ánh',
+        'Địa chỉ',
+        'Cơ quan phụ trách',
+        'Độ ưu tiên',
+        'Trạng thái',
+        'Thời gian tạo',
+      ],
+      tickets.map((t) => [
+        t.ticketId,
+        t.categoryName || 'Chưa phân loại',
+        t.description,
+        t.address,
+        t.departmentName || 'Chưa phân tuyến',
+        priorityInfo(t.severity).label,
+        statusInfo(t.status).label,
+        t.createdAt,
+      ]),
+    );
+    message.success('Đã xuất danh sách hồ sơ hệ thống (.csv) thành công!');
+  };
+
+  const handleExportExcel = () => {
+    downloadExcelReport(
+      'CityFix_Bao_Cao_Quan_Tri_He_Thong',
       'BÁO CÁO TỔNG QUAN QUẢN TRỊ HỆ THỐNG CITYFIX',
-      `Tỷ lệ giải quyết toàn hệ thống: ${completionPct}%`,
+      `Tổng số hồ sơ: ${totalTickets} • Đã giải quyết: ${completedTickets} (${completionRate}%) • Cơ quan: ${totalDepts}`,
       [
         {
-          heading: '1. Thống kê Tổng quan Hệ thống',
+          heading: '1. Tổng hợp Chỉ số Vận hành Toàn Hệ thống',
           headers: ['Chỉ tiêu', 'Số lượng', 'Ghi chú'],
           rows: [
-            ['Tổng số hồ sơ sự cố', tickets.length, `${completed.length} hoàn thành, ${inProgress.length} đang xử lý, ${pendingReview.length} chờ duyệt`],
-            ['Tổng số Cơ quan / Đơn vị', systemStats.totalDepts, `${systemStats.cityDepts} Cấp Tỉnh/TP, ${systemStats.wardDepts} Cấp Xã/Phường`],
-            ['Tài khoản Người dùng', systemStats.totalUsers, 'Quản trị viên, Quản lý, Nhân viên & Cư dân'],
-            ['Danh mục & Quy tắc định tuyến', `${systemStats.totalCategories} danh mục`, `${systemStats.totalRules} quy tắc định tuyến`],
+            ['Tổng số hồ sơ trên hệ thống', totalTickets, `Tỷ lệ hoàn thành: ${completionRate}%`],
+            ['Hồ sơ đã giải quyết / hoàn thành', completedTickets, 'RESOLVED + COMPLETED'],
+            ['Hồ sơ đang xử lý', inProgressTickets, 'ASSIGNED + IN_PROGRESS'],
+            ['Hồ sơ mới khởi tạo / chờ duyệt', pendingTickets, 'INITIATED'],
+            ['Sự cố khẩn cấp (SOS)', sosCount, 'Ưu tiên điều phối'],
+            ['Tổng số cơ quan phụ trách', totalDepts, `${cityDeptsCount} Cấp TP / ${wardDeptsCount} Cấp Phường-Xã`],
+            ['Tổng số tài khoản hệ thống', totalUsersCount, `${activeUsersCount} tài khoản đang hoạt động`],
           ],
         },
         {
-          heading: '2. Tình trạng xử lý theo Cơ quan / Đơn vị',
-          headers: ['Mã đơn vị', 'Tên Cơ quan / Đơn vị', 'Tổng tiếp nhận', 'Đang xử lý', 'Đã hoàn thành', 'Tỷ lệ hoàn thành'],
-          rows: deptPerf.map((dp) => [dp.deptId, dp.name, dp.total, dp.inProgress, dp.completed, `${dp.pct}%`]),
-        },
-        {
-          heading: '3. Danh sách Hồ sơ Ghi nhận Mới nhất',
-          headers: ['Mã hồ sơ', 'Nội dung phản ánh', 'Phường/Xã', 'Tỉnh/Thành phố', 'Đơn vị phụ trách', 'Trạng thái', 'Ngày tiếp nhận'],
-          rows: tickets.map((t) => [
-            t.ticketId,
-            t.description,
-            t.ward,
-            t.province,
-            t.departmentName || departmentsMap[t.departmentId] || getDept(t.departmentId)?.name || 'Chưa phân công',
-            statusInfo(t.status).label,
-            t.createdAt,
+          heading: '2. Tình trạng Giải quyết theo Đơn vị Phụ trách',
+          headers: ['Mã đơn vị', 'Tên cơ quan', 'Cấp quản lý', 'Tổng hồ sơ', 'Đang xử lý', 'Đã hoàn thành', 'Tỷ lệ (%)'],
+          rows: deptProgress.map((d) => [
+            d.departmentId,
+            d.name,
+            d.level === 'CITY' ? 'Cấp Thành phố' : 'Cấp Phường/Xã',
+            d.total,
+            d.inProg,
+            d.done,
+            `${d.pct}%`,
           ]),
         },
-      ]
+      ],
     );
     message.success('Đã xuất Báo cáo Tổng quan Hệ thống (.xls) thành công!');
   };
 
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
-      {/* 1. HEADER WITH BRAND ACCENT */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* =========================================================================
+          1. CLEAN COMMAND HEADER (ĐỒNG BỘ VỚI MANAGER & STAFF DASHBOARD)
+         ========================================================================= */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
-              Tổng quan Quản trị Hệ thống
+              Bảng Điều hành Quản trị Hệ thống
             </h1>
-            {!isUsingMock ? (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Dữ liệu Trực tuyến API
-              </span>
-            ) : (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                Dữ liệu Mẫu Hệ thống
-              </span>
-            )}
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Trực tuyến • API Thời gian thực
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200 inline-flex items-center gap-1.5">
+              Quản trị Toàn Hệ thống
+            </span>
           </div>
           <p className="text-[12px] text-gray-500 mt-1">
-            Giám sát tổng thể hồ sơ phản ánh, đơn vị hành chính, danh mục và người dùng trên toàn hệ thống CityFix
+            Giám sát tập trung <strong className="text-gray-800">{totalDepts}</strong> cơ quan xử lý •{' '}
+            <strong className="text-gray-800">{totalCategoriesCount}</strong> danh mục sự cố ({totalSubCategoriesCount} danh mục con) •{' '}
+            <strong className="text-gray-800">{totalRoutingRulesCount}</strong> quy tắc định tuyến tự động
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <span className="text-[11px] text-gray-400 hidden md:inline mr-1">
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          <span className="text-[11px] text-gray-400 hidden sm:inline mr-1">
             Cập nhật: <strong className="text-gray-600 font-semibold">{lastRefreshed}</strong>
           </span>
+
           <button
-            onClick={fetchDashboardData}
-            disabled={isLoading}
-            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+            onClick={loadDashboardData}
+            disabled={loading}
+            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
           >
-            {isLoading ? 'Đang tải...' : '↻ Làm mới'}
+            <RefreshIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-orange-500' : 'text-gray-500'}`} />
+            <span>{loading ? 'Đang tải...' : 'Làm mới'}</span>
           </button>
+
           <button
-            onClick={handleExportDashboard}
+            onClick={handleExportCsv}
+            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+          >
+            Xuất CSV
+          </button>
+
+          <button
+            onClick={handleExportExcel}
             className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors cursor-pointer"
           >
             Xuất Báo cáo (.xls)
           </button>
+
+          {onViewAll && (
+            <button
+              onClick={onViewAll}
+              className="px-3.5 py-1.5 text-[12px] font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+            >
+              Xem tất cả ({totalTickets}) →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Thông báo lỗi nếu có */}
+      {errorMsg && (
+        <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center justify-between">
+          <span>{errorMsg}</span>
           <button
-            onClick={onViewAll}
-            className="px-3.5 py-1.5 text-[12px] font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+            onClick={loadDashboardData}
+            className="px-2.5 py-1 rounded-lg bg-white border border-red-200 text-red-600 font-semibold hover:bg-red-100 cursor-pointer"
           >
-            Tra cứu Hồ sơ →
+            Thử lại
           </button>
         </div>
-      </div>
+      )}
 
-      {/* 2. 4 SYSTEM KPI CARDS (BRAND ORANGE & CONTEXTUAL SEMANTIC COLORS) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Total Tickets (Primary Orange Context) */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Tổng Hồ Sơ Hệ Thống
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
-              <TicketIcon className="w-4 h-4" />
+      {/* =========================================================================
+          3. 4 THẺ KPI ĐỒNG BỘ + THANH TIẾN ĐỘ TOÀN HỆ THỐNG
+         ========================================================================= */}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            {
+              label: 'Tổng Hồ Sơ Hệ Thống',
+              val: totalTickets,
+              unit: 'hồ sơ',
+              sub: `Tỷ lệ hoàn tất: ${completionRate}% (${completedTickets} đã xong)`,
+              icon: <ClipboardIcon />,
+              iconBox: 'bg-orange-50 text-orange-600',
+              valCls: 'text-gray-900',
+              subCls: 'text-orange-600 font-semibold',
+              onClick: () => {
+                setActiveTab('all');
+                setPage(1);
+              },
+              active: activeTab === 'all',
+            },
+            {
+              label: 'Đang Giải Quyết',
+              val: inProgressTickets,
+              unit: 'hồ sơ',
+              sub: `${pendingTickets} chờ duyệt • ${unassignedCount} chưa phân công`,
+              icon: <ClockIcon />,
+              iconBox: 'bg-amber-50 text-amber-600',
+              valCls: 'text-orange-600',
+              subCls: 'text-gray-500',
+              onClick: () => {
+                setActiveTab('in_progress');
+                setPage(1);
+              },
+              active: activeTab === 'in_progress',
+            },
+            {
+              label: 'Cơ Quan Phụ Trách',
+              val: totalDepts,
+              unit: 'đơn vị',
+              sub: `${cityDeptsCount} Cấp Thành phố • ${wardDeptsCount} Cấp Phường/Xã`,
+              icon: <BuildingIcon />,
+              iconBox: 'bg-slate-100 text-slate-700',
+              valCls: 'text-gray-900',
+              subCls: 'text-gray-500',
+              onClick: () => setDeptLevelFilter('ALL'),
+              active: false,
+            },
+            {
+              label: 'Tài Khoản & Cấu Hình',
+              val: totalUsersCount,
+              unit: 'tài khoản',
+              sub: `${activeUsersCount} hoạt động • ${totalCategoriesCount} danh mục • ${totalRoutingRulesCount} quy tắc`,
+              icon: <UsersGroupIcon />,
+              iconBox: 'bg-emerald-50 text-emerald-600',
+              valCls: 'text-emerald-600',
+              subCls: 'text-emerald-600 font-semibold',
+              onClick: () => {},
+              active: false,
+            },
+          ].map((kpi) => (
+            <div
+              key={kpi.label}
+              onClick={kpi.onClick}
+              className={`bg-white border rounded-2xl p-5 shadow-xs cursor-pointer transition-all flex flex-col justify-between ${
+                kpi.active
+                  ? 'border-orange-400 ring-2 ring-orange-500/15'
+                  : 'border-gray-200 hover:border-orange-200'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                  {kpi.label}
+                </span>
+                <div className={`w-8 h-8 rounded-xl ${kpi.iconBox} flex items-center justify-center`}>
+                  {kpi.icon}
+                </div>
+              </div>
+
+              <div className="my-2 flex items-baseline gap-1.5">
+                <span className={`font-display text-3xl font-black ${kpi.valCls}`}>
+                  {loading ? '...' : kpi.val}
+                </span>
+                <span className="text-xs text-gray-400">{kpi.unit}</span>
+              </div>
+
+              <div className={`text-[11px] pt-2 border-t border-gray-100 truncate ${kpi.subCls}`}>
+                {kpi.sub}
+              </div>
             </div>
-          </div>
-          <div className="my-2 flex items-baseline gap-1.5">
-            <span className="font-display text-3xl font-black text-gray-900">{tickets.length}</span>
-            <span className="text-xs text-gray-400">hồ sơ</span>
-          </div>
-          <div className="text-[11px] text-gray-500 flex items-center gap-2 pt-2 border-t border-gray-100">
-            <span className="text-emerald-600 font-semibold">{completed.length} hoàn thành</span>
-            <span className="text-gray-300">•</span>
-            <span className="text-orange-600 font-semibold">{inProgress.length} đang xử lý</span>
-          </div>
+          ))}
         </div>
 
-        {/* KPI 2: Departments (Administrative Blue Context) */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Cơ Quan / Đơn Vị
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <BuildingIcon className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="my-2 flex items-baseline gap-1.5">
-            <span className="font-display text-3xl font-black text-gray-900">{systemStats.totalDepts}</span>
-            <span className="text-xs text-gray-400">đơn vị hoạt động</span>
-          </div>
-          <div className="text-[11px] text-gray-500 flex items-center gap-2 pt-2 border-t border-gray-100">
-            <span><strong className="text-blue-700">{systemStats.cityDepts}</strong> Cấp Tỉnh/TP</span>
-            <span className="text-gray-300">•</span>
-            <span><strong className="text-gray-700">{systemStats.wardDepts}</strong> Cấp Xã/Phường</span>
-          </div>
-        </div>
-
-        {/* KPI 3: Users (Amber/Warm Context) */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Tài Khoản Người Dùng
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <UserIcon className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="my-2 flex items-baseline gap-1.5">
-            <span className="font-display text-3xl font-black text-gray-900">{systemStats.totalUsers}</span>
-            <span className="text-xs text-gray-400">tài khoản</span>
-          </div>
-          <div className="text-[11px] text-gray-500 pt-2 border-t border-gray-100 truncate">
-            Quản trị viên, Quản lý, Nhân viên & Cư dân
-          </div>
-        </div>
-
-        {/* KPI 4: Categories & Routing Rules (Emerald/Active Configuration Context) */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Danh Mục & Định Tuyến
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <SlidersIcon className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="my-2 flex items-baseline gap-2.5">
+        {/* Sơ đồ Phân bổ & Tiến độ Giải quyết Toàn Hệ Thống */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="font-display text-3xl font-black text-gray-900">{systemStats.totalCategories}</span>
-              <span className="text-xs text-gray-400 ml-1">danh mục</span>
-            </div>
-            <span className="text-gray-300">/</span>
-            <div>
-              <span className="font-display text-2xl font-black text-orange-600">{systemStats.totalRules}</span>
-              <span className="text-xs text-gray-400 ml-1">quy tắc</span>
-            </div>
-          </div>
-          <div className="text-[11px] text-gray-500 pt-2 border-t border-gray-100 truncate">
-            Định tuyến theo Tỉnh/TP → Phường/Xã
-          </div>
-        </div>
-      </div>
-
-      {/* 3. MAIN WORKSPACE: 2 COLUMNS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Left Column (8/12): Recent Tickets Table (Read-only Lookup) */}
-        <div className="lg:col-span-8 bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-          <div className="p-4 sm:px-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-[14px] font-bold text-gray-900">
-                Hồ sơ Phản ánh Mới nhất Toàn Hệ thống
-              </h3>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Bấm vào một hồ sơ để xem chi tiết thông tin và lịch sử xử lý (Chế độ Xem)
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <h3 className="font-display text-sm font-bold text-gray-900">
+                  Sơ đồ Phân bổ & Tiến độ Giải quyết Hồ sơ Toàn Hệ thống
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {completionRate}% hoàn tất
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Tỷ trọng hoàn thành dứt điểm hồ sơ và các giai đoạn điều phối hiện trường
               </p>
             </div>
 
-            {/* Filter Pills with Brand Orange Active State */}
-            <div className="flex items-center bg-gray-100 p-1 rounded-xl text-[11px] font-semibold flex-wrap gap-0.5">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 font-bold border border-orange-200 shadow-2xs">
+                {staffAndManagerCount} Cán bộ & Quản lý
+              </span>
+              <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 font-bold border border-slate-200 shadow-2xs">
+                {totalStepsCount} Bước quy trình
+              </span>
+            </div>
+          </div>
+
+          {/* Thanh Tiến Độ Đa Đoạn (Multi-segment Visual Progress Track) */}
+          <div className="space-y-2">
+            <div className="w-full h-3.5 bg-gray-100/80 rounded-full p-0.5 overflow-hidden flex gap-0.5 shadow-inner">
+              <div
+                title={`Đã hoàn thành: ${completedTickets} hồ sơ (${completionRate}%)`}
+                className="h-full rounded-l-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-400 transition-all duration-500 hover:brightness-110 cursor-pointer"
+                style={{ width: `${Math.max(completionRate > 0 ? 2 : 0, completionRate)}%` }}
+              />
+              <div
+                title={`Đang xử lý: ${inProgressTickets} hồ sơ (${inProgressPct}%)`}
+                className="h-full bg-gradient-to-r from-orange-600 via-orange-500 to-amber-400 transition-all duration-500 hover:brightness-110 cursor-pointer"
+                style={{ width: `${Math.max(inProgressPct > 0 ? 2 : 0, inProgressPct)}%` }}
+              />
+              <div
+                title={`Chờ duyệt: ${pendingTickets} hồ sơ (${pendingPct}%)`}
+                className="h-full rounded-r-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-500 hover:brightness-110 cursor-pointer"
+                style={{ width: `${Math.max(pendingPct > 0 ? 2 : 0, pendingPct)}%` }}
+              />
+            </div>
+
+            {/* 3 Khối Chỉ Số Phân Bổ Trực Quan */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs" />
+                  <span className="text-xs font-semibold text-emerald-900">Đã giải quyết xong</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono-cf text-xs font-black text-emerald-700">{completedTickets}</span>
+                  <span className="text-[10px] text-emerald-600">({completionRate}%)</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-orange-50/60 border border-orange-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-xs" />
+                  <span className="text-xs font-semibold text-orange-900">Đang điều phối & xử lý</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono-cf text-xs font-black text-orange-700">{inProgressTickets}</span>
+                  <span className="text-[10px] text-orange-600">({inProgressPct}%)</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-amber-50/60 border border-amber-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-xs" />
+                  <span className="text-xs font-semibold text-amber-900">Mới tiếp nhận / Chờ duyệt</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono-cf text-xs font-black text-amber-700">{pendingTickets}</span>
+                  <span className="text-[10px] text-amber-600">({pendingPct}%)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          4. WORKSPACE 2 CỘT CÂN ĐỐI (7/12 TRÁI — 5/12 PHẢI) GIỐNG MANAGER & STAFF
+         ========================================================================= */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+        {/* CỘT TRÁI (7/12): DANH SÁCH HỒ SƠ MỚI NHẤT TOÀN HỆ THỐNG */}
+        <div className="xl:col-span-7 bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between">
+          <div className="p-4 sm:px-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[14px] font-bold text-gray-900">
+                Hồ sơ Phản ánh Mới nhất Toàn Hệ thống
+              </h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Bấm vào từng hồ sơ để xem chi tiết thông tin định tuyến, ảnh hiện trường và nhật ký xử lý
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-full sm:w-56">
+                <span className="text-gray-400 absolute left-3 top-2.5">
+                  <SearchSmIcon />
+                </span>
+                <input
+                  type="text"
+                  placeholder="Tìm mã (#...), nội dung, danh mục, địa chỉ..."
+                  value={filterSearch}
+                  onChange={(e) => {
+                    setFilterSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:border-orange-500 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Thanh lọc Tab trạng thái + Cơ quan & Tỉnh/TP + Phường/Xã từ dữ liệu thật */}
+          <div className="px-5 py-2.5 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none text-[11px] font-semibold">
               {[
                 { key: 'all', label: `Tất cả (${tickets.length})` },
-                { key: 'sos', label: `Khẩn cấp (${sosTickets.length})` },
-                { key: 'pending', label: `Chờ duyệt (${pendingReview.length})` },
-                { key: 'in_progress', label: `Đang xử lý (${inProgress.length})` },
-                { key: 'completed', label: `Hoàn thành (${completed.length})` },
+                { key: 'pending', label: `Chờ duyệt (${pendingList.length})` },
+                { key: 'in_progress', label: `Đang xử lý (${inProgressList.length})` },
+                { key: 'critical', label: `Khẩn cấp (${criticalList.length})` },
+                { key: 'completed', label: `Đã xong (${completedList.length})` },
               ].map((tab) => (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key as FilterTab)}
-                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                  onClick={() => {
+                    setActiveTab(tab.key as TicketTabKey);
+                    setPage(1);
+                  }}
+                  className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                     activeTab === tab.key
-                      ? 'bg-white text-orange-600 shadow-2xs font-bold'
-                      : 'text-gray-500 hover:text-gray-800'
+                      ? 'bg-orange-600 text-white font-bold shadow-2xs'
+                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                 >
                   {tab.label}
                 </button>
               ))}
             </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <select
+                value={filterProvince}
+                onChange={(e) => {
+                  setFilterProvince(e.target.value);
+                  setFilterWard('ALL');
+                  setPage(1);
+                }}
+                className="text-[11px] border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
+              >
+                <option value="ALL">Tất cả Tỉnh/TP ({actualProvinces.length})</option>
+                {actualProvinces.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={filterWard}
+                onChange={(e) => {
+                  setFilterWard(e.target.value);
+                  setPage(1);
+                }}
+                className="text-[11px] border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 outline-none focus:border-orange-500 cursor-pointer max-w-[155px]"
+              >
+                <option value="ALL">Tất cả Phường/Xã ({actualWards.length})</option>
+                {actualWards.map((w) => (
+                  <option key={w} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={filterDept}
+                onChange={(e) => {
+                  setFilterDept(e.target.value);
+                  setPage(1);
+                }}
+                className="text-[11px] border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 outline-none focus:border-orange-500 cursor-pointer max-w-[165px]"
+              >
+                <option value="ALL">Tất cả Cơ quan ({departments.length})</option>
+                <option value="UNASSIGNED">Chưa phân tuyến</option>
+                {departments.map((d) => (
+                  <option key={d.departmentId} value={d.departmentId}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+
+              {(filterSearch || activeTab !== 'all' || filterProvince !== 'ALL' || filterWard !== 'ALL' || filterDept !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    setFilterSearch('');
+                    setActiveTab('all');
+                    setFilterProvince('ALL');
+                    setFilterWard('ALL');
+                    setFilterDept('ALL');
+                    setPage(1);
+                  }}
+                  className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 cursor-pointer"
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/70 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                  <th className="py-3 px-4">Mã hồ sơ</th>
-                  <th className="py-3 px-4">Nội dung & Danh mục</th>
-                  <th className="py-3 px-4">Địa bàn (Phường/Xã, Tỉnh/TP)</th>
-                  <th className="py-3 px-4">Đơn vị phụ trách</th>
-                  <th className="py-3 px-4 text-right">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-[12px]">
-                {displayedTickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-10 text-center text-gray-400">
-                      Không có hồ sơ nào trong mục này.
-                    </td>
-                  </tr>
-                ) : (
-                  displayedTickets.map((t) => {
-                    const deptName =
-                      t.departmentName ||
-                      departmentsMap[t.departmentId] ||
-                      getDept(t.departmentId)?.name ||
-                      'Chưa phân công';
-                    const catName = t.categoryName || getCat(t.categoryId)?.name || 'Hạ tầng đô thị';
-                    const st = statusInfo(t.status);
+          {/* Danh sách Hồ sơ */}
+          <div className="divide-y divide-gray-100">
+            {pagedTickets.length === 0 ? (
+              <div className="p-10 text-center text-gray-400 text-xs">
+                {loading
+                  ? 'Đang đồng bộ danh sách hồ sơ từ máy chủ...'
+                  : 'Không có hồ sơ nào phù hợp với bộ lọc hiện tại.'}
+              </div>
+            ) : (
+              pagedTickets.map((t) => {
+                const shortId = t.ticketId.length > 10 ? `#${t.ticketId.slice(0, 8)}` : t.ticketId;
+                const si = statusInfo(t.status);
+                const pi = priorityInfo(t.severity);
+                const deptName =
+                  t.departmentName ||
+                  departments.find((d) => d.departmentId === t.departmentId)?.name ||
+                  'Chưa phân tuyến';
 
-                    return (
-                      <tr
-                        key={t.ticketId}
-                        onClick={() => onOpenTicket(t.ticketId, t)}
-                        className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
-                      >
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            {t.isLifeThreatening && (
-                              <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Khẩn cấp SOS" />
-                            )}
-                            <span className="font-mono text-[11px] font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded group-hover:bg-orange-100 group-hover:text-orange-700 transition-colors">
-                              {t.ticketId}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-4 max-w-[230px]">
-                          <p className="font-semibold text-gray-900 truncate group-hover:text-orange-600 transition-colors">
-                            {t.description}
-                          </p>
-                          <p className="text-[11px] text-gray-400 truncate">
-                            {catName} • {t.createdAt}
-                          </p>
-                        </td>
-
-                        <td className="py-3 px-4 max-w-[180px]">
-                          <div className="flex items-center gap-1 text-gray-700 font-medium truncate">
-                            <MapPinIcon className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                            <span className="truncate">{t.ward}</span>
-                          </div>
-                          <p className="text-[11px] text-gray-400 truncate pl-4">{t.province}</p>
-                        </td>
-
-                        <td className="py-3 px-4 max-w-[180px]">
-                          <p className="text-gray-700 font-medium truncate">{deptName}</p>
-                        </td>
-
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
-                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border inline-flex items-center gap-1.5 ${st.cls}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-                            {st.label}
+                return (
+                  <div
+                    key={t.ticketId}
+                    onClick={() => onOpenTicket(t.ticketId, t)}
+                    className="p-4 sm:px-5 hover:bg-orange-50/40 transition-colors cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {t.isLifeThreatening && (
+                          <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-mono text-[9px] font-bold">
+                            SOS
                           </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                        )}
+                        <span className="font-mono text-[11px] font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded group-hover:bg-orange-100 group-hover:text-orange-700 transition-colors">
+                          {shortId}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200/70 text-[10px] font-semibold">
+                          {deptName}
+                        </span>
+                        {t.assigneeName && (
+                          <span className="text-[11px] text-gray-500">
+                            • Cán bộ: <strong className="text-gray-700">{t.assigneeName}</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[13px] font-bold text-gray-900 group-hover:text-orange-600 transition-colors truncate">
+                        {t.description}
+                      </p>
+
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400 truncate">
+                        <span className="font-medium text-gray-600">{t.categoryName || 'Sự cố hạ tầng'}</span>
+                        <span>•</span>
+                        <span className="truncate">{t.address}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1.5 flex-shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${pi.cls}`}>
+                          {pi.label}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${si.cls}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
+                          {si.label}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] text-gray-400">{t.createdAt}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
 
-          <div className="px-5 py-3 bg-gray-50/70 border-t border-gray-100 flex items-center justify-between text-[12px]">
-            <span className="text-gray-500">
-              Hiển thị {displayedTickets.length} / {tickets.length} hồ sơ
+          {/* Footer Phân trang */}
+          <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/40 flex items-center justify-between text-xs text-gray-500">
+            <span>
+              Hiển thị{' '}
+              <strong className="text-gray-800">
+                {filteredTickets.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–
+                {Math.min(currentPage * PAGE_SIZE, filteredTickets.length)}
+              </strong>{' '}
+              / <strong className="text-gray-800">{filteredTickets.length}</strong> hồ sơ
             </span>
-            <button
-              onClick={onViewAll}
-              className="font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
-            >
-              Xem toàn bộ danh sách →
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 cursor-pointer"
+              >
+                ‹ Trước
+              </button>
+              <span className="px-2 font-mono text-[11px] font-semibold text-gray-700">
+                {currentPage}/{totalPages}
+              </span>
+              <button
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 cursor-pointer"
+              >
+                Sau ›
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Right Column (4/12): System Status & Department Progress */}
-        <div className="lg:col-span-4 space-y-5">
-          {/* Card 1: Overall Progress (Contextual Status Colors) */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[14px] font-bold text-gray-900">
-                Tỷ lệ Giải quyết Toàn Hệ thống
-              </h3>
-              <span className="font-display text-lg font-black text-emerald-600">
-                {completionPct}%
+        {/* CỘT PHẢI (5/12): TÌNH TRẠNG GIẢI QUYẾT THEO ĐƠN VỊ */}
+        <div className="xl:col-span-5 bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col">
+          <div className="p-4 sm:px-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[14px] font-bold text-gray-900">
+                Tình trạng Giải quyết theo Đơn vị
+              </h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Tiến độ xử lý tại {filteredDepts.length}/{deptProgress.length} cơ quan phụ trách
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-44">
+              <span className="text-gray-400 absolute left-3 top-2.5">
+                <SearchSmIcon />
               </span>
-            </div>
-
-            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${completionPct}%` }}
+              <input
+                value={deptSearch}
+                onChange={(e) => setDeptSearch(e.target.value)}
+                placeholder="Tìm tên cơ quan..."
+                className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:border-orange-500 transition-colors"
               />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-              <div className="p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/70">
-                <p className="font-display text-lg font-black text-amber-600">{pendingReview.length}</p>
-                <p className="text-[10px] font-semibold text-amber-700">Chờ duyệt</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-orange-50/60 border border-orange-200/70">
-                <p className="font-display text-lg font-black text-orange-600">{inProgress.length}</p>
-                <p className="text-[10px] font-semibold text-orange-700">Đang xử lý</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
-                <p className="font-display text-lg font-black text-emerald-600">{completed.length}</p>
-                <p className="text-[10px] font-semibold text-emerald-700">Hoàn thành</p>
-              </div>
             </div>
           </div>
 
-          {/* Card 2: Department Resolution Breakdown */}
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
-            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-[14px] font-bold text-gray-900">
-                Tiến độ theo Cơ quan / Đơn vị
-              </h3>
-              <span className="text-[11px] font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
-                {deptPerf.length} đơn vị
-              </span>
-            </div>
-
-            <div className="divide-y divide-gray-100 max-h-[320px] overflow-y-auto scrollbar-thin">
-              {deptPerf.map((dp) => (
-                <div key={dp.deptId} className="px-5 py-3 space-y-1.5 hover:bg-orange-50/20 transition-colors">
-                  <div className="flex items-center justify-between gap-2 text-[12px]">
-                    <p className="font-semibold text-gray-800 truncate">{dp.name}</p>
-                    <span className="text-[11px] font-bold text-gray-600 flex-shrink-0">
-                      {dp.completed}/{dp.total} ({dp.pct}%)
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        dp.pct >= 80 ? 'bg-emerald-500' : 'bg-orange-500'
-                      }`}
-                      style={{ width: `${dp.pct}%` }}
-                    />
-                  </div>
-                </div>
+          {/* Filter Tabs Cấp Hành Chính */}
+          <div className="px-5 py-2 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1 text-[11px] font-semibold">
+              {(
+                [
+                  { k: 'ALL', l: `Tất cả (${deptProgress.length})` },
+                  { k: 'CITY', l: 'Sở / Ngành TP' },
+                  { k: 'WARD', l: 'UBND Phường / Xã' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.k}
+                  onClick={() => setDeptLevelFilter(tab.k)}
+                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                    deptLevelFilter === tab.k
+                      ? 'bg-orange-600 text-white font-bold shadow-2xs'
+                      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  {tab.l}
+                </button>
               ))}
             </div>
+          </div>
+
+          {/* Danh sách cơ quan */}
+          <div className="p-4 space-y-3 max-h-[540px] overflow-y-auto scrollbar-thin">
+            {filteredDepts.length === 0 ? (
+              <div className="p-8 text-center text-xs text-gray-400">
+                {loading ? 'Đang tải dữ liệu đơn vị...' : 'Không tìm thấy cơ quan phù hợp.'}
+              </div>
+            ) : (
+              filteredDepts.map((d) => (
+                <div
+                  key={d.departmentId || d.name}
+                  className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/60 hover:bg-white hover:border-orange-200 transition-all"
+                >
+                  <div className="flex items-center justify-between text-xs mb-2 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${
+                          d.level === 'CITY'
+                            ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {d.level === 'CITY' ? 'Cấp TP' : 'Phường/Xã'}
+                      </span>
+                      <span className="font-bold text-gray-800 truncate">{d.name}</span>
+                    </div>
+                    <span className="font-mono font-bold text-gray-900 text-xs flex-shrink-0">
+                      {d.pct}%
+                    </span>
+                  </div>
+
+                  <div className="h-2.5 bg-gray-100/90 rounded-full overflow-hidden flex gap-0.5 p-0.5 mb-2 shadow-inner">
+                    <div
+                      title={`Đã hoàn thành: ${d.done} hồ sơ`}
+                      className="h-full rounded-l-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-400 transition-all duration-500"
+                      style={{ width: `${d.total > 0 ? (d.done / d.total) * 100 : 0}%` }}
+                    />
+                    <div
+                      title={`Đang xử lý: ${d.inProg} hồ sơ`}
+                      className="h-full bg-gradient-to-r from-orange-600 via-orange-500 to-amber-400 transition-all duration-500"
+                      style={{ width: `${d.total > 0 ? (d.inProg / d.total) * 100 : 0}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-gray-500">
+                    <span>
+                      Tổng giao: <strong className="text-gray-800">{d.total}</strong> hồ sơ
+                    </span>
+                    <div className="flex items-center gap-2.5">
+                      <span>
+                        <strong className="text-emerald-600">{d.done}</strong> xong
+                      </span>
+                      <span>•</span>
+                      <span>
+                        <strong className="text-orange-600">{d.inProg}</strong> đang làm
+                      </span>
+                      {d.overdue > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-600 font-semibold">{d.overdue} quá hạn</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+function ClipboardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+    </svg>
+  );
+}
+function ClockIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+function BuildingIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01" />
+    </svg>
+  );
+}
+function UsersGroupIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+    </svg>
+  );
+}
+function SearchSmIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+function RefreshIcon({ className = 'w-3.5 h-3.5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+    </svg>
   );
 }

@@ -192,3 +192,76 @@
   background-color: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
 }
+
+
+/* ── Login & Landing Animations ─────────────────────────────────────────────── */
+@keyframes dongson-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-dongson-spin {
+  animation: dongson-spin 60s linear infinite;
+  transform-origin: 350px 350px;
+}
+
+@keyframes leaf-sway {
+  0%, 100% {
+    transform: rotate(0deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(2deg) translate(2px, -3px);
+  }
+}
+
+.animate-leaf-sway {
+  animation: leaf-sway 6s ease-in-out infinite;
+  transform-origin: top left;
+}
+
+@keyframes route-dash {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+.animate-route-dash {
+  stroke-dasharray: 8 6;
+  animation: route-dash 20s linear infinite;
+}
+
+@keyframes marker-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-marker-float {
+  animation: marker-float 3s ease-in-out infinite;
+}
+
+@keyframes beacon {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.animate-beacon {
+  animation: beacon 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
