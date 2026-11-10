@@ -980,3 +980,57 @@ export async function getManagerResolvedTickets(params?: {
   }
   return res as PageManagerTickets;
 }
+
+
+/**
+ * 21. Lấy danh sách vé theo cơ quan/phòng ban (Dành cho Manager và Admin)
+ * GET /api/v1/manager/tickets/department?departmentId=...
+ */
+export async function getDepartmentTicketsForAdmin(params: {
+  departmentId: string;
+  priority?: string;
+  status?: string;
+  page?: number;
+  size?: number;
+}): Promise<PageManagerTickets> {
+  const query = new URLSearchParams();
+  query.append('departmentId', params.departmentId);
+  if (params.priority) query.append('priority', params.priority);
+  if (params.status) query.append('status', params.status);
+  if (params.page !== undefined) query.append('page', params.page.toString());
+  if (params.size !== undefined) query.append('size', params.size.toString());
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await managerRequest<any>(`/api/v1/manager/tickets/department${qs}`, {
+    method: 'GET',
+  });
+
+  if (Array.isArray(res)) {
+    return {
+      content: res,
+      totalPages: 1,
+      totalElements: res.length,
+      size: res.length,
+      number: 0,
+    };
+  }
+  if (res?.content && Array.isArray(res.content)) {
+    return res as PageManagerTickets;
+  }
+  if (Array.isArray(res?.data)) {
+    return {
+      content: res.data,
+      totalPages: 1,
+      totalElements: res.data.length,
+      size: res.data.length,
+      number: 0,
+    };
+  }
+  return {
+    content: [],
+    totalPages: 0,
+    totalElements: 0,
+    size: 0,
+    number: 0,
+  };
+}

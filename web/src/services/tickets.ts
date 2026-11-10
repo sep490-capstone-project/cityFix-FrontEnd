@@ -1,3 +1,4 @@
+import { APP_CONFIG } from '../config';
 import { getAccessToken } from './auth';
 
 export interface PageableParams {
@@ -33,7 +34,22 @@ export interface PageTicketResponse {
   number: number;
 }
 
-const API_URL = 'http://180.93.125.111';
+export interface TicketHistoryItemResponse {
+  historyId?: string;
+  id?: string;
+  ticketId?: string;
+  actionType?: string;
+  action?: string;
+  actorId?: string;
+  actorName?: string;
+  actor?: string;
+  note?: string;
+  description?: string;
+  createdAt?: string;
+  timestamp?: string;
+}
+
+const API_URL = APP_CONFIG.API_BASE_URL.replace(/\/+$/, '');
 
 async function ticketRequest<T>(
   endpoint: string,
@@ -57,7 +73,7 @@ async function ticketRequest<T>(
     throw new Error(payload?.message || `Lỗi gọi API: ${response.status}`);
   }
 
-  return payload.data as T;
+  return (payload?.data !== undefined ? payload.data : payload) as T;
 }
 
 // API: Lấy danh sách ticket chờ duyệt (INITIATED)
@@ -70,13 +86,11 @@ export async function getInitiatedTickets(params?: PageableParams): Promise<Page
   return ticketRequest<PageTicketResponse>(`/api/v1/admin/tickets/initiated${qString}`);
 }
 
-// API: (Chưa có trên backend) Lấy danh sách tất cả các ticket
-// Giả định backend sẽ làm API này ở GET /api/v1/tickets
-export async function getAllTickets(params?: PageableParams): Promise<PageTicketResponse> {
-  const query = new URLSearchParams();
-  if (params?.page !== undefined) query.append('page', params.page.toString());
-  if (params?.size !== undefined) query.append('size', params.size.toString());
-  
-  const qString = query.toString() ? `?${query.toString()}` : '';
-  return ticketRequest<PageTicketResponse>(`/api/v1/tickets${qString}`);
+// API: Lấy lịch sử xử lý hồ sơ (GET /api/v1/tickets/{id}/history)
+export async function getTicketHistory(ticketId: string): Promise<TicketHistoryItemResponse[]> {
+  const res = await ticketRequest<any>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/history`);
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.content)) return res.content;
+  if (Array.isArray(res?.data)) return res.data;
+  return [];
 }

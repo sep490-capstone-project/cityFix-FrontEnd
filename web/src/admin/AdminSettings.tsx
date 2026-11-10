@@ -1047,7 +1047,7 @@ function DepartmentMgmt() {
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="VD: Phòng Quản lý Đô thị Quận 1"
+              placeholder="VD: UBND Phường Bến Nghé hoặc Sở GTVT"
               className={inpModal}
             />
           </div>
@@ -1061,7 +1061,7 @@ function DepartmentMgmt() {
               className={inpModal}
             >
               <option value="CITY">Cấp Thành phố</option>
-              <option value="WARD">Cấp Phường/Quận</option>
+              <option value="WARD">Cấp Xã/Phường</option>
             </select>
           </div>
 
@@ -1367,11 +1367,19 @@ function RoutingMgmt() {
             ))}
           </select>
 
-          {/* Filter Ward */}
+          {/* Filter Province (Tỉnh / Thành phố) */}
+          <input
+            value={filterProvince}
+            onChange={(e) => setFilterProvince(e.target.value)}
+            placeholder="1. Lọc Tỉnh/Thành phố..."
+            className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 w-44"
+          />
+
+          {/* Filter Ward (Phường / Xã) */}
           <input
             value={filterWard}
             onChange={(e) => setFilterWard(e.target.value)}
-            placeholder="Lọc theo phường/xã..."
+            placeholder="2. Lọc Phường/Xã..."
             className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 w-44"
           />
 
@@ -1512,7 +1520,7 @@ function RoutingMgmt() {
               value={form.ward}
               onChange={(e) => setForm((f) => ({ ...f, ward: e.target.value }))}
               className={inpModal}
-              placeholder="VD: Phường 6, Quận 3"
+              placeholder="VD: Phường 6 hoặc Phường Bến Nghé"
             />
           </div>
         </StandardModal>

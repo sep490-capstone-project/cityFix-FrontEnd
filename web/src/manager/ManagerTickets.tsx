@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, StatusKey, Severity, statusInfo, sevInfo, priorityInfo } from '../data';
+import { User, statusInfo, sevInfo, priorityInfo } from '../data';
 import { BuildingIcon, UserIcon, CheckIcon, AlertTriangleIcon, TagIcon } from '../components/Icons';
 import {
   getManagerTickets,
@@ -7,6 +7,8 @@ import {
   ManagerTicketItem,
   ApiError,
 } from '../services';
+import { message } from 'antd';
+import { downloadCsvFile, downloadExcelReport } from '../utils/exportFile';
 
 interface Props {
   currentUser: User;
@@ -24,7 +26,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
   // Filters
   const [search, setSearch] = useState('');
   const [statusF, setStatusF] = useState<string>('all');
-  const [sevF, setSevF] = useState<string>('all');
+  const [sevF] = useState<string>('all');
   const [priorityF, setPriorityF] = useState<string>('all');
 
   // Tải dữ liệu vé từ API Backend
@@ -92,6 +94,75 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
     return true;
   });
 
+  const handleExportCsv = () => {
+    downloadCsvFile(
+      'CityFix_Ho_So_Don_Vi',
+      [
+        'Mã hồ sơ',
+        'Danh mục',
+        'Nội dung',
+        'Địa chỉ',
+        'Tiến độ bước',
+        'Độ ưu tiên',
+        'Trạng thái',
+        'Ngày tạo',
+      ],
+      filtered.map((t) => {
+        const stepsCount = t.steps?.length || 0;
+        const resolvedSteps = t.steps?.filter((s) => s.status === 'RESOLVED').length || 0;
+        return [
+          t.id || t.ticketId || '',
+          t.categoryName || 'Sự cố hạ tầng',
+          t.description || '',
+          t.address || '—',
+          stepsCount > 0 ? `${resolvedSteps}/${stepsCount} bước` : 'Chưa thiết lập',
+          priorityInfo(t.priority || t.subCategories?.[0]?.priority).label,
+          statusInfo(t.status as any).label,
+          t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—',
+        ];
+      })
+    );
+    message.success(`Đã xuất ${filtered.length} hồ sơ ra file CSV!`);
+  };
+
+  const handleExportExcel = () => {
+    downloadExcelReport(
+      'CityFix_Danh_Sach_Ho_So_Don_Vi',
+      'DANH SÁCH HỒ SƠ SỰ CỐ THUỘC ĐƠN VỊ',
+      `Quản lý: ${currentUser.fullName || 'Cán bộ Quản lý'} • Tổng số: ${filtered.length} hồ sơ`,
+      [
+        {
+          heading: 'Danh sách Hồ sơ theo Bộ lọc hiện tại',
+          headers: [
+            'Mã hồ sơ',
+            'Danh mục',
+            'Nội dung phản ánh',
+            'Địa chỉ',
+            'Tiến độ bước',
+            'Độ ưu tiên',
+            'Trạng thái',
+            'Ngày tạo',
+          ],
+          rows: filtered.map((t) => {
+            const stepsCount = t.steps?.length || 0;
+            const resolvedSteps = t.steps?.filter((s) => s.status === 'RESOLVED').length || 0;
+            return [
+              t.id || t.ticketId || '',
+              t.categoryName || 'Sự cố hạ tầng',
+              t.description || '',
+              t.address || '—',
+              stepsCount > 0 ? `${resolvedSteps}/${stepsCount} bước` : 'Chưa thiết lập',
+              priorityInfo(t.priority || t.subCategories?.[0]?.priority).label,
+              statusInfo(t.status as any).label,
+              t.createdAt ? t.createdAt.replace('T', ' ').slice(0, 16) : '—',
+            ];
+          }),
+        },
+      ]
+    );
+    message.success(`Đã xuất ${filtered.length} hồ sơ ra Báo cáo Excel (.xls)!`);
+  };
+
   const STATUS_OPTS: { value: string; label: string }[] = [
     { value: 'all', label: 'Mọi trạng thái' },
     { value: 'INITIATED', label: 'Chờ điều phối' },
@@ -104,67 +175,94 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
   ];
 
   return (
-    <div className="p-6 space-y-4 screen-enter">
-      {/* Thanh Header & Chuyển Tab */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-2xl p-1 shadow-2xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('dept')}
-            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-              activeTab === 'dept'
-                ? 'bg-orange-500/15 text-orange-600 border border-orange-500/25 shadow-xs'
-                : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <span className="inline-flex items-center gap-1.5"><BuildingIcon className="w-3.5 h-3.5" /> Cơ quan tôi ({activeTab === 'dept' ? filtered.length : '...'})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('mine')}
-            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-              activeTab === 'mine'
-                ? 'bg-orange-500/15 text-orange-600 border border-orange-500/25 shadow-xs'
-                : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <span className="inline-flex items-center gap-1.5"><UserIcon className="w-3.5 h-3.5" /> Hồ sơ tiếp nhận ({activeTab === 'mine' ? filtered.length : '...'})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('resolved')}
-            className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-              activeTab === 'resolved'
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-xs'
-                : 'text-gray-500 hover:text-gray-800'
-            }`}
-          >
-            <span className="inline-flex items-center gap-1.5"><CheckIcon className="w-3.5 h-3.5" /> Đã giải quyết</span>
-          </button>
+    <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
+      {/* 1. Header Card & Tabs */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
+              Quản lý Hồ sơ Tiếp nhận thuộc Đơn vị
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Tra cứu, theo dõi tiến độ các bước xử lý và điều chỉnh hạn chót cho hồ sơ sự cố
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+            <span className="font-mono-cf text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-xl">
+              {filtered.length} hồ sơ
+            </span>
+
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+            >
+              Xuất CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+            >
+              Xuất Excel (.xls)
+            </button>
+
+            <button
+              type="button"
+              onClick={fetchTickets}
+              disabled={loading}
+              className="px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+              title="Làm mới danh sách"
+            >
+              {loading ? 'Đang tải...' : '↻ Làm mới'}
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="font-mono-cf text-[12px] font-bold text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-xl shadow-2xs">
-            {filtered.length} hồ sơ
-          </span>
-
-          <button
-            type="button"
-            onClick={fetchTickets}
-            disabled={loading}
-            className="p-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-all shadow-xs cursor-pointer active:scale-95"
-            title="Làm mới danh sách"
-          >
-            <svg
-              className={`w-4 h-4 ${loading ? 'animate-spin text-orange-500' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+        <div className="pt-3 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('dept')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'dept'
+                  ? 'bg-white text-orange-600 shadow-2xs font-bold'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
             >
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-            </svg>
-          </button>
+              <span className="inline-flex items-center gap-1.5">
+                <BuildingIcon className="w-3.5 h-3.5" /> Cơ quan phụ trách ({activeTab === 'dept' ? filtered.length : '...'})
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('mine')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'mine'
+                  ? 'bg-white text-orange-600 shadow-2xs font-bold'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <UserIcon className="w-3.5 h-3.5" /> Hồ sơ trực tiếp ({activeTab === 'mine' ? filtered.length : '...'})
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('resolved')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'resolved'
+                  ? 'bg-white text-emerald-700 shadow-2xs font-bold'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <CheckIcon className="w-3.5 h-3.5" /> Đã giải quyết
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -206,7 +304,6 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
             ))}
           </select>
         )}
-
 
         <select
           value={priorityF}
@@ -258,7 +355,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
               {filtered.map((t) => {
                 const ticketId = t.id || t.ticketId || '';
                 const si = statusInfo(t.status as any);
-                const sv = sevInfo(t.severity || 'LOW');
+                const _sv = sevInfo(t.severity || 'LOW');
                 const pi = priorityInfo(t.priority || t.subCategories?.[0]?.priority);
                 const stepsCount = t.steps?.length || 0;
                 const resolvedSteps = t.steps?.filter((s) => s.status === 'RESOLVED').length || 0;
@@ -321,7 +418,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                                 ))}
                                 {subs.length > 2 && (
                                   <span
-                                    className="text-[9px] font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md"
+                                    className="text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md"
                                     title={subs.slice(2).join(', ')}
                                   >
                                     +{subs.length - 2}
@@ -348,7 +445,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                             className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
                               resolvedSteps === stepsCount
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-orange-50 text-orange-700 border-orange-200'
                             }`}
                           >
                             {resolvedSteps}/{stepsCount} bước
@@ -389,10 +486,9 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                           <button
                             type="button"
                             onClick={() => onOpenTicket(t)}
-                            className="px-2.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] transition-all cursor-pointer shadow-2xs flex items-center gap-1 whitespace-nowrap"
+                            className="px-2.5 py-1.5 rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-[10px] transition-all cursor-pointer shadow-2xs flex items-center gap-1 whitespace-nowrap"
                             title="Hồ sơ đang xử lý: Bấm để điều chỉnh hạn chót các bước"
                           >
-                            <span>⏱️</span>
                             <span>Đổi hạn</span>
                           </button>
                         )}
