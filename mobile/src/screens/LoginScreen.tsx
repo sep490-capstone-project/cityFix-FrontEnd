@@ -650,11 +650,15 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
               >
                 MẬT KHẨU <Text style={styles.requiredStar}>*</Text>
               </Text>
-              {focusedField === 'password' ? (
-                <View style={styles.activeFieldBadge}>
-                  <Text style={styles.activeFieldBadgeText}>Bảo mật</Text>
-                </View>
-              ) : null}
+              <TouchableOpacity
+                onPress={() => navigate?.('reset-password')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#ea580c' }}>
+                  Quên mật khẩu?
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <Pressable

@@ -305,7 +305,44 @@ export async function register(
 }
 
 /* =========================================================
-   VERIFY EMAIL
+   VERIFY PHONE FIREBASE
+   POST /api/v1/auth/verify-phone-firebase
+   ========================================================= */
+
+export interface VerifyPhoneFirebaseData {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export async function verifyPhoneFirebase(
+  firebaseIdToken: string
+): Promise<VerifyPhoneFirebaseData> {
+  const payload = await post<VerifyPhoneFirebaseData>(
+    '/api/v1/auth/verify-phone-firebase',
+    {
+      firebaseIdToken: firebaseIdToken.trim(),
+    }
+  );
+  return payload.data || { accessToken: '', refreshToken: '' };
+}
+
+/* =========================================================
+   RESET PASSWORD (VIA FIREBASE PHONE AUTH)
+   POST /api/v1/auth/reset-password
+   ========================================================= */
+
+export async function resetPassword(
+  firebaseIdToken: string,
+  newPassword: string
+): Promise<void> {
+  await post('/api/v1/auth/reset-password', {
+    firebaseIdToken: firebaseIdToken.trim(),
+    newPassword,
+  });
+}
+
+/* =========================================================
+   VERIFY EMAIL (Legacy Fallback)
    ========================================================= */
 
 export async function verifyEmail(

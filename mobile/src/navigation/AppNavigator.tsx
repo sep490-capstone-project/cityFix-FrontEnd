@@ -3,7 +3,8 @@ import { View, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen, { AuthUser } from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-import VerifyEmailScreen from '../screens/VerifyEmailScreen';
+import VerifyPhoneScreen from '../screens/VerifyPhoneScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import SplashScreen from '../screens/SplashScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 
@@ -26,7 +27,7 @@ import StaffTicketDetailScreen from '../screens/staff/StaffTicketDetailScreen';
 import StaffProfileScreen from '../screens/staff/StaffProfileScreen';
 
 import { ReportDraft } from '../types';
-import { ReportedTicket } from '../api';
+import { ReportedTicket, getProfile, decodeJwt } from '../api';
 
 const INITIAL_DRAFT: ReportDraft = {
   location: null,
@@ -52,6 +53,7 @@ export default function AppNavigator() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<ReportedTicket | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [verificationPhone, setVerificationPhone] = useState('');
   const [verificationEmail, setVerificationEmail] = useState('');
   const [draft, setDraft] = useState<ReportDraft>(INITIAL_DRAFT);
   const [duplicateTickets, setDuplicateTickets] = useState<any[]>([]);
@@ -173,20 +175,54 @@ export default function AppNavigator() {
       <RegisterScreen
         navigate={handleNavigate}
         goBack={() => setCurrentScreen('login')}
-        onRegistered={(email) => {
-          setVerificationEmail(email);
-          setCurrentScreen('verify-email');
+        onRegistered={(phone, email) => {
+          setVerificationPhone(phone);
+          setVerificationEmail(email || '');
+          setCurrentScreen('verify-phone');
         }}
       />
     );
   }
 
-  if (currentScreen === 'verify-email') {
+  if (currentScreen === 'verify-phone' || currentScreen === 'verify-email') {
     return (
-      <VerifyEmailScreen
+      <VerifyPhoneScreen
+        phoneNumber={verificationPhone}
         email={verificationEmail}
         goBack={() => setCurrentScreen('register')}
-        onVerified={() => setCurrentScreen('login')}
+        onVerified={async (tokenData) => {
+          if (tokenData?.accessToken) {
+            try {
+              await AsyncStorage.setItem('accessToken', tokenData.accessToken);
+              const profile = await getProfile(tokenData.accessToken).catch(() => null);
+              const decoded = decodeJwt(tokenData.accessToken);
+              const authUser: AuthUser = {
+                userId: profile?.userId || decoded?.userId || decoded?.sub || verificationEmail || verificationPhone,
+                fullName: profile?.fullName?.trim() || 'Người dân',
+                phone: profile?.phoneNumber?.trim() || verificationPhone,
+                email: profile?.email?.trim() || verificationEmail,
+                ward: profile?.ward?.trim() || '',
+                address: profile?.address?.trim() || '',
+                province: profile?.province?.trim() || '',
+                role: 'CITIZEN',
+              };
+              await handleLoginSuccess(authUser, tokenData.accessToken);
+              return;
+            } catch {
+              // fallback to login screen
+            }
+          }
+          setCurrentScreen('login');
+        }}
+      />
+    );
+  }
+
+  if (currentScreen === 'reset-password') {
+    return (
+      <ResetPasswordScreen
+        goBack={() => setCurrentScreen('login')}
+        onSuccess={() => setCurrentScreen('login')}
       />
     );
   }
