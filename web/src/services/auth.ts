@@ -237,7 +237,48 @@ export async function register(payload: RegisterPayload): Promise<void> {
 }
 
 /**
- * 4. Gửi lại mã OTP
+ * 4. Xác thực Số điện thoại qua Firebase ID Token
+ * POST /api/v1/auth/verify-phone-firebase
+ */
+export async function verifyPhoneFirebase(
+  firebaseIdToken: string
+): Promise<LoginData> {
+  const res = await request<LoginData>('/api/v1/auth/verify-phone-firebase', {
+    method: 'POST',
+    body: JSON.stringify({
+      firebaseIdToken: firebaseIdToken.trim(),
+    }),
+  });
+
+  if (res.data?.accessToken) {
+    setAccessToken(res.data.accessToken);
+  }
+  if (res.data?.refreshToken) {
+    setRefreshToken(res.data.refreshToken);
+  }
+
+  return res.data || { accessToken: '' };
+}
+
+/**
+ * 5. Khôi phục / Đặt lại mật khẩu qua Firebase ID Token
+ * POST /api/v1/auth/reset-password
+ */
+export async function resetPassword(
+  firebaseIdToken: string,
+  newPassword: string
+): Promise<void> {
+  await request<void>('/api/v1/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      firebaseIdToken: firebaseIdToken.trim(),
+      newPassword,
+    }),
+  });
+}
+
+/**
+ * 6. Gửi lại mã OTP (Legacy)
  * POST /api/v1/auth/resend-otp
  */
 export async function resendOtp(payload: ResendOtpPayload): Promise<void> {
@@ -250,7 +291,7 @@ export async function resendOtp(payload: ResendOtpPayload): Promise<void> {
 }
 
 /**
- * 5. Xác thực Email bằng mã OTP
+ * 7. Xác thực Email bằng mã OTP (Legacy)
  * POST /api/v1/auth/verify-email
  */
 export async function verifyEmail(payload: VerifyEmailPayload): Promise<void> {
