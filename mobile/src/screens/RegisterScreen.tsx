@@ -32,7 +32,7 @@ import {
 interface Props {
   navigate: (screen: string) => void;
   goBack: () => void;
-  onRegistered: (email: string) => void;
+  onRegistered: (phone: string, email?: string) => void;
 }
 
 const EMAIL_DOMAINS = ['@gmail.com', '@icloud.com', '@outlook.com', '@edu.vn'];
@@ -565,7 +565,7 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
       try {
         await AsyncStorage.setItem('@cityfix_last_login_email', email.trim());
       } catch {}
-      onRegistered(email.trim());
+      onRegistered(phone.replace(/\s/g, '').trim(), email.trim());
     } catch (err) {
       setFormError(
         err instanceof ApiError ? err.message : 'Không thể tạo tài khoản. Vui lòng thử lại.',
@@ -736,7 +736,7 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
                 if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }));
               }}
               error={errors.phone}
-              hint="Dùng để liên hệ xác minh và nhận thông báo tiến độ."
+              hint="Mã OTP xác thực sẽ được gửi qua SMS (Firebase) đến số điện thoại này."
             />
 
             <AnimatedField
@@ -753,7 +753,7 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
                 if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
               }}
               error={errors.email}
-              hint="Mã OTP xác thực sẽ được gửi qua email này."
+              hint="Dùng để đăng nhập và nhận thông báo tiến độ xử lý sự cố."
               childrenBelow={
                 emailPrefix.length > 0 ? (
                   <View style={styles.quickPillsWrap}>
