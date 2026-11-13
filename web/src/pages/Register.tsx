@@ -1,8 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import cityfixLogo from '../assets/cityfix-logo.png';
 import registerBackground from '../assets/register-city-background.jpg';
-import { DEPARTMENTS } from '../data';
-import { register, verifyEmail, resendOtp, ApiError } from '../services';
+import { register, verifyPhoneFirebase, ApiError } from '../services';
+import {
+  VN_PROVINCES_2025,
+  Province2025,
+  getWardsForProvince2025,
+  findProvince2025ByName,
+  formatProvinceName,
+  formatWardName,
+  formatStandardAddress,
+  removeVietnameseTones,
+} from '../constants/vnProvinces2025';
+import {
+  loadFirebaseSdk,
+  formatPhoneNumberE164,
+  formatPhoneDisplay,
+  mapFirebaseError,
+} from '../constants/firebaseConfig';
 
 interface Props {
   initialEmail?: string;
@@ -10,6 +25,8 @@ interface Props {
   onGoLogin: () => void;
   onRegisterSuccess: () => void;
 }
+
+const QUICK_PROVINCE_CODES = [79, 1, 48, 92, 31, 46];
 
 export default function Register({
   initialEmail = '',
@@ -24,20 +41,79 @@ export default function Register({
     phone: '',
     password: '',
     confirmPassword: '',
-    province: 'Tp Ho Chi Minh',
+    province: 'TP. Hồ Chí Minh',
     ward: '',
     address: '',
-    role: 'STAFF',
-    departmentId: '',
   });
 
+  // Picker modal state for 2025 Merged Provinces & Wards (giống Mobile)
+  const [pickerMode, setPickerMode] = useState<'province' | 'ward' | null>(null);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [availableWards, setAvailableWards] = useState<string[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
+
+  // Step 3: Firebase Phone Verification states
   const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [sendingSms, setSendingSms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const [resendMessage, setResendMessage] = useState('');
   const [serverError, setServerError] = useState('');
+
+  const confirmationResultRef = useRef<any>(null);
+  const recaptchaVerifierRef = useRef<any>(null);
+
+  const selectedProvinceObj = useMemo<Province2025 | undefined>(
+    () => findProvince2025ByName(form.province),
+    [form.province]
+  );
+
+  const quickProvinces = useMemo(
+    () =>
+      QUICK_PROVINCE_CODES.map((code) =>
+        VN_PROVINCES_2025.find((p) => p.code === code)
+      ).filter(Boolean) as Province2025[],
+    []
+  );
+
+  // Load merged wards whenever selectedProvinceObj changes
+  useEffect(() => {
+    let active = true;
+    if (!selectedProvinceObj) {
+      setAvailableWards([]);
+      return;
+    }
+    setAvailableWards(selectedProvinceObj.defaultWards);
+    setLoadingWards(true);
+    getWardsForProvince2025(selectedProvinceObj)
+      .then((wards) => {
+        if (active) setAvailableWards(wards);
+      })
+      .finally(() => {
+        if (active) setLoadingWards(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProvinceObj]);
+
+  const filteredProvinces = useMemo(() => {
+    const q = removeVietnameseTones(pickerSearch.trim());
+    if (!q) return VN_PROVINCES_2025;
+    return VN_PROVINCES_2025.filter(
+      (p) =>
+        removeVietnameseTones(p.name).includes(q) ||
+        (p.mergedFrom && removeVietnameseTones(p.mergedFrom).includes(q))
+    );
+  }, [pickerSearch]);
+
+  const filteredWards = useMemo(() => {
+    const q = removeVietnameseTones(pickerSearch.trim());
+    if (!q) return availableWards;
+    return availableWards.filter((w) => removeVietnameseTones(w).includes(q));
+  }, [availableWards, pickerSearch]);
 
   // Countdown timer for Resend OTP button
   useEffect(() => {
@@ -47,31 +123,79 @@ export default function Register({
     }
   }, [resendTimer]);
 
+  // Cleanup reCAPTCHA when leaving step 3
+  useEffect(() => {
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+        } catch {
+          // ignore
+        }
+        recaptchaVerifierRef.current = null;
+      }
+    };
+  }, []);
+
+  // Auto-init reCAPTCHA when entering Step 3
+  useEffect(() => {
+    if (step === 3 && !otpSent) {
+      const timer = setTimeout(() => {
+        initRecaptchaAndPrompt();
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [step]);
+
   function set(k: string, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: '' }));
     setServerError('');
   }
 
+  function handleSelectProvince(prov: Province2025, autoOpenWard = false) {
+    const formatted = formatProvinceName(prov.name);
+    const isDifferent = formatted !== form.province;
+    setForm((f) => ({
+      ...f,
+      province: formatted,
+      ward: isDifferent ? '' : f.ward,
+    }));
+    setErrors((e) => ({ ...e, province: '' }));
+    setPickerSearch('');
+    if (autoOpenWard) {
+      setPickerMode('ward');
+    } else {
+      setPickerMode(null);
+    }
+  }
+
+  function handleSelectWard(w: string) {
+    const formatted = formatWardName(w);
+    setForm((f) => ({ ...f, ward: formatted }));
+    setErrors((e) => ({ ...e, ward: '' }));
+    setPickerSearch('');
+    setPickerMode(null);
+  }
+
   function validateStep1() {
     const e: Record<string, string> = {};
     if (!form.fullName.trim()) e.fullName = 'Bắt buộc nhập họ tên';
     if (!form.email.includes('@')) e.email = 'Email không hợp lệ';
-    if (form.phone.replace(/\D/g, '').length < 10) e.phone = 'Số điện thoại tối thiểu 10 số';
+    if (form.phone.replace(/\D/g, '').length < 10)
+      e.phone = 'Số điện thoại tối thiểu 10 số';
     if (form.password.length < 6) e.password = 'Mật khẩu tối thiểu 6 ký tự';
-    if (form.password !== form.confirmPassword) e.confirmPassword = 'Mật khẩu không khớp';
+    if (form.password !== form.confirmPassword)
+      e.confirmPassword = 'Mật khẩu không khớp';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
   function validateStep2() {
     const e: Record<string, string> = {};
-    if (!form.province.trim()) e.province = 'Bắt buộc';
-    if (!form.ward.trim()) e.ward = 'Bắt buộc';
-    if (!form.address.trim()) e.address = 'Bắt buộc';
-    if ((form.role === 'STAFF' || form.role === 'ADMIN') && !form.departmentId) {
-      e.departmentId = 'Bắt buộc chọn cơ quan';
-    }
+    if (!form.province.trim()) e.province = 'Vui lòng chọn Tỉnh / Thành phố';
+    if (!form.ward.trim()) e.ward = 'Vui lòng chọn Phường / Xã';
+    if (!form.address.trim()) e.address = 'Vui lòng nhập số nhà, tên đường';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -88,20 +212,29 @@ export default function Register({
     setLoading(true);
     setServerError('');
 
+    const normalizedProvince = formatProvinceName(form.province.trim());
+    const normalizedWard = formatWardName(form.ward.trim());
+    const normalizedStreet = formatStandardAddress(form.address.trim());
+    const fullAddress = [normalizedStreet, normalizedWard, normalizedProvince]
+      .filter(Boolean)
+      .join(', ');
+
     try {
       await register({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
-        fullName: form.fullName,
-        phoneNumber: form.phone,
-        province: form.province,
-        ward: form.ward,
-        address: form.address,
+        fullName: form.fullName.trim(),
+        phoneNumber: form.phone.replace(/\s/g, ''),
+        province: normalizedProvince,
+        ward: normalizedWard,
+        address: fullAddress,
       });
 
-      // Đăng ký thành công -> Chuyển sang bước 3 nhập mã OTP xác thực
+      // Đăng ký thành công -> Chuyển sang bước 3 xác thực SĐT bằng Firebase OTP
+      setOtp('');
+      setOtpSent(false);
+      setResendMessage('');
       setStep(3);
-      setResendTimer(60);
     } catch (err: any) {
       setServerError(
         err instanceof ApiError
@@ -113,11 +246,95 @@ export default function Register({
     }
   }
 
-  // 2. Submit OTP Verification (POST /api/v1/auth/verify-email)
+  // 2. Initialize Firebase reCAPTCHA & Send SMS OTP
+  async function initRecaptchaAndPrompt() {
+    setServerError('');
+    setResendMessage('');
+
+    try {
+      const { firebaseAuth, auth } = await loadFirebaseSdk();
+      const container = document.getElementById('web-register-recaptcha');
+      if (!container) return;
+
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+        } catch {
+          // ignore
+        }
+        recaptchaVerifierRef.current = null;
+      }
+      container.innerHTML = '';
+
+      recaptchaVerifierRef.current = new firebaseAuth.RecaptchaVerifier(
+        auth,
+        'web-register-recaptcha',
+        {
+          size: 'normal',
+          callback: () => {
+            sendFirebaseSmsOtp();
+          },
+          'expired-callback': () => {
+            setServerError(
+              'Phiên xác minh reCAPTCHA đã hết hạn. Vui lòng tích lại vào ô xác minh.'
+            );
+          },
+        }
+      );
+
+      await recaptchaVerifierRef.current.render();
+    } catch (err: any) {
+      setServerError(
+        mapFirebaseError(err?.code, err?.message) ||
+          'Không thể khởi tạo khung xác thực bảo mật Firebase.'
+      );
+    }
+  }
+
+  async function sendFirebaseSmsOtp() {
+    if (sendingSms) return;
+    setSendingSms(true);
+    setServerError('');
+    setResendMessage('');
+
+    try {
+      const { firebaseAuth, auth } = await loadFirebaseSdk();
+      const phoneE164 = formatPhoneNumberE164(form.phone);
+
+      if (!recaptchaVerifierRef.current) {
+        await initRecaptchaAndPrompt();
+      }
+
+      const confirmationResult = await firebaseAuth.signInWithPhoneNumber(
+        auth,
+        phoneE164,
+        recaptchaVerifierRef.current
+      );
+
+      confirmationResultRef.current = confirmationResult;
+      setOtpSent(true);
+      setResendTimer(60);
+      setResendMessage(
+        `Mã OTP 6 chữ số đã được gửi qua SMS tới ${formatPhoneDisplay(form.phone)}.`
+      );
+    } catch (err: any) {
+      setServerError(mapFirebaseError(err?.code, err?.message));
+    } finally {
+      setSendingSms(false);
+    }
+  }
+
+  // 3. Submit OTP Verification -> Firebase confirm -> POST /api/v1/auth/verify-phone-firebase
   async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault();
-    if (!otp.trim()) {
-      setServerError('Vui lòng nhập mã OTP.');
+    if (otp.trim().length < 6) {
+      setServerError('Vui lòng nhập đủ 6 chữ số mã OTP.');
+      return;
+    }
+    if (!confirmationResultRef.current) {
+      setServerError(
+        'Vui lòng hoàn thành xác minh bảo mật reCAPTCHA để nhận mã OTP trước.'
+      );
       return;
     }
 
@@ -125,71 +342,52 @@ export default function Register({
     setServerError('');
 
     try {
-      await verifyEmail({
-        email: form.email,
-        otp: otp.trim(),
-      });
+      const credential = await confirmationResultRef.current.confirm(otp.trim());
+      const firebaseIdToken = await credential.user.getIdToken(true);
 
+      await verifyPhoneFirebase(firebaseIdToken);
       onRegisterSuccess();
     } catch (err: any) {
-      setServerError(
-        err instanceof ApiError
-          ? err.message
-          : 'Mã OTP không đúng hoặc đã hết hạn.'
-      );
+      if (err instanceof ApiError) {
+        setServerError(err.message);
+      } else {
+        setServerError(mapFirebaseError(err?.code, err?.message));
+      }
     } finally {
       setLoading(false);
     }
   }
 
-  // 3. Resend OTP (POST /api/v1/auth/resend-otp)
+  // 4. Resend SMS OTP via Firebase
   async function handleResendOtp() {
-    if (resendTimer > 0 || resendLoading) return;
-
-    setResendLoading(true);
-    setServerError('');
-    setResendMessage('');
-
-    try {
-      await resendOtp({
-        email: form.email,
-      });
-      setResendMessage('Mã OTP mới đã được gửi vào email của bạn!');
-      setResendTimer(60);
-    } catch (err: any) {
-      setServerError(
-        err instanceof ApiError ? err.message : 'Không thể gửi lại OTP. Vui lòng thử lại.'
-      );
-    } finally {
-      setResendLoading(false);
-    }
+    if (resendTimer > 0 || sendingSms) return;
+    setOtpSent(false);
+    setOtp('');
+    setTimeout(() => {
+      initRecaptchaAndPrompt();
+    }, 100);
   }
-
-  const staffDepts = DEPARTMENTS.filter(
-    (d) => d.level === 'CITY' || d.level === 'WARD'
-  );
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center relative py-10 overflow-hidden select-none">
-      {/* 1. NỀN THÀNH PHỐ VIỆT NAM HIỆN ĐẠI (Ánh hoàng hôn / Bình minh rạng rỡ) */}
+      {/* 1. NỀN THÀNH PHỐ VIỆT NAM HIỆN ĐẠI */}
       <img
         src={registerBackground}
         alt="CityFix Smart City"
         className="absolute inset-0 w-full h-full object-cover object-right md:object-center pointer-events-none opacity-80"
       />
 
-      {/* Lớp phủ Gradient: Giữ ánh sáng ấm và làm nổi bật form đăng ký */}
+      {/* Lớp phủ Gradient */}
       <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-white/75 to-white/15 pointer-events-none" />
       <div className="absolute inset-0 bg-radial from-white/30 via-transparent to-transparent pointer-events-none" />
 
-      {/* 2. BẢN SẮC VIỆT NAM — HỌA TIẾT TRỐNG ĐỒNG ĐÔNG SƠN ĐẬM RÕ & XOAY CHUYỂN ĐỘNG */}
+      {/* 2. BẢN SẮC VIỆT NAM — HỌA TIẾT TRỐNG ĐỒNG ĐÔNG SƠN */}
       <div className="absolute -left-40 -top-28 md:-left-20 md:-top-16 pointer-events-none opacity-[0.30] text-[#ea580c] animate-dongson-spin">
         <svg width="900" height="900" viewBox="0 0 700 700" fill="none" stroke="currentColor">
           <circle cx="350" cy="350" r="335" strokeWidth="3.5" />
           <circle cx="350" cy="350" r="315" strokeWidth="2" strokeDasharray="6 4" />
           <circle cx="350" cy="350" r="295" strokeWidth="2.5" />
 
-          {/* Vành chim Lạc bay lượn */}
           <circle cx="350" cy="350" r="270" strokeWidth="2" />
           <circle cx="350" cy="350" r="235" strokeWidth="2" />
           {[...Array(16)].map((_, i) => {
@@ -221,7 +419,6 @@ export default function Register({
           <circle cx="350" cy="350" r="125" strokeWidth="2" />
           <circle cx="350" cy="350" r="90" strokeWidth="2" />
 
-          {/* Ngôi sao 14 cánh */}
           <circle cx="350" cy="350" r="55" fill="currentColor" fillOpacity="0.35" />
           {[...Array(14)].map((_, i) => {
             const angle = (i * 360) / 14;
@@ -276,7 +473,7 @@ export default function Register({
           </span>
           <span className="text-slate-700 font-bold uppercase tracking-wider text-[10px]">Cổng Quản Trị Đô Thị TP.HCM</span>
           <span className="text-slate-300">|</span>
-          <span className="font-mono-cf text-[10px] text-slate-500">Đăng ký Tài khoản Cán bộ</span>
+          <span className="font-mono-cf text-[10px] text-slate-500">Đăng ký Tài khoản Hệ thống</span>
         </div>
       </div>
 
@@ -305,7 +502,7 @@ export default function Register({
         <div className="flex flex-col items-center mb-4 text-center">
           <img src={cityfixLogo} alt="CityFix" className="w-36 h-28 object-contain -mb-3 drop-shadow-2xs" />
           <h2 className="text-[11px] font-bold text-slate-600 uppercase tracking-[0.2em] mt-1">
-            ĐĂNG KÝ TÀI KHOẢN CÁN BỘ / ADMIN
+            ĐĂNG KÝ TÀI KHOẢN CITYFIX
           </h2>
         </div>
 
@@ -324,7 +521,7 @@ export default function Register({
                   step >= s ? 'text-slate-800' : 'text-slate-400'
                 }`}
               >
-                {s === 1 ? 'Thông tin' : s === 2 ? 'Địa bàn' : 'Xác thực'}
+                {s === 1 ? 'Thông tin' : s === 2 ? 'Địa bàn' : 'Xác thực SĐT'}
               </span>
               {s < 3 && (
                 <div
@@ -348,7 +545,7 @@ export default function Register({
             </div>
           )}
 
-          {/* Resend success notice */}
+          {/* Resend / SMS sent notice */}
           {resendMessage && (
             <div className="mx-6 mt-4 p-3 bg-green-50 border border-green-200 rounded-xl">
               <p className="text-[12px] text-green-700">{resendMessage}</p>
@@ -366,7 +563,7 @@ export default function Register({
                   className={inputCls(errors.fullName)}
                 />
               </Field>
-              <Field label="Email công vụ" error={errors.email}>
+              <Field label="Địa chỉ Email" error={errors.email}>
                 <input
                   type="email"
                   value={form.email}
@@ -375,7 +572,7 @@ export default function Register({
                   className={inputCls(errors.email)}
                 />
               </Field>
-              <Field label="Số điện thoại" error={errors.phone}>
+              <Field label="Số điện thoại (nhận mã OTP SMS)" error={errors.phone}>
                 <input
                   value={form.phone}
                   onChange={(e) => set('phone', e.target.value)}
@@ -423,65 +620,168 @@ export default function Register({
             </div>
           )}
 
-          {/* STEP 2: Address & Organization */}
+          {/* STEP 2: Khu vực cư trú / Địa bàn (Giống Mobile: Chọn Tỉnh/TP & Phường/Xã từ danh sách, bỏ Vai trò & Cơ quan) */}
           {step === 2 && (
             <form onSubmit={handleSubmitRegister} className="px-6 py-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Tỉnh / Thành phố" error={errors.province}>
-                  <input
-                    value={form.province}
-                    onChange={(e) => set('province', e.target.value)}
-                    placeholder="Tp Ho Chi Minh"
-                    className={inputCls(errors.province)}
-                  />
-                </Field>
-                <Field label="Phường / Xã" error={errors.ward}>
-                  <input
-                    value={form.ward}
-                    onChange={(e) => set('ward', e.target.value)}
-                    placeholder="Phường 6, Quận 3"
-                    className={inputCls(errors.ward)}
-                  />
-                </Field>
-              </div>
-              <Field label="Địa chỉ" error={errors.address}>
+              {/* TỈNH / THÀNH PHỐ SELECTOR (Mở danh sách chọn giống Mobile) */}
+              <Field label="Tỉnh / Thành phố *" error={errors.province}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickerSearch('');
+                    setPickerMode('province');
+                  }}
+                  className={`w-full flex items-center justify-between bg-gray-50 border ${
+                    errors.province
+                      ? 'border-red-500/60'
+                      : pickerMode === 'province'
+                      ? 'border-orange-500 ring-2 ring-orange-500/15 bg-white'
+                      : 'border-gray-300 hover:border-orange-400'
+                  } rounded-xl px-3.5 py-2.5 text-left transition-all cursor-pointer`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        form.province
+                          ? 'bg-orange-50 text-orange-600 border border-orange-200'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 21h18" />
+                        <path d="M5 21V7l8-4v18" />
+                        <path d="M19 21V11l-6-4" />
+                      </svg>
+                    </span>
+                    <span
+                      className={`text-[13px] truncate ${
+                        form.province ? 'font-semibold text-gray-900' : 'text-gray-400'
+                      }`}
+                    >
+                      {form.province || 'Bấm để chọn Tỉnh / Thành phố'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {form.province ? (
+                      <span className="text-emerald-600">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                        Chọn
+                      </span>
+                    )}
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                </button>
+              </Field>
+
+              {/* PHƯỜNG / XÃ (SAU SÁP NHẬP) SELECTOR */}
+              <Field label="Phường / Xã (Sau sáp nhập) *" error={errors.ward}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickerSearch('');
+                    if (!form.province.trim()) {
+                      setErrors((prev) => ({
+                        ...prev,
+                        province: 'Vui lòng chọn Tỉnh / Thành phố trước khi chọn Phường / Xã.',
+                      }));
+                      setPickerMode('province');
+                      return;
+                    }
+                    setPickerMode('ward');
+                  }}
+                  className={`w-full flex items-center justify-between bg-gray-50 border ${
+                    errors.ward
+                      ? 'border-red-500/60'
+                      : pickerMode === 'ward'
+                      ? 'border-orange-500 ring-2 ring-orange-500/15 bg-white'
+                      : 'border-gray-300 hover:border-orange-400'
+                  } rounded-xl px-3.5 py-2.5 text-left transition-all cursor-pointer`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        form.ward
+                          ? 'bg-orange-50 text-orange-600 border border-orange-200'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+                        <line x1="8" y1="2" x2="8" y2="18" />
+                        <line x1="16" y1="6" x2="16" y2="22" />
+                      </svg>
+                    </span>
+                    <span
+                      className={`text-[13px] truncate ${
+                        form.ward ? 'font-semibold text-gray-900' : 'text-gray-400'
+                      }`}
+                    >
+                      {form.ward
+                        ? form.ward
+                        : form.province
+                        ? loadingWards
+                          ? 'Đang tải danh sách Phường / Xã...'
+                          : `Chọn Phường / Xã thuộc ${form.province}...`
+                        : 'Vui lòng chọn Tỉnh / Thành phố ở trên trước'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {form.ward ? (
+                      <span className="text-emerald-600">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                        Danh sách
+                      </span>
+                    )}
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                </button>
+              </Field>
+
+              {/* ĐỊA CHỈ CỤ THỂ */}
+              <Field label="Địa chỉ cụ thể (Số nhà, tên đường) *" error={errors.address}>
                 <input
                   value={form.address}
                   onChange={(e) => set('address', e.target.value)}
-                  placeholder="Số nhà, tên đường"
+                  placeholder="VD: 123 Nguyễn Huệ"
                   className={inputCls(errors.address)}
                 />
               </Field>
-              <Field label="Vai trò đăng ký" error="">
-                <select
-                  value={form.role}
-                  onChange={(e) => set('role', e.target.value)}
-                  className={inputCls('')}
-                >
-                  <option value="STAFF">Staff — Nhân viên xử lý</option>
-                  <option value="ADMIN">Admin — Quản trị viên</option>
-                </select>
-              </Field>
-              {(form.role === 'STAFF' || form.role === 'ADMIN') && (
-                <Field label="Cơ quan / Phòng ban" error={errors.departmentId}>
-                  <select
-                    value={form.departmentId}
-                    onChange={(e) => set('departmentId', e.target.value)}
-                    className={inputCls(errors.departmentId)}
-                  >
-                    <option value="">-- Chọn cơ quan --</option>
-                    {staffDepts.map((d) => (
-                      <option key={d.departmentId} value={d.departmentId}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+
+              {/* Xem trước địa chỉ chuẩn hóa */}
+              {(form.address.trim() || form.ward || form.province) && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3.5 py-2.5 flex items-start gap-2">
+                  <span className="text-orange-600 mt-0.5">📍</span>
+                  <div className="text-[11px] text-slate-600 leading-relaxed">
+                    <span className="font-bold text-slate-700">Địa chỉ ghi nhận: </span>
+                    {[
+                      formatStandardAddress(form.address.trim()),
+                      form.ward ? formatWardName(form.ward) : '',
+                      form.province ? formatProvinceName(form.province) : '',
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </div>
+                </div>
               )}
 
               <div className="relative rounded-xl border border-orange-500/25 bg-orange-500/8 px-3.5 py-3">
                 <p className="text-[11px] text-orange-600 leading-relaxed">
-                  Hệ thống sẽ gửi mã xác thực OTP qua email sau khi hoàn tất bước này.
+                  Hệ thống sẽ gửi mã xác thực OTP 6 chữ số qua tin nhắn SMS (Firebase) tới số điện thoại{' '}
+                  <span className="font-bold">{formatPhoneDisplay(form.phone) || form.phone}</span> sau khi hoàn tất bước này.
                 </p>
               </div>
 
@@ -514,7 +814,7 @@ export default function Register({
             </form>
           )}
 
-          {/* STEP 3: Verify OTP (POST /api/v1/auth/verify-email & resend-otp) */}
+          {/* STEP 3: Verify Phone via Firebase SMS OTP (POST /api/v1/auth/verify-phone-firebase) */}
           {step === 3 && (
             <form onSubmit={handleVerifyOtp} className="px-6 py-6 space-y-4">
               <div className="text-center space-y-1">
@@ -529,59 +829,85 @@ export default function Register({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                    <polyline points="22,6 12,13 2,6" />
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                   </svg>
                 </div>
-                <h3 className="text-[16px] font-bold text-gray-900">Xác thực Email</h3>
+                <h3 className="text-[16px] font-bold text-gray-900">
+                  Xác thực Số điện thoại
+                </h3>
                 <p className="text-[12px] text-gray-500">
-                  Mã OTP 6 số đã được gửi tới email:
+                  Mã OTP 6 chữ số được gửi qua SMS tới số điện thoại:
                 </p>
-                <p className="text-[13px] font-semibold text-orange-600">{form.email}</p>
+                <p className="text-[14px] font-bold text-orange-600">
+                  {formatPhoneDisplay(form.phone)} ({formatPhoneNumberE164(form.phone)})
+                </p>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block text-center">
-                  Nhập mã OTP (6 chữ số)
-                </label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(e) => {
-                    setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
-                    setServerError('');
-                  }}
-                  placeholder="123456"
-                  className="w-full text-center text-[22px] tracking-[0.35em] font-mono font-bold bg-gray-50 border border-gray-300 rounded-xl py-3 text-gray-900 outline-none focus:border-orange-500 transition-colors"
-                />
-              </div>
+              {/* Bước xác minh reCAPTCHA trước khi gửi SMS */}
+              {!otpSent && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3 text-center">
+                  <p className="text-[12px] font-semibold text-slate-700">
+                    Vui lòng xác nhận bảo mật reCAPTCHA bên dưới để nhận mã OTP qua SMS:
+                  </p>
+                  <div
+                    id="web-register-recaptcha"
+                    className="flex items-center justify-center min-h-[78px]"
+                  />
+                  {sendingSms && (
+                    <p className="text-[12px] text-orange-600 font-semibold animate-pulse">
+                      Đang gửi mã OTP qua tin nhắn SMS...
+                    </p>
+                  )}
+                </div>
+              )}
 
-              <button
-                type="submit"
-                disabled={loading || otp.length < 6}
-                className="w-full relative rounded-xl overflow-hidden px-4 py-3 active:scale-[0.97] transition-transform disabled:opacity-50 cursor-pointer"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
-                <span className="relative text-white font-bold uppercase tracking-wide text-[13px]">
-                  {loading ? 'Đang xác thực...' : 'Xác thực tài khoản'}
-                </span>
-              </button>
+              {/* Ô nhập 6 chữ số OTP sau khi đã gửi SMS */}
+              {otpSent && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em] block text-center">
+                      Nhập mã OTP SMS (6 chữ số)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => {
+                        setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        setServerError('');
+                      }}
+                      placeholder="123456"
+                      className="w-full text-center text-[22px] tracking-[0.35em] font-mono font-bold bg-gray-50 border border-gray-300 rounded-xl py-3 text-gray-900 outline-none focus:border-orange-500 transition-colors"
+                    />
+                  </div>
 
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  disabled={resendTimer > 0 || resendLoading}
-                  onClick={handleResendOtp}
-                  className="text-[12px] text-orange-600 hover:text-orange-700 font-semibold disabled:text-gray-400 transition-colors cursor-pointer"
-                >
-                  {resendLoading
-                    ? 'Đang gửi lại...'
-                    : resendTimer > 0
-                    ? `Gửi lại mã OTP sau (${resendTimer}s)`
-                    : 'Chưa nhận được mã? Gửi lại OTP'}
-                </button>
-              </div>
+                  <button
+                    type="submit"
+                    disabled={loading || otp.length < 6}
+                    className="w-full relative rounded-xl overflow-hidden px-4 py-3 active:scale-[0.97] transition-transform disabled:opacity-50 cursor-pointer"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-[#c2410c] to-[#f97316]" />
+                    <span className="relative text-white font-bold uppercase tracking-wide text-[13px]">
+                      {loading ? 'Đang xác thực...' : 'Xác thực số điện thoại'}
+                    </span>
+                  </button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      disabled={resendTimer > 0 || sendingSms}
+                      onClick={handleResendOtp}
+                      className="text-[12px] text-orange-600 hover:text-orange-700 font-semibold disabled:text-gray-400 transition-colors cursor-pointer"
+                    >
+                      {sendingSms
+                        ? 'Đang gửi lại...'
+                        : resendTimer > 0
+                        ? `Gửi lại mã OTP sau (${resendTimer}s)`
+                        : 'Chưa nhận được mã? Gửi lại OTP SMS'}
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
           )}
         </div>
@@ -597,6 +923,169 @@ export default function Register({
           </button>
         </p>
       </div>
+
+      {/* MODAL DANH SÁCH CHỌN TỈNH / THÀNH PHỐ & PHƯỜNG / XÃ (Giống Mobile) */}
+      {pickerMode && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setPickerMode(null)}
+        >
+          <div
+            className="bg-white w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[82vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Modal */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+              <div>
+                <h3 className="text-[14px] font-bold text-slate-900">
+                  {pickerMode === 'province'
+                    ? 'Chọn Tỉnh / Thành phố (34 đơn vị)'
+                    : `Chọn Phường / Xã (${form.province})`}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {pickerMode === 'province'
+                    ? 'Đơn vị hành chính chuẩn hóa có tiền tố TP. / Tỉnh'
+                    : `Danh sách ${availableWards.length} Phường / Xã chuẩn hóa (P.)`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerMode(null)}
+                className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-300/70 flex items-center justify-center text-slate-600 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Thanh tìm kiếm nhanh */}
+            <div className="p-3.5 border-b border-slate-100 bg-white">
+              <div className="relative flex items-center">
+                <span className="absolute left-3 text-slate-400">🔍</span>
+                <input
+                  type="text"
+                  autoFocus
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  placeholder={
+                    pickerMode === 'province'
+                      ? 'Tìm nhanh Tỉnh / Thành phố (VD: Hồ Chí Minh, Hà Nội...)'
+                      : 'Tìm nhanh Phường / Xã (VD: Sài Gòn, Bến Thành, Đức Nhuận...)'
+                  }
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-8 py-2 text-[12px] text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:bg-white"
+                />
+                {pickerSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerSearch('')}
+                    className="absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Thành phố lớn chọn nhanh */}
+              {pickerMode === 'province' && !pickerSearch.trim() && (
+                <div className="mt-2.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Đô thị trung ương phổ biến
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {quickProvinces.map((qp) => {
+                      const isSelected = form.province === qp.name;
+                      return (
+                        <button
+                          key={qp.code}
+                          type="button"
+                          onClick={() => handleSelectProvince(qp, true)}
+                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-orange-500 text-white border-orange-500 shadow-2xs'
+                              : 'bg-orange-50/70 text-orange-700 border-orange-200 hover:bg-orange-100'
+                          }`}
+                        >
+                          {qp.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Danh sách cuộn */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2">
+              {pickerMode === 'province' ? (
+                filteredProvinces.length === 0 ? (
+                  <div className="py-10 text-center text-xs text-slate-400">
+                    Không tìm thấy Tỉnh / Thành phố phù hợp.
+                  </div>
+                ) : (
+                  filteredProvinces.map((prov) => {
+                    const isSelected = form.province === prov.name;
+                    return (
+                      <button
+                        key={prov.code}
+                        type="button"
+                        onClick={() => handleSelectProvince(prov, true)}
+                        className={`w-full text-left px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-orange-50 text-orange-700 font-bold'
+                            : 'hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-[13px] truncate">{prov.name}</div>
+                          {prov.mergedFrom && (
+                            <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                              Sáp nhập: {prov.mergedFrom}
+                            </div>
+                          )}
+                        </div>
+                        {isSelected && (
+                          <span className="text-orange-600 font-bold text-sm flex-shrink-0">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )
+              ) : loadingWards ? (
+                <div className="py-10 text-center text-xs text-slate-500">
+                  Đang tải danh sách Phường / Xã...
+                </div>
+              ) : filteredWards.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  Không tìm thấy Phường / Xã phù hợp với từ khóa "{pickerSearch}".
+                </div>
+              ) : (
+                filteredWards.map((w) => {
+                  const formattedW = formatWardName(w);
+                  const isSelected = form.ward === formattedW || form.ward === w;
+                  return (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => handleSelectWard(w)}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-orange-50 text-orange-700 font-bold'
+                          : 'hover:bg-slate-50 text-slate-800'
+                      }`}
+                    >
+                      <span className="text-[13px]">{formattedW}</span>
+                      {isSelected && (
+                        <span className="text-orange-600 font-bold text-sm">✓</span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
