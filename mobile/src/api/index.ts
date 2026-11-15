@@ -848,14 +848,18 @@ export async function upvoteTicket(
   ticketId: string,
   accessToken?: string | null
 ): Promise<void> {
-  const url = `${API_BASE_URL}/api/v1/tickets/${ticketId}/upvote`;
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+  const url = `${API_BASE_URL}/api/v1/tickets/${encodeURIComponent(ticketId)}/upvote`;
   console.log('👍 UPVOTE TICKET URL:', url);
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -920,6 +924,9 @@ export interface ReportedTicket {
   deadline: string | null;
   departmentId?: string;
   departmentName?: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  isLifeThreatening?: boolean;
   steps?: Array<{
     id?: string;
     stepId?: string;
@@ -1098,6 +1105,106 @@ export async function getLifeThreateningTickets(
     };
   } catch (err) {
     console.error('❌ Error fetching life threatening tickets:', err);
+    return {
+      totalPages: 0,
+      totalElements: 0,
+      size,
+      content: [],
+      number: 0,
+      numberOfElements: 0,
+      first: true,
+      last: true,
+      empty: true,
+    };
+  }
+}
+
+/* =========================================================
+   IN-PROGRESS TICKETS (COMMUNITY / AREA MONITORING)
+   GET /api/v1/tickets/in-progress
+   Dành cho Resident: trả về danh sách phân trang toàn bộ các vé đang xử lý (IN_PROGRESS)
+   ========================================================= */
+
+export async function getInProgressTickets(
+  accessToken?: string | null,
+  page: number = 0,
+  size: number = 50
+): Promise<PageResponse<ReportedTicket>> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token) {
+    return {
+      totalPages: 0,
+      totalElements: 0,
+      size,
+      content: [],
+      number: 0,
+      numberOfElements: 0,
+      first: true,
+      last: true,
+      empty: true,
+    };
+  }
+
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  const url = `${API_BASE_URL}/api/v1/tickets/in-progress?${queryParams.toString()}`;
+  console.log('🛠️ GET IN-PROGRESS TICKETS URL:', url);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: '*/*',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const text = await response.text();
+    console.log('🛠️ GET IN-PROGRESS TICKETS STATUS:', response.status);
+
+    let payload: any = null;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // not json
+    }
+
+    if (!response.ok || !payload?.success) {
+      console.warn('⚠️ Lỗi lấy danh sách sự cố đang xử lý:', payload?.message || response.status);
+      return {
+        totalPages: 0,
+        totalElements: 0,
+        size,
+        content: [],
+        number: 0,
+        numberOfElements: 0,
+        first: true,
+        last: true,
+        empty: true,
+      };
+    }
+
+    const data = payload.data || {};
+    return {
+      totalPages: data.page?.totalPages ?? data.totalPages ?? 0,
+      totalElements: data.page?.totalElements ?? data.totalElements ?? 0,
+      size: data.page?.size ?? data.size ?? size,
+      content: Array.isArray(data.content) ? data.content : [],
+      number: data.page?.number ?? data.number ?? page,
+      numberOfElements: Array.isArray(data.content) ? data.content.length : 0,
+      first: (data.page?.number ?? 0) === 0,
+      last: true,
+      empty: !Array.isArray(data.content) || data.content.length === 0,
+    };
+  } catch (err) {
+    console.error('❌ Error fetching in-progress tickets:', err);
     return {
       totalPages: 0,
       totalElements: 0,
