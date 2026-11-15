@@ -69,24 +69,21 @@ export default function ProfileScreen({
   const [totalReportsCount, setTotalReportsCount] = useState<number>(0);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Settings States (Push Notification, Language, Terms Modal)
+  // Settings States (Push Notification, Terms Modal)
   const [pushEnabled, setPushEnabled] = useState<boolean>(true);
   const [pushStatusAlert, setPushStatusAlert] = useState<boolean>(true);
   const [pushSosAlert, setPushSosAlert] = useState<boolean>(true);
-  const [appLanguage, setAppLanguage] = useState<'vi' | 'en'>('vi');
-  const [settingModal, setSettingModal] = useState<'push' | 'language' | 'terms' | null>(null);
+  const [settingModal, setSettingModal] = useState<'push' | 'terms' | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [savedPush, savedLang, savedStatusAlert, savedSosAlert] = await Promise.all([
+        const [savedPush, savedStatusAlert, savedSosAlert] = await Promise.all([
           AsyncStorage.getItem('@cityfix_push_enabled'),
-          AsyncStorage.getItem('@cityfix_language'),
           AsyncStorage.getItem('@cityfix_push_status'),
           AsyncStorage.getItem('@cityfix_push_sos'),
         ]);
         if (savedPush !== null) setPushEnabled(savedPush === 'true');
-        if (savedLang === 'vi' || savedLang === 'en') setAppLanguage(savedLang);
         if (savedStatusAlert !== null) setPushStatusAlert(savedStatusAlert === 'true');
         if (savedSosAlert !== null) setPushSosAlert(savedSosAlert === 'true');
       } catch {}
@@ -107,50 +104,6 @@ export default function ProfileScreen({
       await AsyncStorage.setItem('@cityfix_push_status', String(val));
       await AsyncStorage.setItem('@cityfix_push_sos', String(val));
     } catch {}
-  };
-
-  const handleSelectLanguage = async (lang: 'vi' | 'en') => {
-    setAppLanguage(lang);
-    setSettingModal(null);
-    try {
-      await AsyncStorage.setItem('@cityfix_language', lang);
-    } catch {}
-  };
-
-  const isEn = appLanguage === 'en';
-  const i18n = {
-    statsSent: isEn ? 'Reports Sent' : 'Báo cáo đã gửi',
-    statsProcessing: isEn ? 'In Progress' : 'Đang xử lý',
-    statsDone: isEn ? 'Completed' : 'Hoàn thành',
-    accountInfo: isEn ? 'ACCOUNT INFORMATION' : 'THÔNG TIN TÀI KHOẢN',
-    editBtn: isEn ? 'Edit' : 'Chỉnh sửa',
-    cancelBtn: isEn ? 'Cancel' : 'Hủy',
-    saveBtn: isEn ? 'Save' : 'Lưu',
-    fullName: isEn ? 'Full Name' : 'Họ và tên',
-    fixedBadge: isEn ? 'Fixed' : 'Cố định',
-    phone: isEn ? 'Phone' : 'SĐT',
-    province: isEn ? 'Province' : 'Tỉnh/TP',
-    ward: isEn ? 'Ward' : 'Phường/Xã',
-    address: isEn ? 'Address' : 'Địa chỉ',
-    myReportsTitle: isEn ? 'MY REPORTED TICKETS' : 'HỒ SƠ BÁO CÁO CỦA TÔI',
-    seeAll: isEn ? 'See all →' : 'Tất cả →',
-    settingsHeader: isEn ? 'SETTINGS' : 'CÀI ĐẶT',
-    pushTitle: isEn ? 'Push Notifications' : 'Thông báo đẩy',
-    pushSub: isEn
-      ? pushEnabled
-        ? 'Active • Ticket updates & SOS alerts'
-        : 'Off • Tap to configure alerts'
-      : pushEnabled
-        ? 'Đang bật • Tiến độ hồ sơ & Cảnh báo SOS'
-        : 'Đang tắt • Chạm để cấu hình thông báo',
-    langTitle: isEn ? 'Language' : 'Ngôn ngữ',
-    langSub: isEn ? 'Switch between Vietnamese and English' : 'Chuyển đổi giao diện Tiếng Việt / Tiếng Anh',
-    termsTitle: isEn ? 'Terms of Service' : 'Điều khoản sử dụng',
-    termsSub: isEn ? 'Citizen reporting rules, SLA & privacy policy' : 'Quy định phản ánh, cam kết SLA & bảo mật dữ liệu',
-    logoutBtn: isEn ? 'LOG OUT' : 'ĐĂNG XUẤT',
-    tabHome: isEn ? 'Home' : 'Trang chủ',
-    tabReports: isEn ? 'Reports' : 'Báo cáo',
-    tabProfile: isEn ? 'Account' : 'Tài khoản',
   };
 
   // Picker modal state for 2025 Merged Provinces & Wards
@@ -266,9 +219,9 @@ export default function ProfileScreen({
   ).length;
 
   const stats = [
-    { value: String(totalTickets), label: i18n.statsSent, filterKey: 'all' as const },
-    { value: String(processingCount), label: i18n.statsProcessing, filterKey: 'processing' as const },
-    { value: String(doneCount), label: i18n.statsDone, filterKey: 'done' as const },
+    { value: String(totalTickets), label: 'Báo cáo đã gửi', filterKey: 'all' as const },
+    { value: String(processingCount), label: 'Đang xử lý', filterKey: 'processing' as const },
+    { value: String(doneCount), label: 'Hoàn thành', filterKey: 'done' as const },
   ];
 
   function startEdit() {
@@ -414,11 +367,11 @@ export default function ProfileScreen({
           {/* Account Info Section */}
           <View style={styles.sectionCard}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardHeaderTitle}>{i18n.accountInfo}</Text>
+              <Text style={styles.cardHeaderTitle}>THÔNG TIN TÀI KHOẢN</Text>
               {!editMode ? (
                 <TouchableOpacity onPress={startEdit} style={styles.editBtn}>
                   <Feather name="edit-2" size={12} color="#ea580c" />
-                  <Text style={styles.editBtnText}>{i18n.editBtn}</Text>
+                  <Text style={styles.editBtnText}>Chỉnh sửa</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.editActionRow}>
@@ -427,7 +380,7 @@ export default function ProfileScreen({
                     disabled={saving}
                     style={styles.cancelBtn}
                   >
-                    <Text style={styles.cancelBtnText}>{i18n.cancelBtn}</Text>
+                    <Text style={styles.cancelBtnText}>Hủy</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={saveEdit}
@@ -437,7 +390,7 @@ export default function ProfileScreen({
                     {saving ? (
                       <ActivityIndicator size="small" color="#ffffff" />
                     ) : (
-                      <Text style={styles.saveBtnText}>{i18n.saveBtn}</Text>
+                      <Text style={styles.saveBtnText}>Lưu</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -447,16 +400,14 @@ export default function ProfileScreen({
             {saveSuccess ? (
               <View style={styles.successBanner}>
                 <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
-                <Text style={styles.successText}>
-                  {isEn ? 'Profile updated successfully!' : 'Cập nhật thành công!'}
-                </Text>
+                <Text style={styles.successText}>Cập nhật thành công!</Text>
               </View>
             ) : null}
 
             <View style={styles.infoList}>
               {/* Full Name */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{i18n.fullName}</Text>
+                <Text style={styles.infoLabel}>Họ và tên</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
@@ -475,7 +426,7 @@ export default function ProfileScreen({
                   <View style={styles.disabledInputWrapper}>
                     <Text style={styles.disabledInputText}>{authUser?.email || '—'}</Text>
                     <View style={styles.readOnlyBadge}>
-                      <Text style={styles.readOnlyBadgeText}>{i18n.fixedBadge}</Text>
+                      <Text style={styles.readOnlyBadgeText}>Cố định</Text>
                     </View>
                   </View>
                 ) : (
@@ -485,7 +436,7 @@ export default function ProfileScreen({
 
               {/* Phone (Editable) */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{i18n.phone}</Text>
+                <Text style={styles.infoLabel}>SĐT</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
@@ -503,7 +454,7 @@ export default function ProfileScreen({
 
               {/* Province */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{i18n.province}</Text>
+                <Text style={styles.infoLabel}>Tỉnh/TP</Text>
                 {editMode ? (
                   <TouchableOpacity
                     activeOpacity={0.75}
@@ -532,7 +483,7 @@ export default function ProfileScreen({
 
               {/* Ward / Area */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{i18n.ward}</Text>
+                <Text style={styles.infoLabel}>Phường/Xã</Text>
                 {editMode ? (
                   <TouchableOpacity
                     activeOpacity={0.75}
@@ -568,7 +519,7 @@ export default function ProfileScreen({
 
               {/* Address */}
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{i18n.address}</Text>
+                <Text style={styles.infoLabel}>Địa chỉ</Text>
                 {editMode ? (
                   <TextInput
                     style={styles.infoInput}
@@ -586,12 +537,12 @@ export default function ProfileScreen({
           {/* My Recent Tickets */}
           <View style={{ marginTop: 16 }}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeaderTitle}>{i18n.myReportsTitle}</Text>
+              <Text style={styles.sectionHeaderTitle}>HỒ SƠ BÁO CÁO CỦA TÔI</Text>
               <TouchableOpacity
                 onPress={() => navigate('my-reports')}
                 style={styles.seeAllBtn}
               >
-                <Text style={styles.seeAllText}>{i18n.seeAll}</Text>
+                <Text style={styles.seeAllText}>Tất cả →</Text>
               </TouchableOpacity>
             </View>
 
@@ -652,7 +603,7 @@ export default function ProfileScreen({
           {/* Settings Group */}
           <View style={[styles.sectionCard, { marginTop: 16 }]}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardHeaderTitle}>{i18n.settingsHeader}</Text>
+              <Text style={styles.cardHeaderTitle}>CÀI ĐẶT</Text>
             </View>
             <View style={styles.settingsList}>
               {/* 1. Push Notifications */}
@@ -666,9 +617,11 @@ export default function ProfileScreen({
                     <Ionicons name="notifications-outline" size={18} color="#ea580c" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.settingText}>{i18n.pushTitle}</Text>
+                    <Text style={styles.settingText}>Thông báo đẩy</Text>
                     <Text style={styles.settingSubText} numberOfLines={1}>
-                      {i18n.pushSub}
+                      {pushEnabled
+                        ? 'Đang bật • Tiến độ hồ sơ & Cảnh báo SOS'
+                        : 'Đang tắt • Chạm để cấu hình thông báo'}
                     </Text>
                   </View>
                 </View>
@@ -683,34 +636,7 @@ export default function ProfileScreen({
                 </View>
               </TouchableOpacity>
 
-              {/* 2. Language */}
-              <TouchableOpacity
-                style={styles.settingItem}
-                activeOpacity={0.75}
-                onPress={() => setSettingModal('language')}
-              >
-                <View style={[styles.settingLeft, { flex: 1, paddingRight: 10 }]}>
-                  <View style={[styles.settingIconBox, { backgroundColor: '#eff6ff' }]}>
-                    <Ionicons name="globe-outline" size={18} color="#2563eb" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.settingText}>{i18n.langTitle}</Text>
-                    <Text style={styles.settingSubText} numberOfLines={1}>
-                      {i18n.langSub}
-                    </Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <View style={styles.langValueBadge}>
-                    <Text style={styles.langValueBadgeText}>
-                      {appLanguage === 'en' ? '🇬🇧 English' : '🇻🇳 Tiếng Việt'}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-                </View>
-              </TouchableOpacity>
-
-              {/* 3. Terms of Service */}
+              {/* 2. Terms of Service */}
               <TouchableOpacity
                 style={[styles.settingItem, { borderBottomWidth: 0 }]}
                 activeOpacity={0.75}
@@ -721,9 +647,9 @@ export default function ProfileScreen({
                     <Ionicons name="document-text-outline" size={18} color="#16a34a" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.settingText}>{i18n.termsTitle}</Text>
+                    <Text style={styles.settingText}>Điều khoản sử dụng</Text>
                     <Text style={styles.settingSubText} numberOfLines={1}>
-                      {i18n.termsSub}
+                      Quy định phản ánh, cam kết SLA & bảo mật dữ liệu
                     </Text>
                   </View>
                 </View>
@@ -739,7 +665,7 @@ export default function ProfileScreen({
             activeOpacity={0.8}
           >
             <Ionicons name="log-out-outline" size={18} color="#dc2626" />
-            <Text style={styles.logoutBtnText}>{i18n.logoutBtn}</Text>
+            <Text style={styles.logoutBtnText}>ĐĂNG XUẤT</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -747,9 +673,9 @@ export default function ProfileScreen({
       {/* Bottom Navigation */}
       <View style={styles.bottomTabBar}>
         {[
-          { id: 'home', label: i18n.tabHome, icon: 'home-outline' },
-          { id: 'my-reports', label: i18n.tabReports, icon: 'document-text-outline' },
-          { id: 'profile', label: i18n.tabProfile, icon: 'person-outline' },
+          { id: 'home', label: 'Trang chủ', icon: 'home-outline' },
+          { id: 'my-reports', label: 'Báo cáo', icon: 'document-text-outline' },
+          { id: 'profile', label: 'Tài khoản', icon: 'person-outline' },
         ].map((tab) => {
           const active = tab.id === 'profile';
           return (
@@ -1044,13 +970,9 @@ export default function ProfileScreen({
             <View style={styles.modalHandle} />
             <View style={styles.pickerHeader}>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.pickerTitle}>
-                  {isEn ? 'Push Notifications' : 'Cài đặt Thông báo đẩy'}
-                </Text>
+                <Text style={styles.pickerTitle}>Cài đặt Thông báo đẩy</Text>
                 <Text style={styles.pickerSubtitle}>
-                  {isEn
-                    ? 'Receive real-time alerts even when the app is closed'
-                    : 'Nhận thông báo tức thời trên màn hình khoá ngay cả khi đóng ứng dụng'}
+                  Nhận thông báo tức thời trên màn hình khoá ngay cả khi đóng ứng dụng
                 </Text>
               </View>
               <TouchableOpacity
@@ -1064,22 +986,16 @@ export default function ProfileScreen({
             <View style={styles.settingExplainBox}>
               <Ionicons name="information-circle" size={18} color="#ea580c" />
               <Text style={styles.settingExplainText}>
-                {isEn
-                  ? 'Push notifications help you track your reported urban incidents without opening the app continuously.'
-                  : 'Thông báo đẩy (Push Notification) giúp điện thoại tự động báo tin khi hồ sơ phản ánh của bạn được cơ quan chức năng duyệt, điều phối xử lý hoặc hoàn thành nghiệm thu.'}
+                Thông báo đẩy (Push Notification) giúp điện thoại tự động báo tin khi hồ sơ phản ánh của bạn được cơ quan chức năng duyệt, điều phối xử lý hoặc hoàn thành nghiệm thu.
               </Text>
             </View>
 
             <View style={{ gap: 10, marginTop: 10, marginBottom: 16 }}>
               <View style={styles.pushOptionCard}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={styles.pushOptionTitle}>
-                    {isEn ? 'Enable All Push Notifications' : 'Bật thông báo đẩy toàn hệ thống'}
-                  </Text>
+                  <Text style={styles.pushOptionTitle}>Bật thông báo đẩy toàn hệ thống</Text>
                   <Text style={styles.pushOptionSub}>
-                    {isEn
-                      ? 'Master switch for all CityFix mobile alerts'
-                      : 'Công tắc tổng cho phép CityFix gửi thông báo về thiết bị'}
+                    Công tắc tổng cho phép CityFix gửi thông báo về thiết bị
                   </Text>
                 </View>
                 <Switch
@@ -1092,13 +1008,9 @@ export default function ProfileScreen({
 
               <View style={[styles.pushOptionCard, !pushEnabled && { opacity: 0.5 }]}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={styles.pushOptionTitle}>
-                    {isEn ? 'My Ticket Progress Updates' : 'Cập nhật tiến độ hồ sơ của tôi'}
-                  </Text>
+                  <Text style={styles.pushOptionTitle}>Cập nhật tiến độ hồ sơ của tôi</Text>
                   <Text style={styles.pushOptionSub}>
-                    {isEn
-                      ? 'When your report is verified, assigned to a department, or resolved'
-                      : 'Khi báo cáo được tiếp nhận, phân công đội kỹ thuật hoặc hoàn thành xử lý'}
+                    Khi báo cáo được tiếp nhận, phân công đội kỹ thuật hoặc hoàn thành xử lý
                   </Text>
                 </View>
                 <Switch
@@ -1117,13 +1029,9 @@ export default function ProfileScreen({
 
               <View style={[styles.pushOptionCard, !pushEnabled && { opacity: 0.5 }]}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={styles.pushOptionTitle}>
-                    {isEn ? 'Emergency SOS Alerts in Ward' : 'Cảnh báo sự cố Khẩn cấp (SOS) lân cận'}
-                  </Text>
+                  <Text style={styles.pushOptionTitle}>Cảnh báo sự cố Khẩn cấp (SOS) lân cận</Text>
                   <Text style={styles.pushOptionSub}>
-                    {isEn
-                      ? 'Life-threatening hazards (fallen trees, electrical fires, deep flooding) near you'
-                      : 'Cảnh báo nguy hiểm tính mạng (cây đổ, chập điện, sạt lở) tại khu vực của bạn'}
+                    Cảnh báo nguy hiểm tính mạng (cây đổ, chập điện, sạt lở) tại khu vực của bạn
                   </Text>
                 </View>
                 <Switch
@@ -1145,106 +1053,13 @@ export default function ProfileScreen({
               style={styles.modalPrimaryDoneBtn}
               onPress={() => setSettingModal(null)}
             >
-              <Text style={styles.modalPrimaryDoneText}>
-                {isEn ? 'Done' : 'Đã hiểu & Lưu cài đặt'}
-              </Text>
+              <Text style={styles.modalPrimaryDoneText}>Đã hiểu & Lưu cài đặt</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL 2: CHỌN NGÔN NGỮ (TIẾNG VIỆT / TIẾNG ANH) */}
-      <Modal
-        visible={settingModal === 'language'}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSettingModal(null)}
-      >
-        <View style={styles.pickerBackdrop}>
-          <Pressable style={{ flex: 1 }} onPress={() => setSettingModal(null)} />
-          <View style={[styles.pickerSheet, { minHeight: 'auto' }]}>
-            <View style={styles.modalHandle} />
-            <View style={styles.pickerHeader}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.pickerTitle}>
-                  {isEn ? 'Select Language' : 'Chọn Ngôn ngữ hiển thị'}
-                </Text>
-                <Text style={styles.pickerSubtitle}>
-                  {isEn
-                    ? 'Choose your preferred interface language for CityFix'
-                    : 'Tuỳ chỉnh ngôn ngữ giao diện ứng dụng CityFix'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.pickerCloseBtn}
-                onPress={() => setSettingModal(null)}
-              >
-                <Ionicons name="close" size={20} color="#475569" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ gap: 10, marginVertical: 12 }}>
-              <TouchableOpacity
-                style={[
-                  styles.pickerOptionItem,
-                  appLanguage === 'vi' && styles.pickerOptionItemActive,
-                ]}
-                onPress={() => handleSelectLanguage('vi')}
-              >
-                <Text style={{ fontSize: 24, marginRight: 6 }}>🇻🇳</Text>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.pickerOptionTitle,
-                      appLanguage === 'vi' && styles.pickerOptionTitleActive,
-                    ]}
-                  >
-                    Tiếng Việt (Vietnamese)
-                  </Text>
-                  <Text style={styles.pickerOptionSub}>
-                    Ngôn ngữ mặc định cho công dân & cơ quan đô thị Việt Nam
-                  </Text>
-                </View>
-                <Ionicons
-                  name={appLanguage === 'vi' ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={22}
-                  color={appLanguage === 'vi' ? '#ea580c' : '#cbd5e1'}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.pickerOptionItem,
-                  appLanguage === 'en' && styles.pickerOptionItemActive,
-                ]}
-                onPress={() => handleSelectLanguage('en')}
-              >
-                <Text style={{ fontSize: 24, marginRight: 6 }}>🇬🇧</Text>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.pickerOptionTitle,
-                      appLanguage === 'en' && styles.pickerOptionTitleActive,
-                    ]}
-                  >
-                    Tiếng Anh (English)
-                  </Text>
-                  <Text style={styles.pickerOptionSub}>
-                    English interface for international residents & visitors
-                  </Text>
-                </View>
-                <Ionicons
-                  name={appLanguage === 'en' ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={22}
-                  color={appLanguage === 'en' ? '#ea580c' : '#cbd5e1'}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL 3: ĐIỀU KHOẢN SỬ DỤNG & CHÍNH SÁCH BẢO MẬT */}
+      {/* MODAL 2: ĐIỀU KHOẢN SỬ DỤNG & CHÍNH SÁCH BẢO MẬT */}
       <Modal
         visible={settingModal === 'terms'}
         transparent
@@ -1257,13 +1072,9 @@ export default function ProfileScreen({
             <View style={styles.modalHandle} />
             <View style={styles.pickerHeader}>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.pickerTitle}>
-                  {isEn ? 'Terms of Service & Privacy Policy' : 'Điều khoản sử dụng & Bảo mật'}
-                </Text>
+                <Text style={styles.pickerTitle}>Điều khoản sử dụng & Bảo mật</Text>
                 <Text style={styles.pickerSubtitle}>
-                  {isEn
-                    ? 'CityFix Smart Urban Incident Reporting Platform • v2.5'
-                    : 'Hệ thống Phản ánh Hiện trường Đô thị Thông minh CityFix • v2.5'}
+                  Hệ thống Phản ánh Hiện trường Đô thị Thông minh CityFix • v2.5
                 </Text>
               </View>
               <TouchableOpacity
@@ -1347,9 +1158,7 @@ export default function ProfileScreen({
               style={styles.modalPrimaryDoneBtn}
               onPress={() => setSettingModal(null)}
             >
-              <Text style={styles.modalPrimaryDoneText}>
-                {isEn ? 'I Agree & Close' : 'Tôi đã đọc và đồng ý'}
-              </Text>
+              <Text style={styles.modalPrimaryDoneText}>Tôi đã đọc và đồng ý</Text>
             </TouchableOpacity>
           </View>
         </View>
