@@ -437,6 +437,7 @@ export default function AppNavigator() {
             navigate={handleNavigate}
             authUser={user}
             openTicket={handleOpenTicket}
+            isActive={currentScreen === 'home'}
           />
         </View>
 

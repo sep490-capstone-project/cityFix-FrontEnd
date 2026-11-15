@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,14 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import MapView, { Marker } from 'react-native-maps';
 import { AuthUser } from '../LoginScreen';
 import {
   getMyReportedTickets,
   getLifeThreateningTickets,
+  getInProgressTickets,
+  getMyUpvotedTickets,
+  upvoteTicket,
   ReportedTicket,
   mapBackendStatus,
   getUnreadNotificationCount,
@@ -32,6 +36,7 @@ interface Props {
   navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   openTicket?: (id: string, ticketObj?: any) => void;
+  isActive?: boolean;
 }
 
 const QUICK_CATS = [
@@ -193,10 +198,47 @@ function formatLocation(ward?: string, province?: string): string {
   return 'Bến Nghé, TP. Hồ Chí Minh';
 }
 
-export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
+function formatRelativeTime(isoString?: string | null): string {
+  if (!isoString) return 'Vừa xong';
+  const time = new Date(isoString).getTime();
+  if (isNaN(time)) return 'Vừa xong';
+  const diffSec = Math.max(0, Math.floor((Date.now() - time) / 1000));
+  if (diffSec < 60) return 'Vừa xong';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} phút`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} giờ`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay} ngày`;
+}
+
+function getInitials(name?: string | null): string {
+  const clean = (name || '').trim();
+  if (!clean) return 'CD';
+  return clean
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(-2)
+    .join('')
+    .toUpperCase();
+}
+
+export default function HomeScreen({ navigate, authUser, openTicket, isActive = true }: Props) {
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const [mapRenderKey, setMapRenderKey] = useState(0);
+  const prevActiveRef = useRef<boolean>(isActive);
   const [lifeThreateningTickets, setLifeThreateningTickets] = useState<ReportedTicket[]>([]);
+  const [inProgressTickets, setInProgressTickets] = useState<ReportedTicket[]>([]);
+  const [upvotedTickets, setUpvotedTickets] = useState<ReportedTicket[]>([]);
+  const [upvotedIds, setUpvotedIds] = useState<Record<string, boolean>>({});
+  const [upvotingId, setUpvotingId] = useState<string | null>(null);
+  const [mapFilter, setMapFilter] = useState<'all' | 'sos' | 'in_progress'>('all');
+  const [selectedMapPin, setSelectedMapPin] = useState<{
+    ticket: ReportedTicket;
+    isSos: boolean;
+  } | null>(null);
   const [selectedSosTicket, setSelectedSosTicket] = useState<ReportedTicket | null>(null);
+  const [selectedDetailIsSos, setSelectedDetailIsSos] = useState<boolean>(true);
   const [sosDetailVisible, setSosDetailVisible] = useState<boolean>(false);
   const [allMyTickets, setAllMyTickets] = useState<ReportedTicket[]>([]);
   const [realTickets, setRealTickets] = useState<ReportedTicket[]>([]);
@@ -214,10 +256,12 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
   const loadHomeData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [ticketsRes, unread, sosRes] = await Promise.allSettled([
+      const [ticketsRes, unread, sosRes, inProgRes, upvotedRes] = await Promise.allSettled([
         getMyReportedTickets(null, 0, 100),
         getUnreadNotificationCount(),
-        getLifeThreateningTickets(null, 0, 10),
+        getLifeThreateningTickets(null, 0, 20),
+        getInProgressTickets(null, 0, 50),
+        getMyUpvotedTickets(null, 0, 30),
       ]);
 
       if (
@@ -243,10 +287,32 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
       ) {
         console.log('🚨 SOS TICKETS FOUND:', sosRes.value.content.length);
         setLifeThreateningTickets(sosRes.value.content);
-        // Reset alert dismissed when new emergency tickets arrive
         if (sosRes.value.content.length > 0) {
           setAlertDismissed(false);
         }
+      }
+
+      if (
+        inProgRes.status === 'fulfilled' &&
+        inProgRes.value &&
+        Array.isArray(inProgRes.value.content)
+      ) {
+        console.log('🛠️ IN-PROGRESS TICKETS FOUND:', inProgRes.value.content.length);
+        setInProgressTickets(inProgRes.value.content);
+      }
+
+      if (
+        upvotedRes.status === 'fulfilled' &&
+        upvotedRes.value &&
+        Array.isArray(upvotedRes.value.content)
+      ) {
+        setUpvotedTickets(upvotedRes.value.content);
+        const idMap: Record<string, boolean> = {};
+        upvotedRes.value.content.forEach((t) => {
+          const tid = t.id || (t as any).ticketId;
+          if (tid) idMap[tid] = true;
+        });
+        setUpvotedIds((prev) => ({ ...prev, ...idMap }));
       }
     } catch (e: any) {
       console.log('HomeScreen data load note:', e?.message);
@@ -254,6 +320,249 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
       if (isRefresh) setRefreshing(false);
     }
   }, []);
+
+  const openCommunityTicketDetail = useCallback((ticket: ReportedTicket, isSos: boolean) => {
+    setSelectedSosTicket(ticket);
+    setSelectedDetailIsSos(isSos);
+    setSosDetailVisible(true);
+  }, []);
+
+  const handleUpvoteCommunityTicket = useCallback(
+    async (ticketId: string) => {
+      if (!ticketId || upvotedIds[ticketId] || upvotingId === ticketId) return;
+      setUpvotingId(ticketId);
+      try {
+        await upvoteTicket(ticketId);
+        setUpvotedIds((prev) => ({ ...prev, [ticketId]: true }));
+        Alert.alert(
+          'Đã ghi nhận đồng tình',
+          'Cảm ơn bạn đã đóng góp tiếng nói cộng đồng để sự cố sớm được ưu tiên xử lý.'
+        );
+      } catch (err: any) {
+        const msg = err?.message || '';
+        if (msg.toLowerCase().includes('đã') || msg.toLowerCase().includes('already')) {
+          setUpvotedIds((prev) => ({ ...prev, [ticketId]: true }));
+        }
+        Alert.alert('Thông báo', msg || 'Không thể đồng tình sự cố này.');
+      } finally {
+        setUpvotingId(null);
+      }
+    },
+    [upvotedIds, upvotingId]
+  );
+
+  // 1. Hợp nhất danh sách vé trên Bản đồ giám sát khu vực (SOS + IN_PROGRESS)
+  const allMapPins = useMemo(() => {
+    const sosSet = new Set<string>();
+    const items: Array<{ ticket: ReportedTicket; isSos: boolean; lat: number; lng: number }> = [];
+
+    lifeThreateningTickets.forEach((t) => {
+      if (t.id) sosSet.add(t.id);
+      if (
+        typeof t.latitude === 'number' &&
+        typeof t.longitude === 'number' &&
+        t.latitude !== 0 &&
+        t.longitude !== 0
+      ) {
+        items.push({ ticket: t, isSos: true, lat: t.latitude, lng: t.longitude });
+      }
+    });
+
+    inProgressTickets.forEach((t) => {
+      if (t.id && sosSet.has(t.id)) return;
+      const isSosFlag =
+        Boolean(t.isLifeThreatening) ||
+        (t.priority || '').toUpperCase() === 'CRITICAL';
+      if (
+        typeof t.latitude === 'number' &&
+        typeof t.longitude === 'number' &&
+        t.latitude !== 0 &&
+        t.longitude !== 0
+      ) {
+        items.push({ ticket: t, isSos: isSosFlag, lat: t.latitude, lng: t.longitude });
+      }
+    });
+
+    return items;
+  }, [lifeThreateningTickets, inProgressTickets]);
+
+  const filteredMapPins = useMemo(() => {
+    if (mapFilter === 'sos') return allMapPins.filter((p) => p.isSos);
+    if (mapFilter === 'in_progress') return allMapPins.filter((p) => !p.isSos);
+    return allMapPins;
+  }, [allMapPins, mapFilter]);
+
+  const sosPinCount = useMemo(
+    () => allMapPins.filter((p) => p.isSos).length,
+    [allMapPins]
+  );
+  const inProgressPinCount = useMemo(
+    () => allMapPins.filter((p) => !p.isSos).length,
+    [allMapPins]
+  );
+
+  const initialMapRegion = useMemo(() => {
+    const first = filteredMapPins[0] || allMapPins[0];
+    if (first) {
+      return {
+        latitude: first.lat,
+        longitude: first.lng,
+        latitudeDelta: 0.035,
+        longitudeDelta: 0.035,
+      };
+    }
+    return {
+      latitude: 10.7769,
+      longitude: 106.7009,
+      latitudeDelta: 0.045,
+      longitudeDelta: 0.045,
+    };
+  }, [filteredMapPins, allMapPins]);
+
+  // 2. Danh sách Sự cố đang được quan tâm (kết hợp SOS + IN_PROGRESS thực tế)
+  const communityTrendingList = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ ticket: ReportedTicket; isSos: boolean }> = [];
+
+    lifeThreateningTickets.forEach((t) => {
+      if (!t.id || seen.has(t.id)) return;
+      seen.add(t.id);
+      list.push({ ticket: t, isSos: true });
+    });
+
+    inProgressTickets.forEach((t) => {
+      if (!t.id || seen.has(t.id)) return;
+      seen.add(t.id);
+      list.push({
+        ticket: t,
+        isSos: Boolean(t.isLifeThreatening) || (t.priority || '').toUpperCase() === 'CRITICAL',
+      });
+    });
+
+    return list.slice(0, 8);
+  }, [lifeThreateningTickets, inProgressTickets]);
+
+  // 3. Dòng thời gian Hoạt động Cộng đồng (tổng hợp từ in-progress, life-threatening, my-upvoted)
+  const communityFeedList = useMemo(() => {
+    const feed: Array<{
+      id: string;
+      user: string;
+      avatar: string;
+      action: string;
+      loc: string;
+      time: string;
+      timestamp: number;
+      type: 'sos' | 'progress' | 'report' | 'upvote';
+      ticket: ReportedTicket;
+      isSos: boolean;
+    }> = [];
+
+    const sosIds = new Set(lifeThreateningTickets.map((t) => t.id));
+
+    // A. Sự cố SOS khẩn cấp cùng Phường
+    lifeThreateningTickets.forEach((t) => {
+      const cat =
+        t.categories?.[0]?.categoryName ||
+        t.subCategories?.[0]?.name ||
+        'Sự cố khẩn cấp';
+      const reporter = t.isAnonymous
+        ? 'Cư dân ẩn danh'
+        : t.creatorFullName || 'Cư dân cùng Phường';
+      const ts = new Date(t.createdAt || Date.now()).getTime() || Date.now();
+      feed.push({
+        id: `sos-${t.id}`,
+        user: reporter,
+        avatar: t.isAnonymous ? 'SOS' : getInitials(reporter),
+        action: `cảnh báo khẩn cấp (SOS): ${cat.toLowerCase()}`,
+        loc: t.address || 'Cùng khu vực Phường',
+        time: formatRelativeTime(t.createdAt),
+        timestamp: ts + 1000,
+        type: 'sos',
+        ticket: t,
+        isSos: true,
+      });
+    });
+
+    // B. Sự cố Đang xử lý (IN_PROGRESS) của cộng đồng
+    inProgressTickets.forEach((t) => {
+      const cat =
+        t.categories?.[0]?.categoryName ||
+        t.subCategories?.[0]?.name ||
+        'hạ tầng đô thị';
+      const isSos = sosIds.has(t.id) || Boolean(t.isLifeThreatening);
+      const createdTs = new Date(t.createdAt || Date.now()).getTime() || Date.now();
+
+      // Hoạt động 1: Đơn vị / Cán bộ đang triển khai xử lý tại hiện trường
+      const activeStep = t.steps?.find(
+        (s) => s.status === 'IN_PROGRESS' || s.status === 'RESOLVED'
+      );
+      if (activeStep || t.departmentName || t.assigneeName) {
+        const handlerName =
+          activeStep?.assigneeName ||
+          t.departmentName ||
+          t.assigneeName ||
+          'Đội xử lý đô thị';
+        const stepTime = activeStep?.startedAt || activeStep?.completedAt || t.createdAt;
+        const stepTs = new Date(stepTime || Date.now()).getTime() || createdTs;
+        feed.push({
+          id: `prog-${t.id}`,
+          user: handlerName,
+          avatar: getInitials(handlerName),
+          action: activeStep?.stepName
+            ? `đang thực hiện "${activeStep.stepName}" (${cat.toLowerCase()})`
+            : `đang triển khai khắc phục ${cat.toLowerCase()}`,
+          loc: t.address || 'Hiện trường khu vực',
+          time: formatRelativeTime(stepTime),
+          timestamp: stepTs + 500,
+          type: 'progress',
+          ticket: t,
+          isSos,
+        });
+      }
+
+      // Hoạt động 2: Cư dân gửi báo cáo sự cố
+      if (!sosIds.has(t.id)) {
+        const reporter = t.isAnonymous
+          ? 'Cư dân ẩn danh'
+          : t.creatorFullName || 'Cư dân CityFix';
+        feed.push({
+          id: `rep-${t.id}`,
+          user: reporter,
+          avatar: t.isAnonymous ? 'CĐ' : getInitials(reporter),
+          action: `đã báo cáo ${cat.toLowerCase()}`,
+          loc: t.address || 'Khu vực đô thị',
+          time: formatRelativeTime(t.createdAt),
+          timestamp: createdTs,
+          type: 'report',
+          ticket: t,
+          isSos,
+        });
+      }
+    });
+
+    // C. Sự cố người dùng đã đồng tình (GET /api/v1/tickets/my-upvoted)
+    upvotedTickets.forEach((t) => {
+      const cat =
+        t.categories?.[0]?.categoryName ||
+        t.subCategories?.[0]?.name ||
+        'sự cố đô thị';
+      const ts = new Date(t.createdAt || Date.now()).getTime() || Date.now();
+      feed.push({
+        id: `upv-${t.id}`,
+        user: 'Bạn',
+        avatar: getInitials(authUser?.fullName || 'Bạn'),
+        action: `đã đồng tình sự cố ${cat.toLowerCase()}`,
+        loc: t.address || 'Khu vực lân cận',
+        time: formatRelativeTime(t.createdAt),
+        timestamp: ts,
+        type: 'upvote',
+        ticket: t,
+        isSos: sosIds.has(t.id) || Boolean(t.isLifeThreatening),
+      });
+    });
+
+    return feed.sort((a, b) => b.timestamp - a.timestamp).slice(0, 6);
+  }, [lifeThreateningTickets, inProgressTickets, upvotedTickets, authUser?.fullName]);
 
   useEffect(() => {
     loadHomeData(false);
@@ -296,6 +605,15 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
 
     return () => pulseLoop.stop();
   }, [loadHomeData]);
+
+  // Khi quay lại tab Trang chủ từ tab Báo cáo hoặc Tài khoản: remount MapView để không bị mất ghim do display: 'none'
+  useEffect(() => {
+    if (isActive && !prevActiveRef.current) {
+      setMapRenderKey((k) => k + 1);
+      loadHomeData(false);
+    }
+    prevActiveRef.current = isActive;
+  }, [isActive, loadHomeData]);
 
   const initials = (authUser?.fullName?.trim() || '?')
     .split(/\s+/)
@@ -510,8 +828,7 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
                 style={styles.alertContent}
                 activeOpacity={0.85}
                 onPress={() => {
-                  setSelectedSosTicket(lifeThreateningTickets[0]);
-                  setSosDetailVisible(true);
+                  openCommunityTicketDetail(lifeThreateningTickets[0], true);
                 }}
               >
                 <View style={styles.alertTagRow}>
@@ -582,62 +899,174 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           </View>
         </View>
 
-        {/* 4. Area Map Preview with Pulsing Live Radar Pins */}
+        {/* 4. Area Map Preview with Real-time SOS & IN_PROGRESS Markers */}
         <View style={[styles.paddingHorizontal, { marginTop: 22 }]}>
           <SectionLabel title="BẢN ĐỒ GIÁM SÁT KHU VỰC" />
-          <View style={styles.mapContainer}>
-            <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=800&h=400&fit=crop&auto=format',
-              }}
-              style={styles.mapImage}
-            />
-            <View style={styles.mapOverlay} />
 
-            {/* Live Pulsing Pins */}
+          {/* Filter Pills for Map */}
+          <View style={styles.mapFilterRow}>
             {[
-              { x: '36%', y: '34%', color: '#ef4444', count: '11' },
-              { x: '62%', y: '25%', color: '#f97316', count: '7' },
-              { x: '22%', y: '56%', color: '#f97316', count: '4' },
-              { x: '72%', y: '52%', color: '#eab308', count: '2' },
-            ].map((pin, i) => (
-              <View key={i} style={[styles.mapPin, { left: pin.x as any, top: pin.y as any }]}>
-                <Animated.View
+              { key: 'all' as const, label: `Tất cả (${allMapPins.length})` },
+              { key: 'sos' as const, label: `Khẩn cấp SOS (${sosPinCount})` },
+              { key: 'in_progress' as const, label: `Đang xử lý (${inProgressPinCount})` },
+            ].map((f) => {
+              const active = mapFilter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => {
+                    setMapFilter(f.key);
+                    setSelectedMapPin(null);
+                  }}
                   style={[
-                    styles.pinPulseRing,
-                    {
-                      backgroundColor: pin.color + '45',
-                      transform: [{ scale: pinPulseAnim }],
-                    },
+                    styles.mapFilterPill,
+                    active && styles.mapFilterPillActive,
+                    active && f.key === 'sos' && { backgroundColor: '#dc2626', borderColor: '#dc2626' },
                   ]}
-                />
-                <View style={[styles.pinBadge, { backgroundColor: pin.color }]}>
-                  <Text style={styles.pinText}>{pin.count}</Text>
-                </View>
-              </View>
-            ))}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.mapFilterPillText,
+                      active && styles.mapFilterPillTextActive,
+                    ]}
+                  >
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.mapContainer}>
+            {isActive ? (
+              <MapView
+                key={`home-map-${mapRenderKey}-${mapFilter}-${filteredMapPins.length}`}
+                style={styles.mapImage}
+                initialRegion={initialMapRegion}
+                showsUserLocation={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+              >
+                {filteredMapPins.map((pin) => {
+                  const catName =
+                    pin.ticket.categories?.[0]?.categoryName ||
+                    pin.ticket.subCategories?.[0]?.name ||
+                    (pin.isSos ? 'Sự cố khẩn cấp SOS' : 'Sự cố đang xử lý');
+                  return (
+                    <Marker
+                      key={`pin-${mapRenderKey}-${pin.ticket.id}-${pin.isSos ? 'sos' : 'ip'}`}
+                      coordinate={{ latitude: pin.lat, longitude: pin.lng }}
+                      title={catName}
+                      description={pin.ticket.address || 'Chạm để xem chi tiết'}
+                      pinColor={pin.isSos ? '#dc2626' : '#ea580c'}
+                      onPress={() => setSelectedMapPin({ ticket: pin.ticket, isSos: pin.isSos })}
+                      onCalloutPress={() => openCommunityTicketDetail(pin.ticket, pin.isSos)}
+                    />
+                  );
+                })}
+              </MapView>
+            ) : (
+              <View style={styles.mapImage} />
+            )}
 
             {/* Map Legend */}
-            <View style={styles.mapLegend}>
+            <View style={styles.mapLegend} pointerEvents="none">
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
-                <Text style={styles.legendText}>Khẩn cấp</Text>
+                <Text style={styles.legendText}>Khẩn cấp ({sosPinCount})</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#f97316' }]} />
-                <Text style={styles.legendText}>Đang xử lý</Text>
+                <Text style={styles.legendText}>Đang xử lý ({inProgressPinCount})</Text>
               </View>
             </View>
 
-            {/* Total Counter */}
-            <View style={styles.mapTotalBadge}>
-              <Text style={styles.totalNumber}>24</Text>
-              <Text style={styles.totalSub}>sự cố bán kính 5km</Text>
+            {/* Live Total Counter */}
+            <View style={styles.mapTotalBadge} pointerEvents="none">
+              <Text style={styles.totalNumber}>{filteredMapPins.length}</Text>
+              <Text style={styles.totalSub}>sự cố trên bản đồ</Text>
             </View>
           </View>
+
+          {/* Selected Pin Quick Preview Card */}
+          {selectedMapPin ? (
+            <TouchableOpacity
+              style={[
+                styles.mapSelectedPinCard,
+                selectedMapPin.isSos && {
+                  borderColor: '#fca5a5',
+                  backgroundColor: '#fef2f2',
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() =>
+                openCommunityTicketDetail(selectedMapPin.ticket, selectedMapPin.isSos)
+              }
+            >
+              <View
+                style={[
+                  styles.mapSelectedIconWrap,
+                  {
+                    backgroundColor: selectedMapPin.isSos ? '#fee2e2' : '#ffedd5',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={selectedMapPin.isSos ? 'warning' : 'construct'}
+                  size={18}
+                  color={selectedMapPin.isSos ? '#dc2626' : '#ea580c'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: '800',
+                      color: selectedMapPin.isSos ? '#dc2626' : '#ea580c',
+                    }}
+                  >
+                    {selectedMapPin.isSos ? 'KHẨN CẤP (SOS)' : 'ĐANG XỬ LÝ (IN_PROGRESS)'}
+                  </Text>
+                  {selectedMapPin.ticket.departmentName ? (
+                    <Text style={{ fontSize: 10, color: '#64748b' }} numberOfLines={1}>
+                      · {selectedMapPin.ticket.departmentName}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text
+                  style={{ fontSize: 13, fontWeight: '700', color: '#0f172a', marginTop: 2 }}
+                  numberOfLines={1}
+                >
+                  {selectedMapPin.ticket.categories?.[0]?.categoryName ||
+                    selectedMapPin.ticket.subCategories?.[0]?.name ||
+                    'Sự cố hạ tầng đô thị'}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#475569', marginTop: 1 }} numberOfLines={1}>
+                  {selectedMapPin.ticket.address || 'Chưa cập nhật địa chỉ'}
+                </Text>
+              </View>
+              <View style={styles.mapSelectedCtaWrap}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    color: selectedMapPin.isSos ? '#dc2626' : '#ea580c',
+                  }}
+                >
+                  Chi tiết →
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.mapHintSubText}>
+              💡 Chạm vào các ghim đỏ (SOS) hoặc ghim cam (Đang xử lý) trên bản đồ để xem chi tiết hiện trường.
+            </Text>
+          )}
         </View>
 
-        {/* Trending Horizontal Scroll */}
+        {/* Trending Horizontal Scroll (Backed by Real Community Tickets + Upvote API) */}
         <View style={{ marginTop: 22 }}>
           <View style={styles.paddingHorizontal}>
             <SectionLabel
@@ -651,46 +1080,141 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.trendingScrollContent}
           >
-            {TRENDING.map((t) => (
-              <View key={t.id} style={styles.trendingCard}>
-                <Image source={{ uri: t.img }} style={styles.trendingImg} />
-                <View style={styles.trendingBadge}>
-                  <Text style={styles.trendingBadgeText}>{formatSeverity(t.severity)}</Text>
-                </View>
-                <View style={styles.upvoteBadge}>
-                  <Feather name="thumbs-up" size={10} color="#f97316" />
-                  <Text style={styles.upvoteText}>{t.upvotes}</Text>
-                </View>
+            {communityTrendingList.length > 0
+              ? communityTrendingList.map(({ ticket: t, isSos }) => {
+                  const imgUri =
+                    t.imageUrls?.[0] ||
+                    t.imageUrl ||
+                    t.images?.[0] ||
+                    'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=400&h=260&fit=crop&auto=format';
+                  const catName =
+                    t.categories?.[0]?.categoryName ||
+                    t.subCategories?.[0]?.name ||
+                    t.categoryName ||
+                    'Sự cố đô thị';
+                  const isUpvoted = Boolean(t.id && upvotedIds[t.id]);
+                  const isUpvoting = upvotingId === t.id;
+                  const badgeLabel = isSos
+                    ? 'KHẨN CẤP (SOS)'
+                    : formatSeverity(t.priority || t.severity);
 
-                <View style={styles.trendingBody}>
-                  <Text style={styles.trendingCategory} numberOfLines={1}>
-                    {t.category}
-                  </Text>
-                  <Text style={styles.trendingAddress} numberOfLines={1}>
-                    {t.address}
-                  </Text>
-                  <View style={styles.trendingFooter}>
-                    <Text style={styles.trendingDelta}>{t.delta}</Text>
+                  return (
                     <TouchableOpacity
-                      style={styles.upvoteBtn}
-                      onPress={() => {
-                        Alert.alert(
-                          'Đồng tình sự cố',
-                          'Bạn có thể đồng tình các sự cố lân cận khi tạo báo cáo mới hoặc truy cập danh sách hồ sơ báo cáo.',
-                          [
-                            { text: 'Đóng', style: 'cancel' },
-                            { text: 'Xem danh sách', onPress: () => navigate('my-reports') },
-                          ]
-                        );
-                      }}
-                      activeOpacity={0.8}
+                      key={t.id}
+                      style={styles.trendingCard}
+                      activeOpacity={0.88}
+                      onPress={() => openCommunityTicketDetail(t, isSos)}
                     >
-                      <Text style={styles.upvoteBtnText}>Đồng tình</Text>
+                      <Image source={{ uri: imgUri }} style={styles.trendingImg} />
+                      <View
+                        style={[
+                          styles.trendingBadge,
+                          !isSos && {
+                            backgroundColor: '#fff7ed',
+                            borderColor: '#fed7aa',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.trendingBadgeText,
+                            !isSos && { color: '#ea580c' },
+                          ]}
+                        >
+                          {badgeLabel}
+                        </Text>
+                      </View>
+                      <View style={styles.upvoteBadge}>
+                        <Feather
+                          name="thumbs-up"
+                          size={10}
+                          color={isUpvoted ? '#16a34a' : '#f97316'}
+                        />
+                        <Text
+                          style={[
+                            styles.upvoteText,
+                            isUpvoted && { color: '#16a34a' },
+                          ]}
+                        >
+                          {isUpvoted ? 'Đã ủng hộ' : formatRelativeTime(t.createdAt)}
+                        </Text>
+                      </View>
+
+                      <View style={styles.trendingBody}>
+                        <Text style={styles.trendingCategory} numberOfLines={1}>
+                          {catName}
+                        </Text>
+                        <Text style={styles.trendingAddress} numberOfLines={1}>
+                          {t.address || 'Khu vực đô thị'}
+                        </Text>
+                        <View style={styles.trendingFooter}>
+                          <Text style={styles.trendingDelta} numberOfLines={1}>
+                            {t.departmentName || 'Đang xử lý'}
+                          </Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.upvoteBtn,
+                              isUpvoted && {
+                                backgroundColor: '#f0fdf4',
+                                borderColor: '#bbf7d0',
+                              },
+                            ]}
+                            disabled={isUpvoted || isUpvoting}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleUpvoteCommunityTicket(t.id);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.upvoteBtnText,
+                                isUpvoted && { color: '#16a34a' },
+                              ]}
+                            >
+                              {isUpvoting
+                                ? 'Đang gửi...'
+                                : isUpvoted
+                                ? '✓ Đã đồng tình'
+                                : 'Đồng tình'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     </TouchableOpacity>
+                  );
+                })
+              : TRENDING.map((t) => (
+                  <View key={t.id} style={styles.trendingCard}>
+                    <Image source={{ uri: t.img }} style={styles.trendingImg} />
+                    <View style={styles.trendingBadge}>
+                      <Text style={styles.trendingBadgeText}>{formatSeverity(t.severity)}</Text>
+                    </View>
+                    <View style={styles.upvoteBadge}>
+                      <Feather name="thumbs-up" size={10} color="#f97316" />
+                      <Text style={styles.upvoteText}>{t.upvotes}</Text>
+                    </View>
+
+                    <View style={styles.trendingBody}>
+                      <Text style={styles.trendingCategory} numberOfLines={1}>
+                        {t.category}
+                      </Text>
+                      <Text style={styles.trendingAddress} numberOfLines={1}>
+                        {t.address}
+                      </Text>
+                      <View style={styles.trendingFooter}>
+                        <Text style={styles.trendingDelta}>{t.delta}</Text>
+                        <TouchableOpacity
+                          style={styles.upvoteBtn}
+                          onPress={() => navigate('my-reports')}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.upvoteBtnText}>Đồng tình</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              </View>
-            ))}
+                ))}
           </ScrollView>
         </View>
 
@@ -819,33 +1343,97 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
           </View>
         </View>
 
-        {/* Community Feed */}
+        {/* Community Feed (Tích hợp trực tiếp API in-progress, life-threatening, my-upvoted) */}
         <View style={[styles.paddingHorizontal, { marginTop: 22, marginBottom: 24 }]}>
           <SectionLabel title="HOẠT ĐỘNG CỘNG ĐỒNG" />
           <View style={styles.feedCard}>
-            {COMMUNITY_FEED.map((item, i) => (
-              <View key={i} style={[styles.feedItem, i > 0 && styles.feedItemBorder]}>
-                <View style={styles.feedAvatar}>
-                  <Text style={styles.feedAvatarText}>{item.avatar}</Text>
-                </View>
-                <View style={styles.feedContent}>
-                  <Text style={styles.feedUserText}>
-                    <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.user}</Text>{' '}
-                    <Text style={{ color: '#64748b' }}>{item.action}</Text>
-                  </Text>
-                  <Text style={styles.feedLoc}>{item.loc}</Text>
-                </View>
-                <View style={styles.feedRight}>
-                  <View
-                    style={[
-                      styles.feedDot,
-                      { backgroundColor: item.report ? '#f97316' : '#94a3b8' },
-                    ]}
-                  />
-                  <Text style={styles.feedTime}>{item.time} trước</Text>
-                </View>
-              </View>
-            ))}
+            {communityFeedList.length > 0
+              ? communityFeedList.map((item, i) => {
+                  const dotColor =
+                    item.type === 'sos'
+                      ? '#ef4444'
+                      : item.type === 'progress'
+                      ? '#f97316'
+                      : item.type === 'upvote'
+                      ? '#16a34a'
+                      : '#0284c7';
+                  const avatarBg =
+                    item.type === 'sos'
+                      ? '#fee2e2'
+                      : item.type === 'progress'
+                      ? '#ffedd5'
+                      : item.type === 'upvote'
+                      ? '#dcfce7'
+                      : '#f1f5f9';
+                  const avatarTextCol =
+                    item.type === 'sos'
+                      ? '#dc2626'
+                      : item.type === 'progress'
+                      ? '#ea580c'
+                      : item.type === 'upvote'
+                      ? '#16a34a'
+                      : '#475569';
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.feedItem, i > 0 && styles.feedItemBorder]}
+                      activeOpacity={0.75}
+                      onPress={() => openCommunityTicketDetail(item.ticket, item.isSos)}
+                    >
+                      <View style={[styles.feedAvatar, { backgroundColor: avatarBg }]}>
+                        <Text style={[styles.feedAvatarText, { color: avatarTextCol }]}>
+                          {item.avatar}
+                        </Text>
+                      </View>
+                      <View style={styles.feedContent}>
+                        <Text style={styles.feedUserText} numberOfLines={2}>
+                          <Text style={{ fontWeight: '700', color: '#0f172a' }}>
+                            {item.user}
+                          </Text>{' '}
+                          <Text style={{ color: '#475569' }}>{item.action}</Text>
+                        </Text>
+                        <Text style={styles.feedLoc} numberOfLines={1}>
+                          📍 {item.loc}
+                        </Text>
+                      </View>
+                      <View style={styles.feedRight}>
+                        <View
+                          style={[
+                            styles.feedDot,
+                            { backgroundColor: dotColor },
+                          ]}
+                        />
+                        <Text style={styles.feedTime}>
+                          {item.time === 'Vừa xong' ? 'Vừa xong' : `${item.time} trước`}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              : COMMUNITY_FEED.map((item, i) => (
+                  <View key={i} style={[styles.feedItem, i > 0 && styles.feedItemBorder]}>
+                    <View style={styles.feedAvatar}>
+                      <Text style={styles.feedAvatarText}>{item.avatar}</Text>
+                    </View>
+                    <View style={styles.feedContent}>
+                      <Text style={styles.feedUserText}>
+                        <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.user}</Text>{' '}
+                        <Text style={{ color: '#64748b' }}>{item.action}</Text>
+                      </Text>
+                      <Text style={styles.feedLoc}>{item.loc}</Text>
+                    </View>
+                    <View style={styles.feedRight}>
+                      <View
+                        style={[
+                          styles.feedDot,
+                          { backgroundColor: item.report ? '#f97316' : '#94a3b8' },
+                        ]}
+                      />
+                      <Text style={styles.feedTime}>{item.time} trước</Text>
+                    </View>
+                  </View>
+                ))}
           </View>
         </View>
       </ScrollView>
@@ -918,6 +1506,10 @@ export default function HomeScreen({ navigate, authUser, openTicket }: Props) {
       <SOSTicketDetailModal
         visible={sosDetailVisible}
         ticket={selectedSosTicket}
+        isSos={selectedDetailIsSos}
+        isUpvoted={Boolean(selectedSosTicket?.id && upvotedIds[selectedSosTicket.id])}
+        upvoting={Boolean(selectedSosTicket?.id && upvotingId === selectedSosTicket.id)}
+        onUpvote={handleUpvoteCommunityTicket}
         onClose={() => setSosDetailVisible(false)}
       />
     </View>
@@ -1356,13 +1948,64 @@ const styles = StyleSheet.create({
   },
 
   /* Area Map */
+  mapFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  mapFilterPill: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  mapFilterPillActive: {
+    backgroundColor: '#ea580c',
+    borderColor: '#ea580c',
+  },
+  mapFilterPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  mapFilterPillTextActive: {
+    color: '#ffffff',
+  },
   mapContainer: {
-    height: 185,
+    height: 215,
     borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e2e8f0',
     position: 'relative',
+  },
+  mapSelectedPinCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 14,
+    padding: 12,
+    gap: 10,
+    marginTop: 10,
+  },
+  mapSelectedIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapSelectedCtaWrap: {
+    paddingLeft: 6,
+  },
+  mapHintSubText: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 8,
   },
   mapImage: {
     width: '100%',
@@ -1456,7 +2099,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   trendingCard: {
-    width: 215,
+    width: 232,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
@@ -1523,20 +2166,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginTop: 10,
   },
   trendingDelta: {
+    flex: 1,
     fontSize: 10,
     fontWeight: '700',
     color: '#16a34a',
   },
   upvoteBtn: {
+    flexShrink: 0,
     backgroundColor: '#fff7ed',
     borderWidth: 1,
     borderColor: '#fed7aa',
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 3.5,
   },
   upvoteBtnText: {
     fontSize: 10,

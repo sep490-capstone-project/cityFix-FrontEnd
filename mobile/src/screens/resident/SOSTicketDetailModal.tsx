@@ -21,6 +21,10 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 interface Props {
   visible: boolean;
   ticket: ReportedTicket | null;
+  isSos?: boolean;
+  isUpvoted?: boolean;
+  upvoting?: boolean;
+  onUpvote?: (ticketId: string) => void;
   onClose: () => void;
 }
 
@@ -78,11 +82,21 @@ function getStatusBadge(status?: string) {
   };
 }
 
-export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props) {
+export default function SOSTicketDetailModal({
+  visible,
+  ticket,
+  isSos = true,
+  isUpvoted = false,
+  upvoting = false,
+  onUpvote,
+  onClose,
+}: Props) {
   const [selectedImgIdx, setSelectedImgIdx] = useState<number>(0);
   const [zoomImgUrl, setZoomImgUrl] = useState<string | null>(null);
 
   if (!ticket) return null;
+
+  const accentColor = isSos ? '#dc2626' : '#ea580c';
 
   // Lấy danh sách ảnh hiện trường
   const images: string[] = [];
@@ -126,8 +140,8 @@ export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        {/* Top Emergency Accent Line */}
-        <View style={styles.emergencyBar} />
+        {/* Top Emergency / Active Accent Line */}
+        <View style={[styles.emergencyBar, { backgroundColor: accentColor }]} />
 
         {/* Header Bar */}
         <View style={styles.headerBar}>
@@ -141,16 +155,22 @@ export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props
 
           <View style={styles.headerTitleWrap}>
             <View style={styles.sosTagRow}>
-              <View style={styles.redPulseDot} />
-              <Text style={styles.sosHeaderTag}>SỰ CỐ KHẨN CẤP · CÙNG PHƯỜNG</Text>
+              <View style={[styles.redPulseDot, { backgroundColor: accentColor }]} />
+              <Text style={[styles.sosHeaderTag, { color: accentColor }]}>
+                {isSos
+                  ? 'SỰ CỐ KHẨN CẤP · CÙNG PHƯỜNG'
+                  : 'GIÁM SÁT CỘNG ĐỒNG · ĐANG XỬ LÝ'}
+              </Text>
             </View>
             <Text style={styles.headerMainTitle} numberOfLines={1}>
-              {ticket.categories?.[0]?.categoryName || 'Sự cố nguy hiểm tính mạng'}
+              {ticket.categories?.[0]?.categoryName ||
+                ticket.subCategories?.[0]?.name ||
+                (isSos ? 'Sự cố nguy hiểm tính mạng' : 'Sự cố hạ tầng đô thị')}
             </Text>
           </View>
 
           <TouchableOpacity style={styles.actionBtn} onPress={openNavigation}>
-            <Ionicons name="navigate-circle-outline" size={24} color="#dc2626" />
+            <Ionicons name="navigate-circle-outline" size={24} color={accentColor} />
           </TouchableOpacity>
         </View>
 
@@ -159,12 +179,28 @@ export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* 1. SOS Critical Banner */}
-          <View style={styles.criticalCard}>
+          {/* 1. SOS / Community Status Banner */}
+          <View
+            style={[
+              styles.criticalCard,
+              !isSos && { backgroundColor: '#fff7ed', borderColor: '#fed7aa' },
+            ]}
+          >
             <View style={styles.criticalCardTop}>
-              <View style={styles.criticalBadge}>
-                <Ionicons name="warning" size={16} color="#ffffff" />
-                <Text style={styles.criticalBadgeText}>NGUY HIỂM TÍNH MẠNG (SOS)</Text>
+              <View
+                style={[
+                  styles.criticalBadge,
+                  !isSos && { backgroundColor: '#ea580c' },
+                ]}
+              >
+                <Ionicons
+                  name={isSos ? 'warning' : 'construct'}
+                  size={16}
+                  color="#ffffff"
+                />
+                <Text style={styles.criticalBadgeText}>
+                  {isSos ? 'NGUY HIỂM TÍNH MẠNG (SOS)' : 'ĐANG TRIỂN KHAI KHẮC PHỤC'}
+                </Text>
               </View>
               <View
                 style={[
@@ -179,29 +215,50 @@ export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props
               </View>
             </View>
 
-            <Text style={styles.criticalNote}>
-              ⚠️ Cảnh báo an toàn cho cư dân trong cùng khu vực Phường. Vui lòng giữ khoảng cách an toàn và chú ý khi di chuyển qua tuyến đường này.
+            <Text
+              style={[
+                styles.criticalNote,
+                !isSos && { color: '#9a3412' },
+              ]}
+            >
+              {isSos
+                ? '⚠️ Cảnh báo an toàn cho cư dân trong cùng khu vực Phường. Vui lòng giữ khoảng cách an toàn và chú ý khi di chuyển qua tuyến đường này.'
+                : '🛠️ Sự cố đang được đơn vị chuyên môn triển khai xử lý tại hiện trường. Bạn có thể bấm "Đồng tình" bên dưới nếu cũng gặp sự cố này.'}
             </Text>
           </View>
 
-          {/* 2. Interactive Map Section with Red Pin */}
+          {/* 2. Interactive Map Section with Pin */}
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeaderRow}>
-              <View style={styles.sectionIconWrap}>
-                <Ionicons name="map" size={17} color="#dc2626" />
+              <View
+                style={[
+                  styles.sectionIconWrap,
+                  !isSos && { backgroundColor: '#fff7ed' },
+                ]}
+              >
+                <Ionicons name="map" size={17} color={accentColor} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>VỊ TRÍ HIỆN TRƯỜNG TRÊN BẢN ĐỒ</Text>
-                <Text style={styles.sectionSub}>Ghim đỏ đánh dấu chính xác tọa độ sự cố</Text>
+                <Text style={styles.sectionSub}>
+                  {isSos
+                    ? 'Ghim đỏ đánh dấu chính xác tọa độ sự cố'
+                    : 'Ghim cam đánh dấu vị trí đang thi công xử lý'}
+                </Text>
               </View>
               {hasCoords && (
                 <TouchableOpacity
-                  style={styles.openMapsBtn}
+                  style={[
+                    styles.openMapsBtn,
+                    !isSos && { backgroundColor: '#fff7ed', borderColor: '#fed7aa' },
+                  ]}
                   onPress={openNavigation}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="compass-outline" size={14} color="#dc2626" />
-                  <Text style={styles.openMapsBtnText}>Chỉ đường</Text>
+                  <Ionicons name="compass-outline" size={14} color={accentColor} />
+                  <Text style={[styles.openMapsBtnText, { color: accentColor }]}>
+                    Chỉ đường
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -219,25 +276,33 @@ export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props
                 pitchEnabled={false}
                 rotateEnabled={false}
               >
-                {/* Red Pin Marker */}
                 <Marker
                   coordinate={{ latitude: lat, longitude: lng }}
-                  title="Hiện trường sự cố nguy hiểm"
+                  title={isSos ? 'Hiện trường sự cố nguy hiểm' : 'Hiện trường sự cố đang xử lý'}
                   description={ticket.address || 'Khu vực xảy ra sự cố'}
-                  pinColor="#dc2626"
+                  pinColor={accentColor}
                 />
               </MapView>
 
               {/* Floating Map Callout Badge */}
               <View style={styles.mapCalloutBadge}>
-                <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                <Text style={styles.mapCalloutText}>Điểm ghim đỏ: Tọa độ sự cố SOS</Text>
+                <Ionicons name="alert-circle" size={14} color={accentColor} />
+                <Text style={[styles.mapCalloutText, { color: accentColor }]}>
+                  {isSos
+                    ? 'Điểm ghim đỏ: Tọa độ sự cố SOS'
+                    : 'Điểm ghim cam: Tọa độ đang xử lý'}
+                </Text>
               </View>
             </View>
 
             {/* Address Banner */}
-            <View style={styles.addressBox}>
-              <Ionicons name="location-sharp" size={18} color="#dc2626" />
+            <View
+              style={[
+                styles.addressBox,
+                !isSos && { backgroundColor: '#fff7ed', borderColor: '#fed7aa' },
+              ]}
+            >
+              <Ionicons name="location-sharp" size={18} color={accentColor} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.addressLabel}>Địa chỉ hiện trường:</Text>
                 <Text style={styles.addressValue}>{ticket.address || 'Chưa cập nhật địa chỉ'}</Text>
@@ -460,9 +525,53 @@ export default function SOSTicketDetailModal({ visible, ticket, onClose }: Props
             </Text>
           </View>
 
+          {/* Upvote Action Button (nếu có onUpvote) */}
+          {onUpvote && ticket.id ? (
+            <TouchableOpacity
+              style={[
+                styles.dismissBtn,
+                {
+                  backgroundColor: isUpvoted ? '#f0fdf4' : '#fff7ed',
+                  borderWidth: 1.5,
+                  borderColor: isUpvoted ? '#86efac' : '#fdba74',
+                  flexDirection: 'row',
+                  gap: 8,
+                  marginBottom: 10,
+                },
+              ]}
+              disabled={isUpvoted || upvoting}
+              onPress={() => onUpvote(ticket.id)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={isUpvoted ? 'checkmark-circle' : 'thumbs-up'}
+                size={17}
+                color={isUpvoted ? '#16a34a' : '#ea580c'}
+              />
+              <Text
+                style={[
+                  styles.dismissBtnText,
+                  { color: isUpvoted ? '#16a34a' : '#ea580c' },
+                ]}
+              >
+                {upvoting
+                  ? 'ĐANG GỬI ĐỒNG TÌNH...'
+                  : isUpvoted
+                  ? 'BẠN ĐÃ ĐỒNG TÌNH SỰ CỐ NÀY'
+                  : 'ĐỒNG TÌNH SỰ CỐ NÀY (ỦNG HỘ XỬ LÝ)'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           {/* Bottom Action Button */}
-          <TouchableOpacity style={styles.dismissBtn} onPress={onClose} activeOpacity={0.85}>
-            <Text style={styles.dismissBtnText}>ĐÃ HIỂU & ĐÓNG CẢNH BÁO</Text>
+          <TouchableOpacity
+            style={[styles.dismissBtn, { backgroundColor: accentColor }]}
+            onPress={onClose}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.dismissBtnText}>
+              {isSos ? 'ĐÃ HIỂU & ĐÓNG CẢNH BÁO' : 'ĐÓNG CHI TIẾT SỰ CỐ'}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
 
