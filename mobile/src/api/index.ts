@@ -680,14 +680,29 @@ export interface DuplicateTicketItem {
   ticketId?: string;
   categoryId?: string;
   categoryName?: string;
+  subCategoryId?: string;
+  subCategoryName?: string;
+  subCategories?: Array<{
+    subCategoryId?: string;
+    categoryId?: string;
+    name?: string;
+    subCategoryName?: string;
+  }>;
+  categories?: Array<{
+    categoryId?: string;
+    categoryName?: string;
+    name?: string;
+  }>;
   description?: string;
   address?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   latitude?: number;
   longitude?: number;
   distance?: number | string;
   distanceMeters?: number;
   upvotes?: number;
+  upvoteCount?: number;
   status?: string;
   createdAt?: string;
   similarity?: number;
@@ -781,25 +796,34 @@ export async function createTicket(
 /* =========================================================
    CHECK DUPLICATES
    GET /api/v1/tickets/check-duplicates
+   Backend hiện tại chỉ nhận 1 subCategoryId mỗi lần gọi.
+   Hàm này hỗ trợ truyền 1 hoặc nhiều subCategoryIds, tự động
+   gọi song song cho từng subCategoryId và gộp kết quả khử trùng.
    ========================================================= */
 
 export interface CheckDuplicatesParams {
-  categoryId: string;
+  subCategoryId?: string;
+  subCategoryIds?: string[];
+  categoryId?: string;
   latitude?: number;
   longitude?: number;
   location?: string;
 }
 
-export async function checkDuplicates(
-  params: CheckDuplicatesParams,
-  accessToken?: string | null
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function fetchSingleSubCategoryDuplicates(
+  subCatId: string,
+  params: { latitude?: number; longitude?: number; location?: string },
+  token: string | null | undefined
 ): Promise<DuplicateTicketItem[]> {
   const query = new URLSearchParams();
-  query.append('categoryId', params.categoryId);
-  if (params.latitude !== undefined) {
+  query.append('subCategoryId', subCatId);
+  query.append('categoryId', subCatId);
+  if (params.latitude !== undefined && params.latitude !== null) {
     query.append('latitude', params.latitude.toString());
   }
-  if (params.longitude !== undefined) {
+  if (params.longitude !== undefined && params.longitude !== null) {
     query.append('longitude', params.longitude.toString());
   }
   if (params.location) {
@@ -807,14 +831,13 @@ export async function checkDuplicates(
   }
 
   const url = `${API_BASE_URL}/api/v1/tickets/check-duplicates?${query.toString()}`;
-
   console.log('🔍 CHECK DUPLICATES URL:', url);
 
   const response = await fetch(url, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -825,18 +848,128 @@ export async function checkDuplicates(
   try {
     payload = JSON.parse(text);
   } catch {
-    //
+    // ignore non-json
   }
 
   if (!response.ok || !payload?.success) {
     throw new ApiError(
-      payload?.message ||
-      `Kiểm tra trùng lặp thất bại (${response.status})`,
+      payload?.message || `Kiểm tra trùng lặp thất bại (${response.status})`,
       response.status
     );
   }
 
-  return Array.isArray(payload.data) ? payload.data : [];
+  const list: DuplicateTicketItem[] = Array.isArray(payload.data)
+    ? payload.data
+    : Array.isArray(payload.data?.content)
+      ? payload.data.content
+      : [];
+
+  return list;
+}
+
+export async function checkDuplicates(
+  params: CheckDuplicatesParams,
+  accessToken?: string | null
+): Promise<DuplicateTicketItem[]> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  // Gom danh sách tất cả subCategoryId hợp lệ (UUID)
+  const rawIds: string[] = [];
+  if (Array.isArray(params.subCategoryIds)) {
+    rawIds.push(...params.subCategoryIds.filter(Boolean));
+  }
+  if (params.subCategoryId) {
+    rawIds.push(params.subCategoryId);
+  }
+  if (params.categoryId) {
+    rawIds.push(params.categoryId);
+  }
+
+  const validSubCatIds = Array.from(
+    new Set(rawIds.map((id) => id.trim()).filter((id) => UUID_REGEX.test(id)))
+  );
+
+  // Fallback nếu không khớp regex UUID nhưng vẫn có ID truyền vào
+  const targetSubCatIds =
+    validSubCatIds.length > 0
+      ? validSubCatIds
+      : Array.from(new Set(rawIds.filter(Boolean)));
+
+  if (targetSubCatIds.length === 0) {
+    console.warn('⚠️ checkDuplicates: Không có subCategoryId hợp lệ để kiểm tra trùng lặp.');
+    return [];
+  }
+
+  // 1. Gọi song song cho từng subCategoryId (vì BE chỉ nhận 1 subCategoryId mỗi request)
+  const results = await Promise.allSettled(
+    targetSubCatIds.map((subCatId) =>
+      fetchSingleSubCategoryDuplicates(
+        subCatId,
+        {
+          latitude: params.latitude,
+          longitude: params.longitude,
+          location: params.location,
+        },
+        token
+      )
+    )
+  );
+
+  const mergedMap = new Map<string, DuplicateTicketItem>();
+
+  results.forEach((res) => {
+    if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+      res.value.forEach((item, idx) => {
+        const key = item.ticketId || item.id || `${item.latitude}-${item.longitude}-${idx}`;
+        if (!mergedMap.has(key)) {
+          mergedMap.set(key, item);
+        }
+      });
+    }
+  });
+
+  // 2. Nếu có truyền location mà chưa tìm thấy vé trùng, thử quét lại chỉ theo tọa độ GPS + subCategoryId
+  //    (phòng trường hợp chuỗi địa chỉ lưu trong DB khác định dạng viết tắt như TP.HCM vs Thành phố Hồ Chí Minh)
+  if (
+    mergedMap.size === 0 &&
+    params.location &&
+    params.latitude !== undefined &&
+    params.longitude !== undefined
+  ) {
+    const coordOnlyResults = await Promise.allSettled(
+      targetSubCatIds.map((subCatId) =>
+        fetchSingleSubCategoryDuplicates(
+          subCatId,
+          {
+            latitude: params.latitude,
+            longitude: params.longitude,
+          },
+          token
+        )
+      )
+    );
+
+    coordOnlyResults.forEach((res) => {
+      if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+        res.value.forEach((item, idx) => {
+          const key = item.ticketId || item.id || `${item.latitude}-${item.longitude}-${idx}`;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, item);
+          }
+        });
+      }
+    });
+  }
+
+  // Sắp xếp vé trùng theo khoảng cách gần nhất lên đầu
+  return Array.from(mergedMap.values()).sort((a, b) => {
+    const distA = typeof a.distanceMeters === 'number' ? a.distanceMeters : 999999;
+    const distB = typeof b.distanceMeters === 'number' ? b.distanceMeters : 999999;
+    return distA - distB;
+  });
 }
 
 /* =========================================================

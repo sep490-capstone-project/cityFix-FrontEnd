@@ -388,6 +388,10 @@ export default function AppNavigator() {
           setCreatedTicket(ticket);
           setCurrentScreen('success-upvote');
         }}
+        onTicketCreated={(ticket) => {
+          setCreatedTicket(ticket);
+          setCurrentScreen('success');
+        }}
       />
     );
   }
