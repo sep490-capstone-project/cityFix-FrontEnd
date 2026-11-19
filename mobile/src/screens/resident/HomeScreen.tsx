@@ -72,43 +72,6 @@ const QUICK_CATS = [
   },
 ];
 
-const TRENDING = [
-  {
-    id: 'CF-2821',
-    upvotes: 11,
-    category: 'Ngập úng / Cống tắc',
-    address: 'Đinh Tiên Hoàng, Bình Thạnh',
-    severity: 'TRUNG BÌNH',
-    img: 'https://images.unsplash.com/photo-1542393545-10f5cde2c810?w=400&h=260&fit=crop&auto=format',
-    delta: '+3 hôm nay',
-  },
-  {
-    id: 'CF-2835',
-    upvotes: 7,
-    category: 'Cây gãy đổ',
-    address: 'Trần Hưng Đạo, Q.1',
-    severity: 'CAO',
-    img: 'https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=400&h=260&fit=crop&auto=format',
-    delta: '+1 hôm nay',
-  },
-  {
-    id: 'CF-2853',
-    upvotes: 4,
-    category: 'Ổ gà mặt đường',
-    address: 'Nguyễn Văn Cừ, Q.5',
-    severity: 'CAO',
-    img: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=400&h=260&fit=crop&auto=format',
-    delta: '+4 hôm nay',
-  },
-];
-
-const PERFORMANCE_ROWS = [
-  { label: 'Ổ gà / Mặt đường', pct: 72, count: '18/25', color: '#ea580c' },
-  { label: 'Đèn đường hỏng', pct: 60, count: '9/15', color: '#d97706' },
-  { label: 'Cây xanh đô thị', pct: 88, count: '7/8', color: '#16a34a' },
-  { label: 'Ngập úng / Thoát nước', pct: 40, count: '4/10', color: '#0284c7' },
-];
-
 function formatSeverity(sev?: string): string {
   const upper = (sev || '').toUpperCase();
   if (upper === 'CRITICAL') return 'KHẨN CẤP';
@@ -117,13 +80,6 @@ function formatSeverity(sev?: string): string {
   if (upper === 'LOW' || upper === 'THẤP') return 'THẤP';
   return upper || 'TRUNG BÌNH';
 }
-
-const COMMUNITY_FEED = [
-  { time: '14 phút', user: 'Minh T.', action: 'báo cáo ổ gà', loc: 'Hoàng Diệu, Q.4', avatar: 'MT', report: true },
-  { time: '32 phút', user: 'Lan N.', action: 'đồng tình sự cố ngập úng', loc: 'Bình Thạnh', avatar: 'LN', report: false },
-  { time: '1 giờ', user: 'Hùng P.', action: 'báo cáo đèn hỏng', loc: 'Lê Văn Sỹ, Q.3', avatar: 'HP', report: true },
-  { time: '2 giờ', user: 'Thu M.', action: 'đồng tình sự cố mặt đường', loc: 'Q.5', avatar: 'TM', report: false },
-];
 
 function SectionLabel({
   title,
@@ -1066,157 +1022,127 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
           )}
         </View>
 
-        {/* Trending Horizontal Scroll (Backed by Real Community Tickets + Upvote API) */}
-        <View style={{ marginTop: 22 }}>
-          <View style={styles.paddingHorizontal}>
-            <SectionLabel
-              title="SỰ CỐ ĐANG ĐƯỢC QUAN TÂM"
-              action="Tất cả →"
-              onAction={() => navigate('my-reports')}
-            />
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.trendingScrollContent}
-          >
-            {communityTrendingList.length > 0
-              ? communityTrendingList.map(({ ticket: t, isSos }) => {
-                  const imgUri =
-                    t.imageUrls?.[0] ||
-                    t.imageUrl ||
-                    t.images?.[0] ||
-                    'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=400&h=260&fit=crop&auto=format';
-                  const catName =
-                    t.categories?.[0]?.categoryName ||
-                    t.subCategories?.[0]?.name ||
-                    t.categoryName ||
-                    'Sự cố đô thị';
-                  const isUpvoted = Boolean(t.id && upvotedIds[t.id]);
-                  const isUpvoting = upvotingId === t.id;
-                  const badgeLabel = isSos
-                    ? 'KHẨN CẤP (SOS)'
-                    : formatSeverity(t.priority || t.severity);
+        {/* Trending Horizontal Scroll (Chỉ hiển thị khi có vé thật từ API) */}
+        {communityTrendingList.length > 0 ? (
+          <View style={{ marginTop: 22 }}>
+            <View style={styles.paddingHorizontal}>
+              <SectionLabel
+                title="SỰ CỐ ĐANG ĐƯỢC QUAN TÂM"
+                action="Tất cả →"
+                onAction={() => navigate('my-reports')}
+              />
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.trendingScrollContent}
+            >
+              {communityTrendingList.map(({ ticket: t, isSos }) => {
+                const imgUri =
+                  t.imageUrls?.[0] ||
+                  t.imageUrl ||
+                  t.images?.[0] ||
+                  'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=400&h=260&fit=crop&auto=format';
+                const catName =
+                  t.categories?.[0]?.categoryName ||
+                  t.subCategories?.[0]?.name ||
+                  t.categoryName ||
+                  'Sự cố đô thị';
+                const isUpvoted = Boolean(t.id && upvotedIds[t.id]);
+                const isUpvoting = upvotingId === t.id;
+                const badgeLabel = isSos
+                  ? 'KHẨN CẤP (SOS)'
+                  : formatSeverity(t.priority || t.severity);
 
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={styles.trendingCard}
-                      activeOpacity={0.88}
-                      onPress={() => openCommunityTicketDetail(t, isSos)}
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={styles.trendingCard}
+                    activeOpacity={0.88}
+                    onPress={() => openCommunityTicketDetail(t, isSos)}
+                  >
+                    <Image source={{ uri: imgUri }} style={styles.trendingImg} />
+                    <View
+                      style={[
+                        styles.trendingBadge,
+                        !isSos && {
+                          backgroundColor: '#fff7ed',
+                          borderColor: '#fed7aa',
+                        },
+                      ]}
                     >
-                      <Image source={{ uri: imgUri }} style={styles.trendingImg} />
-                      <View
+                      <Text
                         style={[
-                          styles.trendingBadge,
-                          !isSos && {
-                            backgroundColor: '#fff7ed',
-                            borderColor: '#fed7aa',
-                          },
+                          styles.trendingBadgeText,
+                          !isSos && { color: '#ea580c' },
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.trendingBadgeText,
-                            !isSos && { color: '#ea580c' },
-                          ]}
-                        >
-                          {badgeLabel}
-                        </Text>
-                      </View>
-                      <View style={styles.upvoteBadge}>
-                        <Feather
-                          name="thumbs-up"
-                          size={10}
-                          color={isUpvoted ? '#16a34a' : '#f97316'}
-                        />
-                        <Text
-                          style={[
-                            styles.upvoteText,
-                            isUpvoted && { color: '#16a34a' },
-                          ]}
-                        >
-                          {isUpvoted ? 'Đã ủng hộ' : formatRelativeTime(t.createdAt)}
-                        </Text>
-                      </View>
-
-                      <View style={styles.trendingBody}>
-                        <Text style={styles.trendingCategory} numberOfLines={1}>
-                          {catName}
-                        </Text>
-                        <Text style={styles.trendingAddress} numberOfLines={1}>
-                          {t.address || 'Khu vực đô thị'}
-                        </Text>
-                        <View style={styles.trendingFooter}>
-                          <Text style={styles.trendingDelta} numberOfLines={1}>
-                            {t.departmentName || 'Đang xử lý'}
-                          </Text>
-                          <TouchableOpacity
-                            style={[
-                              styles.upvoteBtn,
-                              isUpvoted && {
-                                backgroundColor: '#f0fdf4',
-                                borderColor: '#bbf7d0',
-                              },
-                            ]}
-                            disabled={isUpvoted || isUpvoting}
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleUpvoteCommunityTicket(t.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <Text
-                              style={[
-                                styles.upvoteBtnText,
-                                isUpvoted && { color: '#16a34a' },
-                              ]}
-                            >
-                              {isUpvoting
-                                ? 'Đang gửi...'
-                                : isUpvoted
-                                ? '✓ Đã đồng tình'
-                                : 'Đồng tình'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-              : TRENDING.map((t) => (
-                  <View key={t.id} style={styles.trendingCard}>
-                    <Image source={{ uri: t.img }} style={styles.trendingImg} />
-                    <View style={styles.trendingBadge}>
-                      <Text style={styles.trendingBadgeText}>{formatSeverity(t.severity)}</Text>
+                        {badgeLabel}
+                      </Text>
                     </View>
                     <View style={styles.upvoteBadge}>
-                      <Feather name="thumbs-up" size={10} color="#f97316" />
-                      <Text style={styles.upvoteText}>{t.upvotes}</Text>
+                      <Feather
+                        name="thumbs-up"
+                        size={10}
+                        color={isUpvoted ? '#16a34a' : '#f97316'}
+                      />
+                      <Text
+                        style={[
+                          styles.upvoteText,
+                          isUpvoted && { color: '#16a34a' },
+                        ]}
+                      >
+                        {isUpvoted ? 'Đã ủng hộ' : formatRelativeTime(t.createdAt)}
+                      </Text>
                     </View>
 
                     <View style={styles.trendingBody}>
                       <Text style={styles.trendingCategory} numberOfLines={1}>
-                        {t.category}
+                        {catName}
                       </Text>
                       <Text style={styles.trendingAddress} numberOfLines={1}>
-                        {t.address}
+                        {t.address || 'Khu vực đô thị'}
                       </Text>
                       <View style={styles.trendingFooter}>
-                        <Text style={styles.trendingDelta}>{t.delta}</Text>
+                        <Text style={styles.trendingDelta} numberOfLines={1}>
+                          {t.departmentName || 'Đang xử lý'}
+                        </Text>
                         <TouchableOpacity
-                          style={styles.upvoteBtn}
-                          onPress={() => navigate('my-reports')}
+                          style={[
+                            styles.upvoteBtn,
+                            isUpvoted && {
+                              backgroundColor: '#f0fdf4',
+                              borderColor: '#bbf7d0',
+                            },
+                          ]}
+                          disabled={isUpvoted || isUpvoting}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleUpvoteCommunityTicket(t.id);
+                          }}
                           activeOpacity={0.8}
                         >
-                          <Text style={styles.upvoteBtnText}>Đồng tình</Text>
+                          <Text
+                            style={[
+                              styles.upvoteBtnText,
+                              isUpvoted && { color: '#16a34a' },
+                            ]}
+                          >
+                            {isUpvoting
+                              ? 'Đang gửi...'
+                              : isUpvoted
+                              ? '✓ Đã đồng tình'
+                              : 'Đồng tình'}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
-                  </View>
-                ))}
-          </ScrollView>
-        </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {/* 5. Tiến độ giải quyết hồ sơ (Thanh tiến độ màu cam đồng bộ 100% với style Staff) */}
         <View style={[styles.paddingHorizontal, { marginTop: 20 }]}>
@@ -1343,99 +1269,79 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
           </View>
         </View>
 
-        {/* Community Feed (Tích hợp trực tiếp API in-progress, life-threatening, my-upvoted) */}
-        <View style={[styles.paddingHorizontal, { marginTop: 22, marginBottom: 24 }]}>
-          <SectionLabel title="HOẠT ĐỘNG CỘNG ĐỒNG" />
-          <View style={styles.feedCard}>
-            {communityFeedList.length > 0
-              ? communityFeedList.map((item, i) => {
-                  const dotColor =
-                    item.type === 'sos'
-                      ? '#ef4444'
-                      : item.type === 'progress'
-                      ? '#f97316'
-                      : item.type === 'upvote'
-                      ? '#16a34a'
-                      : '#0284c7';
-                  const avatarBg =
-                    item.type === 'sos'
-                      ? '#fee2e2'
-                      : item.type === 'progress'
-                      ? '#ffedd5'
-                      : item.type === 'upvote'
-                      ? '#dcfce7'
-                      : '#f1f5f9';
-                  const avatarTextCol =
-                    item.type === 'sos'
-                      ? '#dc2626'
-                      : item.type === 'progress'
-                      ? '#ea580c'
-                      : item.type === 'upvote'
-                      ? '#16a34a'
-                      : '#475569';
+        {/* Community Feed (Chỉ hiển thị khi có hoạt động thật từ API) */}
+        {communityFeedList.length > 0 ? (
+          <View style={[styles.paddingHorizontal, { marginTop: 22, marginBottom: 24 }]}>
+            <SectionLabel title="HOẠT ĐỘNG CỘNG ĐỒNG" />
+            <View style={styles.feedCard}>
+              {communityFeedList.map((item, i) => {
+                const dotColor =
+                  item.type === 'sos'
+                    ? '#ef4444'
+                    : item.type === 'progress'
+                    ? '#f97316'
+                    : item.type === 'upvote'
+                    ? '#16a34a'
+                    : '#0284c7';
+                const avatarBg =
+                  item.type === 'sos'
+                    ? '#fee2e2'
+                    : item.type === 'progress'
+                    ? '#ffedd5'
+                    : item.type === 'upvote'
+                    ? '#dcfce7'
+                    : '#f1f5f9';
+                const avatarTextCol =
+                  item.type === 'sos'
+                    ? '#dc2626'
+                    : item.type === 'progress'
+                    ? '#ea580c'
+                    : item.type === 'upvote'
+                    ? '#16a34a'
+                    : '#475569';
 
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={[styles.feedItem, i > 0 && styles.feedItemBorder]}
-                      activeOpacity={0.75}
-                      onPress={() => openCommunityTicketDetail(item.ticket, item.isSos)}
-                    >
-                      <View style={[styles.feedAvatar, { backgroundColor: avatarBg }]}>
-                        <Text style={[styles.feedAvatarText, { color: avatarTextCol }]}>
-                          {item.avatar}
-                        </Text>
-                      </View>
-                      <View style={styles.feedContent}>
-                        <Text style={styles.feedUserText} numberOfLines={2}>
-                          <Text style={{ fontWeight: '700', color: '#0f172a' }}>
-                            {item.user}
-                          </Text>{' '}
-                          <Text style={{ color: '#475569' }}>{item.action}</Text>
-                        </Text>
-                        <Text style={styles.feedLoc} numberOfLines={1}>
-                          📍 {item.loc}
-                        </Text>
-                      </View>
-                      <View style={styles.feedRight}>
-                        <View
-                          style={[
-                            styles.feedDot,
-                            { backgroundColor: dotColor },
-                          ]}
-                        />
-                        <Text style={styles.feedTime}>
-                          {item.time === 'Vừa xong' ? 'Vừa xong' : `${item.time} trước`}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-              : COMMUNITY_FEED.map((item, i) => (
-                  <View key={i} style={[styles.feedItem, i > 0 && styles.feedItemBorder]}>
-                    <View style={styles.feedAvatar}>
-                      <Text style={styles.feedAvatarText}>{item.avatar}</Text>
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.feedItem, i > 0 && styles.feedItemBorder]}
+                    activeOpacity={0.75}
+                    onPress={() => openCommunityTicketDetail(item.ticket, item.isSos)}
+                  >
+                    <View style={[styles.feedAvatar, { backgroundColor: avatarBg }]}>
+                      <Text style={[styles.feedAvatarText, { color: avatarTextCol }]}>
+                        {item.avatar}
+                      </Text>
                     </View>
                     <View style={styles.feedContent}>
-                      <Text style={styles.feedUserText}>
-                        <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.user}</Text>{' '}
-                        <Text style={{ color: '#64748b' }}>{item.action}</Text>
+                      <Text style={styles.feedUserText} numberOfLines={2}>
+                        <Text style={{ fontWeight: '700', color: '#0f172a' }}>
+                          {item.user}
+                        </Text>{' '}
+                        <Text style={{ color: '#475569' }}>{item.action}</Text>
                       </Text>
-                      <Text style={styles.feedLoc}>{item.loc}</Text>
+                      <Text style={styles.feedLoc} numberOfLines={1}>
+                        📍 {item.loc}
+                      </Text>
                     </View>
                     <View style={styles.feedRight}>
                       <View
                         style={[
                           styles.feedDot,
-                          { backgroundColor: item.report ? '#f97316' : '#94a3b8' },
+                          { backgroundColor: dotColor },
                         ]}
                       />
-                      <Text style={styles.feedTime}>{item.time} trước</Text>
+                      <Text style={styles.feedTime}>
+                        {item.time === 'Vừa xong' ? 'Vừa xong' : `${item.time} trước`}
+                      </Text>
                     </View>
-                  </View>
-                ))}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={{ height: 24 }} />
+        )}
       </ScrollView>
 
       {/* Floating AI Assistant Button + FAB + Bottom Navigation */}

@@ -682,7 +682,7 @@
 
 
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import {
   View,
@@ -703,10 +703,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   upvoteTicket,
+  createTicket,
   DuplicateTicketItem,
 } from '../../api';
 
 import { ReportDraft } from '../../types';
+import { formatStandardAddress } from '../../constants/vnProvinces2025';
 
 interface Props {
   navigate: (s: string) => void;
@@ -715,6 +717,7 @@ interface Props {
   duplicateTickets?: DuplicateTicketItem[];
   resetReport: () => void;
   onUpvoteSuccess?: (ticket: any) => void;
+  onTicketCreated?: (ticket: any) => void;
 }
 
 export default function DuplicateScreen({
@@ -723,12 +726,29 @@ export default function DuplicateScreen({
   duplicateTickets = [],
   resetReport,
   onUpvoteSuccess,
+  onTicketCreated,
 }: Props) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const firstId =
+    duplicateTickets[0]?.ticketId ||
+    (duplicateTickets[0] as any)?.id ||
+    null;
+
+  const [selectedId, setSelectedId] = useState<string | null>(firstId);
+
+  useEffect(() => {
+    if (!selectedId && duplicateTickets.length > 0) {
+      const defaultId =
+        duplicateTickets[0]?.ticketId ||
+        (duplicateTickets[0] as any)?.id ||
+        null;
+      if (defaultId) setSelectedId(defaultId);
+    }
+  }, [duplicateTickets]);
 
   const [upvoteState, setUpvoteState] = useState<
     'idle' | 'loading' | 'done'
   >('idle');
+  const [creatingAnyway, setCreatingAnyway] = useState(false);
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
@@ -739,17 +759,100 @@ export default function DuplicateScreen({
    */
   const displayList: DuplicateTicketItem[] = duplicateTickets;
 
-  /**
-   * Lấy imageUrl nếu backend đã trả về.
-   *
-   * Hiện tại API check-duplicates mà bạn gửi
-   * chưa có imageUrl trong response.
-   *
-   * Dùng any ở đây để frontend vẫn tương thích
-   * nếu backend bổ sung imageUrl sau này.
-   */
   const getImageUrl = (item: DuplicateTicketItem) => {
     return (item as any)?.imageUrls?.[0] || (item as any)?.imageUrl || null;
+  };
+
+  const getCategoryLabel = (item: DuplicateTicketItem) => {
+    const subNames = Array.isArray(item.subCategories)
+      ? item.subCategories.map((sc) => sc.name || sc.subCategoryName).filter(Boolean)
+      : [];
+    if (subNames.length > 0) return subNames.join(', ');
+    return (
+      item.subCategoryName ||
+      item.categoryName ||
+      item.categories?.[0]?.categoryName ||
+      item.categories?.[0]?.name ||
+      draft.aiAnalysis?.subCategoryName ||
+      draft.aiAnalysis?.categoryName ||
+      'Sự cố hạ tầng'
+    );
+  };
+
+  const handleCreateAnyway = async () => {
+    if (creatingAnyway) return;
+    try {
+      setCreatingAnyway(true);
+      const token = await AsyncStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.');
+      }
+
+      if (!draft.location || !draft.imageUrls?.length || !draft.aiAnalysis) {
+        throw new Error('Thiếu thông tin ảnh hoặc vị trí sự cố.');
+      }
+
+      const effectiveSubCatIds: string[] = [];
+      if (Array.isArray(draft.userSubCategoryIds) && draft.userSubCategoryIds.length > 0) {
+        effectiveSubCatIds.push(...draft.userSubCategoryIds.filter(Boolean));
+      } else if (Array.isArray(draft.aiAnalysis.subCategoryIds) && draft.aiAnalysis.subCategoryIds.length > 0) {
+        effectiveSubCatIds.push(...draft.aiAnalysis.subCategoryIds.filter(Boolean));
+      } else if (draft.userSubCategoryId) {
+        effectiveSubCatIds.push(draft.userSubCategoryId);
+      } else if (draft.aiAnalysis.subCategoryId) {
+        effectiveSubCatIds.push(draft.aiAnalysis.subCategoryId);
+      }
+      const uniqueSubCatIds = Array.from(new Set(effectiveSubCatIds.filter(Boolean)));
+      const effectivePriority =
+        draft.aiAnalysis.priority ||
+        (draft.aiAnalysis.severity === 'CRITICAL' ? 'HIGH' : draft.aiAnalysis.severity) ||
+        'LOW';
+      const standardizedAddress = formatStandardAddress(draft.address) || draft.address || '';
+
+      const requestBody = {
+        description: draft.userDescription || draft.aiAnalysis.description || '',
+        imageUrl: draft.imageUrls[0],
+        imageUrls: draft.imageUrls,
+        images: draft.imageUrls,
+        categoryId: uniqueSubCatIds[0] || draft.aiAnalysis.categoryId || '',
+        subCategoryIds: uniqueSubCatIds,
+        severity: (draft.aiAnalysis.severity || effectivePriority || 'LOW').toUpperCase(),
+        dangerLevel: (draft.aiAnalysis.dangerLevel || 'CAUTION').toUpperCase(),
+        priority: effectivePriority.toUpperCase(),
+        priorityReasoning: draft.aiAnalysis.priorityReasoning || '',
+        locationMethod: draft.locationMethod || 'AUTO_GPS',
+        address: standardizedAddress,
+        latitude: draft.location.lat,
+        longitude: draft.location.lng,
+        confidenceScore: draft.aiAnalysis.confidenceScore || 0,
+        isAnonymous: draft.isAnonymous ?? false,
+      };
+
+      const result = await createTicket(requestBody, token);
+      const fullTicketData = {
+        ...result,
+        id: result?.id || result?.ticketId,
+        address: result?.address || standardizedAddress,
+        imageUrl: result?.imageUrl || draft.imageUrls[0],
+        priority: result?.priority || effectivePriority,
+        createdAt: result?.createdAt || new Date().toISOString(),
+        locationMethod: draft.locationMethod || 'AUTO_GPS',
+        description: requestBody.description,
+      };
+
+      if (onTicketCreated) {
+        onTicketCreated(fullTicketData);
+      } else {
+        navigate('success');
+      }
+    } catch (err: any) {
+      Alert.alert(
+        'Không thể tạo báo cáo',
+        err instanceof Error ? err.message : 'Đã xảy ra lỗi khi tạo hồ sơ báo cáo mới.'
+      );
+    } finally {
+      setCreatingAnyway(false);
+    }
   };
 
   /**
@@ -923,7 +1026,10 @@ export default function DuplicateScreen({
                   { color: '#16a34a' },
                 ]}
               >
-                {displayList.reduce((acc, cur) => acc + (cur.upvotes || 0), 0)}
+                {displayList.reduce(
+                  (acc, cur) => acc + (cur.upvotes ?? cur.upvoteCount ?? 0),
+                  0
+                )}
               </Text>
 
               <Text style={styles.statLabel}>
@@ -1036,13 +1142,12 @@ export default function DuplicateScreen({
                         </Text>
                       </View>
 
-                      {/* CATEGORY */}
+                      {/* CATEGORY / SUBCATEGORY */}
                       <Text
                         style={styles.ticketCat}
                         numberOfLines={2}
                       >
-                        {item.categoryName ||
-                          'Sự cố hạ tầng'}
+                        {getCategoryLabel(item)}
                       </Text>
 
                       {/* DESCRIPTION */}
@@ -1166,12 +1271,14 @@ export default function DuplicateScreen({
                 styles.upvoteBtn,
                 (!selectedId ||
                   upvoteState === 'loading' ||
+                  creatingAnyway ||
                   displayList.length === 0) &&
                   styles.btnDisabled,
               ]}
               disabled={
                 !selectedId ||
                 upvoteState === 'loading' ||
+                creatingAnyway ||
                 displayList.length === 0
               }
               onPress={handleUpvote}
@@ -1199,23 +1306,49 @@ export default function DuplicateScreen({
               )}
             </TouchableOpacity>
 
-            {/* CANCEL */}
-            <TouchableOpacity
-              style={styles.cancelActionBtn}
-              onPress={() =>
-                setShowCancelDialog(true)
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="close-circle-outline"
-                size={18}
-                color="#dc2626"
-              />
-              <Text style={styles.cancelActionBtnText}>
-                Hủy báo cáo
-              </Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* CREATE ANYWAY */}
+              <TouchableOpacity
+                style={[styles.cancelActionBtn, { flex: 1, borderColor: '#fed7aa', backgroundColor: '#fff7ed' }]}
+                disabled={creatingAnyway || upvoteState === 'loading'}
+                onPress={handleCreateAnyway}
+                activeOpacity={0.85}
+              >
+                {creatingAnyway ? (
+                  <ActivityIndicator size="small" color="#ea580c" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={18}
+                      color="#ea580c"
+                    />
+                    <Text style={[styles.cancelActionBtnText, { color: '#ea580c' }]}>
+                      Vẫn tạo báo cáo mới
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* CANCEL */}
+              <TouchableOpacity
+                style={[styles.cancelActionBtn, { flex: 1 }]}
+                disabled={creatingAnyway || upvoteState === 'loading'}
+                onPress={() =>
+                  setShowCancelDialog(true)
+                }
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name="close-circle-outline"
+                  size={18}
+                  color="#dc2626"
+                />
+                <Text style={styles.cancelActionBtnText}>
+                  Hủy báo cáo
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>

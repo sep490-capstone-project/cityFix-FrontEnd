@@ -82,36 +82,9 @@ export default function ReviewDraftScreen({
         throw new Error('Chưa có kết quả phân tích AI.');
       }
 
-      const effectiveCatId =
-        (draft.userCategoryId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(draft.userCategoryId) ? draft.userCategoryId : null) || draft.aiAnalysis.categoryId || draft.userCategoryId || '';
+      const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-      // 3. Gọi API check-duplicates trước khi tạo
-      try {
-        if (effectiveCatId) {
-          console.log('🔍 Checking duplicates before submit...');
-          const dupes = await checkDuplicates(
-            {
-              categoryId: effectiveCatId,
-              latitude: draft.location.lat,
-              longitude: draft.location.lng,
-              location: draft.address,
-            },
-            accessToken
-          );
-
-          if (dupes && dupes.length > 0) {
-            console.log('⚠️ Duplicates found:', dupes.length);
-            if (onDuplicatesFound) {
-              onDuplicatesFound(dupes);
-              return;
-            }
-          }
-        }
-      } catch (dupErr) {
-        console.warn('Check duplicates API warning:', dupErr);
-      }
-
-      // 4. Build request body theo đúng Swagger (hỗ trợ cả 1 hoặc nhiều subCategoryIds)
+      // 3. Trích xuất danh sách subCategoryIds trước khi kiểm tra trùng lặp
       const effectiveSubCatIds: string[] = [];
       if (Array.isArray(draft.userSubCategoryIds) && draft.userSubCategoryIds.length > 0) {
         effectiveSubCatIds.push(...draft.userSubCategoryIds.filter(Boolean));
@@ -127,6 +100,40 @@ export default function ReviewDraftScreen({
 
       if (uniqueSubCatIds.length === 0) {
         throw new Error('Chưa có danh mục con (subCategory). Vui lòng thử phân tích lại ảnh.');
+      }
+
+      const effectiveCatId =
+        (draft.userCategoryId && UUID_PATTERN.test(draft.userCategoryId) ? draft.userCategoryId : null) ||
+        (draft.aiAnalysis.categoryId && UUID_PATTERN.test(draft.aiAnalysis.categoryId) ? draft.aiAnalysis.categoryId : null) ||
+        uniqueSubCatIds[0] ||
+        '';
+
+      const standardizedAddress = formatStandardAddress(draft.address) || draft.address || '';
+
+      // 4. Gọi API check-duplicates trước khi tạo (Hỗ trợ quét từng subCategoryId vì BE chỉ nhận 1 subCategoryId/request)
+      try {
+        console.log('🔍 Checking duplicates before submit for subCategoryIds:', uniqueSubCatIds);
+        const dupes = await checkDuplicates(
+          {
+            subCategoryId: uniqueSubCatIds[0],
+            subCategoryIds: uniqueSubCatIds,
+            categoryId: effectiveCatId,
+            latitude: draft.location.lat,
+            longitude: draft.location.lng,
+            location: standardizedAddress,
+          },
+          accessToken
+        );
+
+        if (dupes && dupes.length > 0) {
+          console.log('⚠️ Duplicates found:', dupes.length);
+          if (onDuplicatesFound) {
+            onDuplicatesFound(dupes);
+            return;
+          }
+        }
+      } catch (dupErr) {
+        console.warn('Check duplicates API warning:', dupErr);
       }
 
       const effectivePriority =
@@ -151,7 +158,7 @@ export default function ReviewDraftScreen({
         priority: effectivePriority.toUpperCase(),
         priorityReasoning: draft.aiAnalysis.priorityReasoning || '',
         locationMethod: draft.locationMethod || 'AUTO_GPS',
-        address: formatStandardAddress(draft.address) || '',
+        address: standardizedAddress,
         latitude: draft.location.lat,
         longitude: draft.location.lng,
         confidenceScore: draft.aiAnalysis.confidenceScore || 0,
@@ -373,6 +380,13 @@ export default function ReviewDraftScreen({
 
               {/* Chi tiết sự cố: hỗ trợ cả 1 hoặc nhiều subcategories */}
               {(() => {
+                const subIds: string[] = [];
+                if (Array.isArray(ai?.subCategoryIds) && ai.subCategoryIds.length > 0) {
+                  subIds.push(...ai.subCategoryIds.filter(Boolean));
+                } else if (ai?.subCategoryId) {
+                  subIds.push(ai.subCategoryId);
+                }
+
                 const subNames: string[] = [];
                 if (Array.isArray(ai?.subCategoryNames) && ai.subCategoryNames.length > 0) {
                   subNames.push(...ai.subCategoryNames.filter(Boolean));
@@ -393,38 +407,82 @@ export default function ReviewDraftScreen({
                   );
                 }
 
+                const selectedIds =
+                  Array.isArray(draft.userSubCategoryIds) && draft.userSubCategoryIds.length > 0
+                    ? draft.userSubCategoryIds
+                    : subIds;
+
                 return (
                   <View style={{ marginTop: 8, marginBottom: 6 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                       <Text style={styles.metaLabel}>
-                        Chi tiết sự cố ({subNames.length} sự cố nhận diện):
+                        Chi tiết sự cố (Chạm để chọn danh mục con phù hợp):
                       </Text>
                       <View style={{ backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#c2410c' }}>ĐA LĨNH VỰC</Text>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#c2410c' }}>
+                          {selectedIds.length}/{subNames.length} ĐÃ CHỌN
+                        </Text>
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
-                      {subNames.map((name, idx) => (
-                        <View
-                          key={idx}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 4,
-                            backgroundColor: '#fff7ed',
-                            borderWidth: 1,
-                            borderColor: '#fed7aa',
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            borderRadius: 8,
-                          }}
-                        >
-                          <Ionicons name="pricetag" size={12} color="#ea580c" />
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#c2410c' }}>
-                            {name}
-                          </Text>
-                        </View>
-                      ))}
+                      {subNames.map((name, idx) => {
+                        const subId = subIds[idx];
+                        const isSelected = subId ? selectedIds.includes(subId) : true;
+                        return (
+                          <TouchableOpacity
+                            key={subId || idx}
+                            activeOpacity={0.75}
+                            onPress={() => {
+                              if (!subId) return;
+                              let nextIds: string[];
+                              if (isSelected) {
+                                if (selectedIds.length <= 1) {
+                                  Alert.alert('Lưu ý', 'Báo cáo cần giữ lại ít nhất 1 danh mục con sự cố.');
+                                  return;
+                                }
+                                nextIds = selectedIds.filter((id) => id !== subId);
+                              } else {
+                                nextIds = [...selectedIds, subId];
+                              }
+                              const nextNames = subNames.filter((_, i) =>
+                                subIds[i] ? nextIds.includes(subIds[i]) : true
+                              );
+                              setDraft({
+                                ...draft,
+                                userSubCategoryId: nextIds[0],
+                                userSubCategoryIds: nextIds,
+                                userSubCategoryNames: nextNames,
+                              });
+                            }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 5,
+                              backgroundColor: isSelected ? '#fff7ed' : '#f8fafc',
+                              borderWidth: 1.5,
+                              borderColor: isSelected ? '#f97316' : '#cbd5e1',
+                              paddingHorizontal: 10,
+                              paddingVertical: 5,
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Ionicons
+                              name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                              size={14}
+                              color={isSelected ? '#ea580c' : '#94a3b8'}
+                            />
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                fontWeight: '700',
+                                color: isSelected ? '#c2410c' : '#64748b',
+                              }}
+                            >
+                              {name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   </View>
                 );
