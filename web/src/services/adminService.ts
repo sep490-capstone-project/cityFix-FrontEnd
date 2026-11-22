@@ -796,3 +796,63 @@ export async function deleteAdminStep(id: string) {
     { method: 'DELETE' },
   );
 }
+
+// ── AI Prompt Management (POST/GET /api/v1/ai-prompts, GET /api/v1/ai-prompts/latest) ──
+
+export interface AiPromptVersionItem {
+  id: string;
+  fileUrl: string;
+  content?: string;
+  createdAt: string;
+}
+
+export async function getLatestAiPrompt(): Promise<AiPromptVersionItem | null> {
+  const res = await request<AiPromptVersionItem>('/api/v1/ai-prompts/latest');
+  return res?.data ?? null;
+}
+
+export async function getAiPromptHistory(): Promise<AiPromptVersionItem[]> {
+  const res = await request<AiPromptVersionItem[]>('/api/v1/ai-prompts');
+  return Array.isArray(res?.data) ? res.data : Array.isArray(res) ? (res as unknown as AiPromptVersionItem[]) : [];
+}
+
+export async function uploadAiPromptFile(file: File): Promise<AiPromptVersionItem> {
+  const token = getAccessToken();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/ai-prompts`, {
+    method: 'POST',
+    headers: {
+      Accept: '*/*',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+
+  const text = await response.text();
+  let json: {
+    success?: boolean;
+    message?: string;
+    data?: AiPromptVersionItem;
+    errorCode?: string;
+  } | null = null;
+
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    // Non-JSON response
+  }
+
+  if (!response.ok || (json && json.success === false)) {
+    throw new Error(
+      json?.message || `Tải lên tệp AI Prompt thất bại (${response.status})`
+    );
+  }
+
+  if (!json?.data) {
+    throw new Error('Máy chủ không trả về dữ liệu phiên bản AI Prompt.');
+  }
+
+  return json.data;
+}
