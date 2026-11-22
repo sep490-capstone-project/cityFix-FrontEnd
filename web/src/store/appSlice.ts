@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { SettingsTab } from '../admin/AdminSettings';
 
 interface AppState {
-  currentPage: 'dashboard' | 'tickets' | 'ticket-detail' | 'analytics' | 'users' | 'settings' | 'steps';
+  currentPage: 'dashboard' | 'tickets' | 'ticket-detail' | 'analytics' | 'users' | 'settings' | 'steps' | 'ai-prompts';
   selectedTicketId: string | null;
   settingsTab: SettingsTab;
   userEmail: string;

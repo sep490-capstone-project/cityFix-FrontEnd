@@ -63,7 +63,7 @@ export default function RouteSync({
     const routePage = parts[0] || 'dashboard';
     const routeId = parts[1];
 
-    const validPages = ['dashboard', 'tickets', 'ticket-detail', 'analytics', 'users', 'settings', 'steps'];
+    const validPages = ['dashboard', 'tickets', 'ticket-detail', 'analytics', 'users', 'settings', 'steps', 'ai-prompts'];
     if (validPages.includes(routePage)) {
       if (token) {
         setAuthPage('app');
