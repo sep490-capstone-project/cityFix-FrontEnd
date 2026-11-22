@@ -21,6 +21,7 @@ import {
   getMyReportedTickets,
   getLifeThreateningTickets,
   getInProgressTickets,
+  getTopUpvotedTickets,
   getMyUpvotedTickets,
   upvoteTicket,
   ReportedTicket,
@@ -185,6 +186,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
   const prevActiveRef = useRef<boolean>(isActive);
   const [lifeThreateningTickets, setLifeThreateningTickets] = useState<ReportedTicket[]>([]);
   const [inProgressTickets, setInProgressTickets] = useState<ReportedTicket[]>([]);
+  const [topUpvotedTickets, setTopUpvotedTickets] = useState<ReportedTicket[]>([]);
   const [upvotedTickets, setUpvotedTickets] = useState<ReportedTicket[]>([]);
   const [upvotedIds, setUpvotedIds] = useState<Record<string, boolean>>({});
   const [upvotingId, setUpvotingId] = useState<string | null>(null);
@@ -212,11 +214,12 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
   const loadHomeData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [ticketsRes, unread, sosRes, inProgRes, upvotedRes] = await Promise.allSettled([
+      const [ticketsRes, unread, sosRes, inProgRes, topUpvotedRes, upvotedRes] = await Promise.allSettled([
         getMyReportedTickets(null, 0, 100),
         getUnreadNotificationCount(),
         getLifeThreateningTickets(null, 0, 20),
         getInProgressTickets(null, 0, 50),
+        getTopUpvotedTickets(null),
         getMyUpvotedTickets(null, 0, 30),
       ]);
 
@@ -258,6 +261,14 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
       }
 
       if (
+        topUpvotedRes.status === 'fulfilled' &&
+        Array.isArray(topUpvotedRes.value)
+      ) {
+        console.log('🔥 TOP UPVOTED TICKETS FOUND:', topUpvotedRes.value.length);
+        setTopUpvotedTickets(topUpvotedRes.value);
+      }
+
+      if (
         upvotedRes.status === 'fulfilled' &&
         upvotedRes.value &&
         Array.isArray(upvotedRes.value.content)
@@ -290,6 +301,13 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
       try {
         await upvoteTicket(ticketId);
         setUpvotedIds((prev) => ({ ...prev, [ticketId]: true }));
+        setTopUpvotedTickets((prev) =>
+          prev.map((t) =>
+            t.id === ticketId
+              ? { ...t, upvoteCount: (t.upvoteCount ?? 0) + 1 }
+              : t
+          )
+        );
         Alert.alert(
           'Đã ghi nhận đồng tình',
           'Cảm ơn bạn đã đóng góp tiếng nói cộng đồng để sự cố sớm được ưu tiên xử lý.'
@@ -375,28 +393,17 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
     };
   }, [filteredMapPins, allMapPins]);
 
-  // 2. Danh sách Sự cố đang được quan tâm (kết hợp SOS + IN_PROGRESS thực tế)
+  // 2. Danh sách Sự cố đang được quan tâm (Từ API GET /api/v1/tickets/top-upvoted)
   const communityTrendingList = useMemo(() => {
-    const seen = new Set<string>();
-    const list: Array<{ ticket: ReportedTicket; isSos: boolean }> = [];
-
-    lifeThreateningTickets.forEach((t) => {
-      if (!t.id || seen.has(t.id)) return;
-      seen.add(t.id);
-      list.push({ ticket: t, isSos: true });
-    });
-
-    inProgressTickets.forEach((t) => {
-      if (!t.id || seen.has(t.id)) return;
-      seen.add(t.id);
-      list.push({
-        ticket: t,
-        isSos: Boolean(t.isLifeThreatening) || (t.priority || '').toUpperCase() === 'CRITICAL',
-      });
-    });
-
-    return list.slice(0, 8);
-  }, [lifeThreateningTickets, inProgressTickets]);
+    const sosIds = new Set(lifeThreateningTickets.map((t) => t.id));
+    return topUpvotedTickets.map((t) => ({
+      ticket: t,
+      isSos:
+        sosIds.has(t.id) ||
+        Boolean(t.isLifeThreatening) ||
+        (t.priority || '').toUpperCase() === 'CRITICAL',
+    }));
+  }, [topUpvotedTickets, lifeThreateningTickets]);
 
   // 3. Dòng thời gian Hoạt động Cộng đồng (tổng hợp từ in-progress, life-threatening, my-upvoted)
   const communityFeedList = useMemo(() => {
@@ -1092,7 +1099,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
                           isUpvoted && { color: '#16a34a' },
                         ]}
                       >
-                        {isUpvoted ? 'Đã ủng hộ' : formatRelativeTime(t.createdAt)}
+                        {`${t.upvoteCount ?? 0} lượt`}
                       </Text>
                     </View>
 

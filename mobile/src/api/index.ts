@@ -80,6 +80,33 @@ export function decodeJwt(token: string): Record<string, any> | null {
   }
 }
 
+export function isTokenExpired(token?: string | null): boolean {
+  if (!token) return true;
+  const decoded = decodeJwt(token);
+  if (!decoded) return true;
+  if (typeof decoded.exp === 'number') {
+    const nowSec = Date.now() / 1000;
+    return decoded.exp <= nowSec;
+  }
+  return false;
+}
+
+let onUnauthorizedCallback: (() => void) | null = null;
+let lastUnauthorizedTriggerTs = 0;
+
+export function setOnUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorizedCallback = handler;
+}
+
+export function notifyUnauthorized() {
+  const now = Date.now();
+  if (now - lastUnauthorizedTriggerTs < 2000) return;
+  lastUnauthorizedTriggerTs = now;
+  if (onUnauthorizedCallback) {
+    onUnauthorizedCallback();
+  }
+}
+
 export interface RegisterPayload {
   email: string;
   password: string;
@@ -100,6 +127,14 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+    if (
+      status === 401 ||
+      message.includes('Phiên đăng nhập đã hết') ||
+      message.toLowerCase().includes('token expired') ||
+      message.toLowerCase().includes('jwt expired')
+    ) {
+      notifyUnauthorized();
+    }
   }
 }
 
@@ -1060,6 +1095,7 @@ export interface ReportedTicket {
   assigneeId?: string;
   assigneeName?: string;
   isLifeThreatening?: boolean;
+  upvoteCount?: number;
   steps?: Array<{
     id?: string;
     stepId?: string;
@@ -1309,6 +1345,10 @@ export async function getInProgressTickets(
       // not json
     }
 
+    if (response.status === 401 || (response.status === 403 && isTokenExpired(token))) {
+      notifyUnauthorized();
+    }
+
     if (!response.ok || !payload?.success) {
       console.warn('⚠️ Lỗi lấy danh sách sự cố đang xử lý:', payload?.message || response.status);
       return {
@@ -1349,6 +1389,70 @@ export async function getInProgressTickets(
       last: true,
       empty: true,
     };
+  }
+}
+
+/* =========================================================
+   TOP UPVOTED TICKETS IN SAME WARD
+   GET /api/v1/tickets/top-upvoted
+   Lấy Top 3 vé có lượt Upvote cao nhất cùng Phường (ASSIGNED hoặc IN_PROGRESS)
+   ========================================================= */
+
+export async function getTopUpvotedTickets(
+  accessToken?: string | null
+): Promise<ReportedTicket[]> {
+  let token = accessToken;
+  if (!token) {
+    token = await AsyncStorage.getItem('accessToken');
+  }
+
+  if (!token || isTokenExpired(token)) {
+    notifyUnauthorized();
+    return [];
+  }
+
+  const url = `${API_BASE_URL}/api/v1/tickets/top-upvoted`;
+  console.log('🔥 GET TOP UPVOTED TICKETS URL:', url);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Accept: '*/*',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.status === 401 || (response.status === 403 && isTokenExpired(token))) {
+      notifyUnauthorized();
+      return [];
+    }
+
+    const text = await response.text();
+    console.log('🔥 GET TOP UPVOTED TICKETS STATUS:', response.status);
+
+    let payload: any = null;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // not json
+    }
+
+    if (!response.ok || !payload?.success) {
+      console.warn('⚠️ Lỗi lấy danh sách top-upvoted:', payload?.message || response.status);
+      return [];
+    }
+
+    if (Array.isArray(payload.data)) {
+      return payload.data;
+    }
+    if (Array.isArray(payload.data?.content)) {
+      return payload.data.content;
+    }
+    return [];
+  } catch (err) {
+    console.error('❌ Error fetching top-upvoted tickets:', err);
+    return [];
   }
 }
 
