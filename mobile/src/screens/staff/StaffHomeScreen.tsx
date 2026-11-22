@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
 import {
   getStaffAssignedTickets,
+  getLifeThreateningTickets,
   ReportedTicket,
   mapBackendStatus,
   getUnreadNotificationCount,
@@ -22,6 +23,7 @@ interface Props {
   navigate: (screen: string, params?: any) => void;
   authUser: AuthUser | null;
   openTicket?: (id: string, ticketObj?: ReportedTicket) => void;
+  isActive?: boolean;
 }
 
 function SectionLabel({
@@ -66,29 +68,53 @@ function getCategoryIcon(catName?: string): any {
   return 'alert-circle-outline';
 }
 
-export default function StaffHomeScreen({ navigate, authUser, openTicket }: Props) {
+export default function StaffHomeScreen({
+  navigate,
+  authUser,
+  openTicket,
+  isActive = true,
+}: Props) {
   const [assignedTickets, setAssignedTickets] = useState<ReportedTicket[]>([]);
+  const [lifeThreateningTickets, setLifeThreateningTickets] = useState<ReportedTicket[]>([]);
+  const [alertDismissed, setAlertDismissed] = useState<boolean>(false);
   const [totalElements, setTotalElements] = useState<number>(0);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const prevActiveRef = useRef<boolean>(isActive);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const res = await getStaffAssignedTickets(null, 'all', 0, 50);
-      if (res && Array.isArray(res.content)) {
-        setAssignedTickets(res.content);
-        setTotalElements(res.totalElements ?? res.content.length);
+      const [assignedRes, sosRes, unreadRes] = await Promise.allSettled([
+        getStaffAssignedTickets(null, 'all', 0, 50),
+        getLifeThreateningTickets(null, 0, 20),
+        getUnreadNotificationCount(),
+      ]);
+
+      if (
+        assignedRes.status === 'fulfilled' &&
+        assignedRes.value &&
+        Array.isArray(assignedRes.value.content)
+      ) {
+        setAssignedTickets(assignedRes.value.content);
+        setTotalElements(
+          assignedRes.value.totalElements ?? assignedRes.value.content.length
+        );
+      }
+
+      if (
+        sosRes.status === 'fulfilled' &&
+        sosRes.value &&
+        Array.isArray(sosRes.value.content)
+      ) {
+        setLifeThreateningTickets(sosRes.value.content);
+      }
+
+      if (unreadRes.status === 'fulfilled') {
+        setUnreadCount(unreadRes.value);
       }
     } catch (e: any) {
-      console.log('StaffHomeScreen assigned tickets note:', e?.message);
-    }
-
-    try {
-      const c = await getUnreadNotificationCount();
-      setUnreadCount(c);
-    } catch (e: any) {
-      console.log('StaffHomeScreen unread count note:', e?.message);
+      console.log('StaffHomeScreen loadData note:', e?.message);
     } finally {
       setRefreshing(false);
     }
@@ -97,6 +123,13 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (isActive && !prevActiveRef.current) {
+      loadData(false);
+    }
+    prevActiveRef.current = isActive;
+  }, [isActive, loadData]);
 
   const initials = (authUser?.fullName?.trim() || 'NV')
     .split(/\s+/)
@@ -116,11 +149,64 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
     (t) => mapBackendStatus(t.status).statusKey === 'done'
   ).length;
 
-  const urgentTickets = assignedTickets.filter((t) => {
-    const sev = (t.priority || t.severity || '').toUpperCase();
-    const stKey = mapBackendStatus(t.status).statusKey;
-    return (sev === 'HIGH' || sev === 'CRITICAL') && stKey !== 'done' && stKey !== 'cancelled';
-  });
+  // Tổng hợp danh sách Cảnh báo nguy hiểm (SOS / Khẩn cấp / Ưu tiên cao / Đang cần xử lý) cho Staff
+  const urgentTickets = useMemo(() => {
+    const sosIdSet = new Set(lifeThreateningTickets.map((t) => t.id));
+    const isTicketActive = (t: ReportedTicket) => {
+      const stKey = mapBackendStatus(t.status).statusKey;
+      return stKey !== 'done' && stKey !== 'cancelled' && stKey !== 'rejected';
+    };
+
+    const isTicketHighOrSos = (t: ReportedTicket) => {
+      const sev = (t.priority || t.severity || '').toUpperCase();
+      const danger = ((t as any).dangerLevel || '').toUpperCase();
+      const subPrio = Array.isArray(t.subCategories)
+        ? t.subCategories.some((sc: any) =>
+            ['HIGH', 'CRITICAL', 'URGENT'].includes((sc?.priority || '').toUpperCase())
+          )
+        : false;
+      return (
+        Boolean(t.isLifeThreatening) ||
+        sosIdSet.has(t.id) ||
+        sev === 'HIGH' ||
+        sev === 'CRITICAL' ||
+        sev === 'URGENT' ||
+        danger === 'CRITICAL' ||
+        danger === 'DANGEROUS' ||
+        subPrio
+      );
+    };
+
+    const combinedMap = new Map<string, ReportedTicket>();
+
+    // 1. Các vé được phân công cho Staff đang mở và có mức độ Nguy hiểm / SOS / Cao
+    assignedTickets.forEach((t) => {
+      if (t.id && isTicketActive(t) && isTicketHighOrSos(t)) {
+        combinedMap.set(t.id, {
+          ...t,
+          isLifeThreatening: Boolean(t.isLifeThreatening || sosIdSet.has(t.id)),
+        });
+      }
+    });
+
+    // 2. Các vé từ API life-threatening đang mở
+    lifeThreateningTickets.forEach((t) => {
+      if (t.id && isTicketActive(t) && !combinedMap.has(t.id)) {
+        combinedMap.set(t.id, { ...t, isLifeThreatening: true });
+      }
+    });
+
+    // 3. Nếu chưa có vé SOS/High nào nhưng Staff đang có hồ sơ được giao cần xử lý -> hiển thị hồ sơ ưu tiên gần nhất
+    if (combinedMap.size === 0) {
+      assignedTickets.forEach((t) => {
+        if (t.id && isTicketActive(t)) {
+          combinedMap.set(t.id, t);
+        }
+      });
+    }
+
+    return Array.from(combinedMap.values());
+  }, [assignedTickets, lifeThreateningTickets]);
 
   const completionPct =
     totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
@@ -223,34 +309,103 @@ export default function StaffHomeScreen({ navigate, authUser, openTicket }: Prop
           </View>
         </View>
 
-        {/* Priority Alert for Staff if urgent tickets exist */}
-        {urgentTickets.length > 0 ? (
+        {/* Priority Alert - Cảnh báo sự cố nguy hiểm / Hồ sơ ưu tiên cao cần xử lý */}
+        {!alertDismissed && urgentTickets.length > 0 ? (
           <View style={styles.paddingHorizontal}>
-            <TouchableOpacity
-              style={styles.alertCard}
-              activeOpacity={0.85}
-              onPress={() => openTicket?.(urgentTickets[0].id, urgentTickets[0])}
-            >
+            <View style={styles.alertCard}>
               <View style={styles.alertIconBox}>
-                <Ionicons name="alert-circle" size={20} color="#dc2626" />
+                <Ionicons name="warning" size={20} color="#dc2626" />
               </View>
-              <View style={styles.alertContent}>
+              <TouchableOpacity
+                style={styles.alertContent}
+                activeOpacity={0.85}
+                onPress={() => openTicket?.(urgentTickets[0].id, urgentTickets[0])}
+              >
                 <View style={styles.alertTagRow}>
-                  <Text style={styles.alertTagText}>HỒ SƠ ƯU TIÊN CAO ({urgentTickets.length})</Text>
+                  <Text style={styles.alertTagText}>
+                    {urgentTickets[0].isLifeThreatening
+                      ? 'CẢNH BÁO NGUY HIỂM (SOS) · ƯU TIÊN XỬ LÝ'
+                      : `CẢNH BÁO SỰ CỐ CẦN XỬ LÝ (${urgentTickets.length})`}
+                  </Text>
                   <View style={styles.alertDot} />
+                  {urgentTickets.length > 1 && (
+                    <View
+                      style={{
+                        backgroundColor: '#fee2e2',
+                        paddingHorizontal: 6,
+                        paddingVertical: 1.5,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 9,
+                          fontWeight: '800',
+                          color: '#dc2626',
+                        }}
+                      >
+                        +{urgentTickets.length - 1} hồ sơ khác
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.alertTitle} numberOfLines={1}>
-                  {urgentTickets[0].categoryName ||
+                  {urgentTickets[0].categories?.[0]?.categoryName ||
                     urgentTickets[0].subCategories?.[0]?.name ||
-                    urgentTickets[0].description ||
-                    'Sự cố khẩn cấp'}
+                    urgentTickets[0].categoryName ||
+                    'Sự cố khẩn cấp'} ·{' '}
+                  {urgentTickets[0].address || 'Khu vực phụ trách'}
                 </Text>
-                <Text style={styles.alertSub} numberOfLines={1}>
-                  {urgentTickets[0].address || 'Khu vực phụ trách'} ·{' '}
-                  <Text style={{ color: '#dc2626', fontWeight: '700' }}>Xử lý ngay →</Text>
+                <Text style={styles.alertSub} numberOfLines={2}>
+                  {urgentTickets[0].description || 'Chạm để mở chi tiết hiện trường và cập nhật tiến độ xử lý.'}
                 </Text>
-              </View>
-            </TouchableOpacity>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 6,
+                  }}
+                >
+                  <View
+                    style={{
+                      backgroundColor: '#dc2626',
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        fontWeight: '800',
+                        color: '#ffffff',
+                      }}
+                    >
+                      {urgentTickets[0].status === 'IN_PROGRESS'
+                        ? 'Đang xử lý hiện trường'
+                        : 'Cần tiếp nhận xử lý'}
+                    </Text>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '800',
+                      color: '#dc2626',
+                    }}
+                  >
+                    Bấm để xử lý ngay →
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setAlertDismissed(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 2, alignSelf: 'flex-start' }}
+              >
+                <Ionicons name="close" size={18} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 

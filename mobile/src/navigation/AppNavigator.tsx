@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, ActivityIndicator, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen, { AuthUser } from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -27,7 +27,13 @@ import StaffTicketDetailScreen from '../screens/staff/StaffTicketDetailScreen';
 import StaffProfileScreen from '../screens/staff/StaffProfileScreen';
 
 import { ReportDraft } from '../types';
-import { ReportedTicket, getProfile, decodeJwt } from '../api';
+import {
+  ReportedTicket,
+  getProfile,
+  decodeJwt,
+  isTokenExpired,
+  setOnUnauthorizedHandler,
+} from '../api';
 
 const INITIAL_DRAFT: ReportDraft = {
   location: null,
@@ -68,7 +74,31 @@ export default function AppNavigator() {
     timestamp: Date.now(),
   });
 
-  // Tự động khôi phục phiên đăng nhập khi khởi động ứng dụng
+  const handleLogout = useCallback(async (showExpiredAlert = false) => {
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem('accessToken'),
+        AsyncStorage.removeItem('@cityfix_auth_user'),
+      ]);
+    } catch (e) {
+      console.warn('Lỗi khi xóa token:', e);
+    }
+    setUser(null);
+    setDraft(INITIAL_DRAFT);
+    setDuplicateTickets([]);
+    setCreatedTicket(null);
+    setVisitedTabs({ home: true });
+    setCurrentScreen('login');
+
+    if (showExpiredAlert) {
+      Alert.alert(
+        'Phiên đăng nhập hết hạn',
+        'Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.'
+      );
+    }
+  }, []);
+
+  // Tự động khôi phục phiên đăng nhập khi khởi động ứng dụng & kiểm tra hạn token
   useEffect(() => {
     let isMounted = true;
     async function restoreSession() {
@@ -79,9 +109,18 @@ export default function AppNavigator() {
         ]);
 
         if (isMounted && token && savedUserStr) {
-          const parsedUser = JSON.parse(savedUserStr);
-          setUser(parsedUser);
-          setCurrentScreen('splash');
+          if (isTokenExpired(token)) {
+            await Promise.all([
+              AsyncStorage.removeItem('accessToken'),
+              AsyncStorage.removeItem('@cityfix_auth_user'),
+            ]);
+            setUser(null);
+            setCurrentScreen('login');
+          } else {
+            const parsedUser = JSON.parse(savedUserStr);
+            setUser(parsedUser);
+            setCurrentScreen('splash');
+          }
         }
       } catch (err) {
         console.warn('Lỗi kiểm tra phiên đăng nhập:', err);
@@ -97,6 +136,29 @@ export default function AppNavigator() {
     };
   }, []);
 
+  // Lắng nghe sự kiện hết hạn token từ mọi API và khi mở lại app từ nền
+  useEffect(() => {
+    setOnUnauthorizedHandler(() => {
+      if (user) {
+        handleLogout(true);
+      }
+    });
+
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active' && user) {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (!token || isTokenExpired(token)) {
+          handleLogout(true);
+        }
+      }
+    });
+
+    return () => {
+      setOnUnauthorizedHandler(null);
+      sub.remove();
+    };
+  }, [user, handleLogout]);
+
   const handleLoginSuccess = async (authUser: AuthUser, token: string) => {
     setUser(authUser);
     try {
@@ -106,23 +168,6 @@ export default function AppNavigator() {
     }
     setVisitedTabs({ home: true });
     setCurrentScreen('splash');
-  };
-
-  const handleLogout = async () => {
-    try {
-      await Promise.all([
-        AsyncStorage.removeItem('accessToken'),
-        AsyncStorage.removeItem('@cityfix_auth_user'),
-      ]);
-    } catch (e) {
-      console.warn('Lỗi khi xóa token:', e);
-    }
-    setUser(null);
-    setDraft(INITIAL_DRAFT);
-    setDuplicateTickets([]);
-    setCreatedTicket(null);
-    setVisitedTabs({ home: true });
-    setCurrentScreen('login');
   };
 
   const handleUpdateUser = (updatedUser: AuthUser) => {
@@ -282,6 +327,7 @@ export default function AppNavigator() {
               navigate={handleNavigate}
               authUser={user}
               openTicket={handleOpenTicket}
+              isActive={currentScreen === 'home'}
             />
           </View>
 
