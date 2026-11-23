@@ -277,8 +277,11 @@ export default function LoginScreen({ navigate, onLogin }: Props) {
     try {
       const result = await login(email, password);
 
-      // Lưu access token & email đăng nhập gần nhất
+      // Lưu access token, refresh token & email đăng nhập gần nhất
       await AsyncStorage.setItem('accessToken', result.accessToken);
+      if (result.refreshToken) {
+        await AsyncStorage.setItem('refreshToken', result.refreshToken);
+      }
       try {
         await AsyncStorage.setItem(LAST_EMAIL_STORAGE_KEY, email.trim());
       } catch {}

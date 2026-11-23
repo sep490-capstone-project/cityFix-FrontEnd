@@ -15,7 +15,7 @@ import StaffApp from './staff/StaffApp';
 import ManagerApp from './manager/ManagerApp';
 import { Ticket } from './data';
 import cityfixLogo from './assets/cityfix-logo.png';
-import { logout, getAccessToken, decodeJwt, getProfile } from './services';
+import { logout, getAccessToken, getRefreshToken, refreshAccessToken, decodeJwt, getProfile } from './services';
 
 import { useAppDispatch, useAppSelector } from './store';
 import { setCurrentPage, setSettingsTab, setUserInfo, resetUser } from './store/appSlice';
@@ -37,11 +37,14 @@ import RouteSync from './components/RouteSync';
 
 function hasValidStoredToken(): boolean {
   const token = getAccessToken();
-  if (!token) return false;
+  if (!token) return Boolean(getRefreshToken());
   const decoded = decodeJwt(token);
-  if (!decoded) return false;
+  if (!decoded) return Boolean(getRefreshToken());
   const now = Date.now() / 1000;
-  if (decoded.exp && decoded.exp < now) return false;
+  if (decoded.exp && decoded.exp < now) {
+    // Nếu access token hết hạn nhưng còn refresh token thì vẫn giữ ở 'app' để useEffect tự gọi /api/v1/auth/refresh
+    return Boolean(getRefreshToken());
+  }
   return true;
 }
 
@@ -70,89 +73,107 @@ function MainApp() {
   const selectedId = reduxState.selectedTicketId;
   const settingsTab = reduxState.settingsTab;
 
-  // Tự động phục hồi phiên đăng nhập nếu đã có token hợp lệ
+  // Tự động phục hồi phiên đăng nhập nếu đã có token hợp lệ (hoặc tự động làm mới bằng refreshToken qua POST /api/v1/auth/refresh)
   useEffect(() => {
-    const currentPath = window.location.pathname;
-    const token = getAccessToken();
+    let active = true;
+    async function verifyOrRefreshSession() {
+      const currentPath = window.location.pathname;
+      let token = getAccessToken();
+      const refreshTok = getRefreshToken();
 
-    // 1. Không có token: đảm bảo ở trạng thái login (hoặc register)
-    if (!token) {
-      if (reduxState.userEmail) {
-        dispatch(resetUser());
-      }
-      setAuthPage(currentPath === '/register' ? 'register' : 'login');
-      return;
-    }
-
-    // 2. Có token: giải mã và kiểm tra hạn sử dụng
-    try {
-      const decoded = decodeJwt(token);
-      if (!decoded) {
-        logout();
-        dispatch(resetUser());
-        setAuthPage('login');
+      // 1. Không có cả accessToken lẫn refreshToken: đảm bảo ở trạng thái login (hoặc register)
+      if (!token && !refreshTok) {
+        if (reduxState.userEmail) {
+          dispatch(resetUser());
+        }
+        setAuthPage(currentPath === '/register' ? 'register' : 'login');
         return;
       }
 
-      const now = Date.now() / 1000;
-      if (decoded.exp && decoded.exp < now) {
-        logout();
-        dispatch(resetUser());
-        setAuthPage('login');
-        return;
-      }
+      // 2. Có token: giải mã và kiểm tra hạn sử dụng; nếu hết hạn mà còn refreshToken thì gọi refreshAccessToken()
+      try {
+        let decoded = token ? decodeJwt(token) : null;
+        const now = Date.now() / 1000;
+        const isExpired = !decoded || (decoded.exp && decoded.exp < now);
 
-      const email = decoded.sub || decoded.email || '';
-      const roleCandidate =
-        decoded.role ||
-        (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
-        decoded.roleName ||
-        (Array.isArray(decoded.authorities) ? decoded.authorities[0] : decoded.authorities) ||
-        decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
-        decoded.scope ||
-        '';
-      const rawRole = String(roleCandidate).toUpperCase();
-      const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
-      const uid = decoded.userId || decoded.sub || '';
-
-      dispatch(setUserInfo({ email, role, userId: uid }));
-
-      // Khi token hợp lệ, luôn đưa người dùng vào app (kể cả khi F5 từ /login)
-      setAuthPage('app');
-
-      // Đồng bộ lại trang hiện tại từ URL nếu người dùng F5 trực tiếp tại một route con
-      const parts = currentPath.split('/').filter(Boolean);
-      const routePage = parts[0];
-      const routeId = parts[1];
-      const validPages: Page[] = ['dashboard', 'tickets', 'ticket-detail', 'analytics', 'users', 'settings', 'steps', 'ai-prompts'];
-      if (routePage && validPages.includes(routePage as Page)) {
-        dispatch(setCurrentPage({ page: routePage as Page, id: routeId }));
-      }
-
-      getProfile(token)
-        .then((p) => {
-          if (p?.roleName) {
-            const profRole = p.roleName.toUpperCase();
-            const resolvedRole = profRole.includes('MANAGER')
-              ? 'MANAGER'
-              : profRole.includes('STAFF')
-              ? 'STAFF'
-              : 'ADMIN';
-            dispatch(
-              setUserInfo({
-                email: p.email || email,
-                role: resolvedRole,
-                userId: p.userId || uid,
-              })
-            );
+        if (isExpired && refreshTok) {
+          const refreshed = await refreshAccessToken(refreshTok);
+          if (!active) return;
+          if (refreshed?.accessToken) {
+            token = refreshed.accessToken;
+            decoded = decodeJwt(token);
+          } else {
+            logout();
+            dispatch(resetUser());
+            setAuthPage('login');
+            return;
           }
-        })
-        .catch(() => {});
-    } catch {
-      logout();
-      dispatch(resetUser());
-      setAuthPage('login');
+        }
+
+        if (!decoded || (decoded.exp && decoded.exp < now)) {
+          logout();
+          dispatch(resetUser());
+          setAuthPage('login');
+          return;
+        }
+
+        const email = decoded.sub || decoded.email || '';
+        const roleCandidate =
+          decoded.role ||
+          (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
+          decoded.roleName ||
+          (Array.isArray(decoded.authorities) ? decoded.authorities[0] : decoded.authorities) ||
+          decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+          decoded.scope ||
+          '';
+        const rawRole = String(roleCandidate).toUpperCase();
+        const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
+        const uid = decoded.userId || decoded.sub || '';
+
+        dispatch(setUserInfo({ email, role, userId: uid }));
+
+        // Khi token hợp lệ, luôn đưa người dùng vào app (kể cả khi F5 từ /login)
+        setAuthPage('app');
+
+        // Đồng bộ lại trang hiện tại từ URL nếu người dùng F5 trực tiếp tại một route con
+        const parts = currentPath.split('/').filter(Boolean);
+        const routePage = parts[0];
+        const routeId = parts[1];
+        const validPages: Page[] = ['dashboard', 'tickets', 'ticket-detail', 'analytics', 'users', 'settings', 'steps', 'ai-prompts'];
+        if (routePage && validPages.includes(routePage as Page)) {
+          dispatch(setCurrentPage({ page: routePage as Page, id: routeId }));
+        }
+
+        getProfile(token || undefined)
+          .then((p) => {
+            if (active && p?.roleName) {
+              const profRole = p.roleName.toUpperCase();
+              const resolvedRole = profRole.includes('MANAGER')
+                ? 'MANAGER'
+                : profRole.includes('STAFF')
+                ? 'STAFF'
+                : 'ADMIN';
+              dispatch(
+                setUserInfo({
+                  email: p.email || email,
+                  role: resolvedRole,
+                  userId: p.userId || uid,
+                })
+              );
+            }
+          })
+          .catch(() => {});
+      } catch {
+        logout();
+        dispatch(resetUser());
+        setAuthPage('login');
+      }
     }
+
+    verifyOrRefreshSession();
+    return () => {
+      active = false;
+    };
   }, [dispatch]);
 
   function showToast(msg: string) {
