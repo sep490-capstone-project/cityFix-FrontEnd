@@ -80,13 +80,4 @@ export interface Category {
   name: string;
 }
 
-export const CATEGORIES: Category[] = [
-  { categoryId: 'cat-001', name: 'Ổ gà / Mặt đường' },
-  { categoryId: 'cat-002', name: 'Đèn đường hỏng' },
-  { categoryId: 'cat-003', name: 'Rác thải / Vệ sinh' },
-  { categoryId: 'cat-004', name: 'Cây gãy đổ' },
-  { categoryId: 'cat-005', name: 'Ngập úng / Thoát nước' },
-  { categoryId: 'cat-006', name: 'Sụt lở vỉa hè' },
-  { categoryId: 'cat-007', name: 'Biển báo hỏng' },
-  { categoryId: 'cat-008', name: 'Khác' },
-];
+export const CATEGORIES: Category[] = [];

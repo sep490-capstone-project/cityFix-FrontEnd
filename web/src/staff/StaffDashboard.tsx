@@ -567,9 +567,12 @@ export default function StaffDashboard({ currentUser, onOpenTicket, onViewAll }:
                   >
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center gap-2">
-                        {t.isLifeThreatening && (
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" title="Khẩn cấp SOS" />
-                        )}
+                        {t.isLifeThreatening &&
+                          !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                            (t.status || '').toUpperCase()
+                          ) && (
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" title="Khẩn cấp SOS" />
+                          )}
                         <span className="font-mono text-[11px] font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded group-hover:bg-orange-100 group-hover:text-orange-700 transition-colors">
                           {shortId}
                         </span>

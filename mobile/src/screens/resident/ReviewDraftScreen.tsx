@@ -10,6 +10,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   StatusBar,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft, CATEGORIES } from '../../types';
@@ -48,12 +49,13 @@ export default function ReviewDraftScreen({
       setDraft({ ...draft, userDescription: ai.description });
     }
   }, [ai?.description]);
-  const currentCatId = draft.userCategoryId || (ai?.categoryId ?? 'cat-001');
+  const currentCatId = draft.userCategoryId || ai?.categoryId || '';
   const matchedCat = CATEGORIES.find((c) => c.categoryId === currentCatId);
   const currentCatName =
     matchedCat?.name ||
     ai?.categoryName ||
-    ai?.categoryId ||
+    ai?.subCategoryName ||
+    ai?.subCategoryNames?.[0] ||
     'Chưa xác định';
 
   const handleSubmit = async () => {
@@ -298,6 +300,44 @@ export default function ReviewDraftScreen({
                   </Text>
                 </View>
               </View>
+
+              {/* Công tắc Báo cáo ẩn danh */}
+              <View
+                style={{
+                  marginTop: 10,
+                  paddingTop: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: '#f1f5f9',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons
+                      name={draft.isAnonymous ? 'eye-off' : 'eye-outline'}
+                      size={16}
+                      color={draft.isAnonymous ? '#ea580c' : '#64748b'}
+                    />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
+                      Báo cáo ẩn danh
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#64748b', marginTop: 3, lineHeight: 16 }}>
+                    {draft.isAnonymous
+                      ? 'Đã bật: Ẩn thông tin của bạn với Nhân viên hiện trường & Cộng đồng (chỉ Quản lý xem được).'
+                      : 'Tắt: Hiển thị tên và số điện thoại người phản ánh cho đơn vị xử lý.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={Boolean(draft.isAnonymous)}
+                  onValueChange={(val) => setDraft({ ...draft, isAnonymous: val })}
+                  trackColor={{ false: '#cbd5e1', true: '#fdba74' }}
+                  thumbColor={draft.isAnonymous ? '#ea580c' : '#f8fafc'}
+                />
+              </View>
             </View>
           </View>
 
@@ -338,45 +378,9 @@ export default function ReviewDraftScreen({
             </View>
             <View style={styles.cardBody}>
               <Text style={styles.fieldLabel}>Loại sự cố</Text>
-              {editing ? (
-                <View>
-                  <TouchableOpacity
-                    style={styles.catPickerBtn}
-                    onPress={() => setShowCatPicker(!showCatPicker)}
-                  >
-                    <Text style={styles.catPickerText}>{currentCatName}</Text>
-                    <Ionicons name="chevron-down" size={16} color="#f97316" />
-                  </TouchableOpacity>
-
-                  {showCatPicker ? (
-                    <View style={styles.catDropdownList}>
-                      {CATEGORIES.map((c) => (
-                        <TouchableOpacity
-                          key={c.categoryId}
-                          style={styles.catDropdownItem}
-                          onPress={() => {
-                            setDraft({ ...draft, userCategoryId: c.categoryId });
-                            setShowCatPicker(false);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.catDropdownItemText,
-                              c.categoryId === currentCatId && { color: '#ea580c' },
-                            ]}
-                          >
-                            {c.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={styles.catStaticBox}>
-                  <Text style={styles.catStaticText}>{currentCatName}</Text>
-                </View>
-              )}
+              <View style={styles.catStaticBox}>
+                <Text style={styles.catStaticText}>{currentCatName}</Text>
+              </View>
 
               {/* Chi tiết sự cố: hỗ trợ cả 1 hoặc nhiều subcategories */}
               {(() => {

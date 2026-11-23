@@ -128,59 +128,6 @@ export interface Ticket {
 }
 
 export const MOCK_TICKETS_FULL: Ticket[] = [];
-/* const DEPRECATED_MOCK_TICKETS = [
-  {
-    id: 'CF-2910',
-    category: 'Đèn đường chiếu sáng không hoạt động',
-    address: '128 Nguyễn Trãi, Phường 3, Quận 5, TP.HCM',
-    submittedAt: '20 phút trước (08:15 17/09/2026)',
-    locationMethod: 'AUTO_GPS',
-    agency: 'Công ty Chiếu sáng Công cộng TP.HCM',
-    deadline: '24 giờ (trước 08:15 18/09/2026)',
-    upvotes: 14,
-    severity: 'MEDIUM',
-    status: 'ĐANG XỬ LÝ',
-    statusKey: 'processing',
-    description:
-      'Đèn đường đoạn trước số nhà 128 Nguyễn Trãi bị chập chập tắt liên tục từ tối qua, sau đó tắt hẳn gây nguy hiểm cho người tham gia giao thông ban đêm.',
-    imageUrl:
-      'https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=800&h=400&fit=crop&auto=format',
-  },
-  {
-    id: 'CF-2898',
-    category: 'Nắp cống bị bể gây nguy hiểm',
-    address: '45 Trần Hưng Đạo, Phường Phạm Ngũ Lão, Q.1',
-    submittedAt: '2 giờ trước (06:30 17/09/2026)',
-    locationMethod: 'MANUAL_PIN',
-    agency: 'Công ty TNHH MTV Thủy lợi & Cấp thoát nước',
-    deadline: '12 giờ (trước 18:30 17/09/2026)',
-    upvotes: 8,
-    severity: 'HIGH',
-    status: 'ĐÃ TIẾP NHẬN',
-    statusKey: 'received',
-    description:
-      'Tấm bê tông nắp cống nứt bể tạo khoảng trống khoảng 30cm trên lòng đường, xe máy rất dễ sụp hố vào buổi tối.',
-    imageUrl:
-      'https://images.unsplash.com/photo-1542393545-10f5cde2c810?w=800&h=400&fit=crop&auto=format',
-  },
-  {
-    id: 'CF-2750',
-    category: 'Cây xanh che khuất biển báo giao thông',
-    address: 'Hẻm 210 Lê Văn Sỹ, Phường 10, Q.3',
-    submittedAt: '3 ngày trước (14/09/2026)',
-    locationMethod: 'AUTO_GPS',
-    agency: 'Công ty Công viên Cây xanh TP.HCM',
-    deadline: 'Đã hoàn thành',
-    upvotes: 22,
-    severity: 'LOW',
-    status: 'HOÀN THÀNH',
-    statusKey: 'done',
-    description:
-      'Tán cây phượng lớn che hoàn toàn biển báo đường một chiều tại đầu hẻm 210, nhân viên cây xanh đã tỉa cành gọn gàng.',
-    imageUrl:
-      'https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=800&h=400&fit=crop&auto=format',
-  },
-]; */
 
 const STATUS_MAP = {
   processing: { label: 'Đang xử lý', color: '#ea580c', bg: 'rgba(249, 115, 22, 0.08)', border: 'rgba(249, 115, 22, 0.25)' },

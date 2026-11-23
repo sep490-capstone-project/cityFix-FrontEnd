@@ -38,6 +38,7 @@ export default function AIAnalysisScreen({ navigate, goBack, draft, setDraft }: 
   const [currentStep, setCurrentStep] = useState(0);
   const [done, setDone] = useState(false);
   const [confidence, setConfidence] = useState(0);
+  const [isInvalidImage, setIsInvalidImage] = useState(false);
 
 useEffect(() => {
   let mounted = true;
@@ -47,6 +48,7 @@ useEffect(() => {
       setCurrentStep(0);
       setConfidence(0);
       setDone(false);
+      setIsInvalidImage(false);
 
       // Step 1: lấy access token
       const accessToken = await AsyncStorage.getItem('accessToken');
@@ -142,27 +144,54 @@ useEffect(() => {
       const effectiveSubCatName = subCatNames[0] || null;
       const effectivePriority = (result.priority || (result as any).severity || 'LOW').toUpperCase();
 
+      // Kiểm tra nếu AI xác định ảnh KHÔNG hợp lệ (isValidIssue === false hoặc không có danh mục sự cố nào)
+      const invalidIssue =
+        result.isValidIssue === false || subCatIds.length === 0;
+
+      setIsInvalidImage(invalidIssue);
+
       // Lưu kết quả AI vào draft (lưu đầy đủ danh sách subCategoryIds và subCategoryNames)
       setDraft({
         ...draft,
         aiAnalysis: {
           ...result,
+          isValidIssue: !invalidIssue,
           subCategoryId: effectiveSubCatId || undefined,
           subCategoryName: effectiveSubCatName,
           subCategoryIds: subCatIds,
           subCategoryNames: subCatNames,
-          categoryName: result.categoryName || effectiveSubCatName || 'Sự cố hạ tầng',
+          categoryName: invalidIssue
+            ? 'Ảnh không hợp lệ / Không phải sự cố đô thị'
+            : result.categoryName || effectiveSubCatName || 'Sự cố hạ tầng',
           priority: effectivePriority,
           severity: effectivePriority,
         },
-        userCategoryId: result.categoryId || effectiveSubCatId || null,
-        userSubCategoryId: effectiveSubCatId,
-        userSubCategoryIds: subCatIds,
-        userSubCategoryNames: subCatNames,
-        userDescription: draft.userDescription || result.description || '',
+        userCategoryId: invalidIssue ? null : result.categoryId || effectiveSubCatId || null,
+        userSubCategoryId: invalidIssue ? null : effectiveSubCatId,
+        userSubCategoryIds: invalidIssue ? [] : subCatIds,
+        userSubCategoryNames: invalidIssue ? [] : subCatNames,
+        userDescription: invalidIssue ? '' : draft.userDescription || result.description || '',
       });
 
       setDone(true);
+
+      if (invalidIssue) {
+        Alert.alert(
+          'Ảnh không hợp lệ',
+          result.description ||
+            'Hệ thống AI không ghi nhận sự cố hư hỏng cơ sở hạ tầng hay môi trường đô thị trong bức ảnh này. Vui lòng chụp hoặc chọn lại ảnh hiện trường sự cố thực tế.',
+          [
+            {
+              text: 'Chọn lại ảnh khác',
+              onPress: goBack,
+            },
+            {
+              text: 'Xem chi tiết',
+              style: 'cancel',
+            },
+          ]
+        );
+      }
 
     } catch (error) {
       console.error('❌ AI ANALYSIS ERROR:', error);
@@ -235,6 +264,11 @@ useEffect(() => {
                   {AI_STEPS[currentStep] || 'Đang quét phân tích...'}
                 </Text>
               </View>
+            ) : isInvalidImage ? (
+              <View style={[styles.doneBadgeTag, { backgroundColor: '#dc2626' }]}>
+                <Ionicons name="close-circle" size={16} color="#ffffff" />
+                <Text style={styles.doneBadgeText}>ẢNH KHÔNG HỢP LỆ</Text>
+              </View>
             ) : (
               <View style={styles.doneBadgeTag}>
                 <Ionicons name="checkmark-circle" size={16} color="#ffffff" />
@@ -264,7 +298,68 @@ useEffect(() => {
           ) : null}
 
           {/* AI Result Card */}
-          {done ? (
+          {done && isInvalidImage ? (
+            <View
+              style={[
+                styles.resultCard,
+                {
+                  borderColor: '#fca5a5',
+                  backgroundColor: '#fef2f2',
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.resultHeader,
+                  {
+                    borderBottomColor: '#fecaca',
+                    backgroundColor: '#fee2e2',
+                  },
+                ]}
+              >
+                <Ionicons name="warning" size={20} color="#dc2626" />
+                <Text style={[styles.resultTitle, { color: '#991b1b' }]}>
+                  ẢNH KHÔNG PHẢI SỰ CỐ ĐÔ THỊ
+                </Text>
+              </View>
+
+              <View style={{ padding: 16, gap: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: '#991b1b',
+                    lineHeight: 19,
+                  }}
+                >
+                  Hệ thống AI từ chối tiếp nhận hình ảnh này vì không phát hiện sự cố hạ tầng hoặc môi trường đô thị hợp lệ.
+                </Text>
+
+                <View
+                  style={{
+                    backgroundColor: '#ffffff',
+                    borderWidth: 1,
+                    borderColor: '#fecaca',
+                    borderRadius: 12,
+                    padding: 12,
+                    gap: 4,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#dc2626' }}>
+                    Nhận xét từ AI Vision:
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#1e293b', lineHeight: 19 }}>
+                    {draft.aiAnalysis?.description ||
+                      'Không ghi nhận sự cố hư hỏng cơ sở hạ tầng hay môi trường đô thị trong ảnh.'}
+                  </Text>
+                </View>
+
+                <Text style={{ fontSize: 12, color: '#7f1d1d', lineHeight: 18 }}>
+                  💡 Vui lòng chụp trực tiếp hoặc chọn ảnh rõ nét hiện trường sự cố thực tế (ổ gà, ngập nước, cây đổ, đèn đường hỏng, rác thải...) để tiếp tục tạo báo cáo.
+                </Text>
+              </View>
+            </View>
+          ) : done ? (
             <View style={styles.resultCard}>
               <View style={styles.resultHeader}>
                 <Ionicons name="sparkles" size={18} color="#f97316" />
@@ -383,17 +478,28 @@ useEffect(() => {
         </View>
       </ScrollView>
 
-      {/* Footer CTA Next */}
+      {/* Footer CTA Next / Retry Photo */}
       {done ? (
         <View style={styles.footerContainer}>
-          <TouchableOpacity
-            style={styles.nextBtn}
-            onPress={handleNext}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.nextBtnText}>KIỂM TRA & XÁC NHẬN BÁO CÁO</Text>
-            <Ionicons name="arrow-forward" size={18} color="#ffffff" />
-          </TouchableOpacity>
+          {isInvalidImage ? (
+            <TouchableOpacity
+              style={[styles.nextBtn, { backgroundColor: '#dc2626', shadowColor: '#dc2626' }]}
+              onPress={goBack}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="camera-reverse-outline" size={19} color="#ffffff" />
+              <Text style={styles.nextBtnText}>CHỤP / CHỌN LẠI ẢNH HIỆN TRƯỜNG</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.nextBtn}
+              onPress={handleNext}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.nextBtnText}>KIỂM TRA & XÁC NHẬN BÁO CÁO</Text>
+              <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+            </TouchableOpacity>
+          )}
         </View>
       ) : null}
     </View>

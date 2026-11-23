@@ -20,6 +20,8 @@ import {
   updateStaffTicketStatus,
   submitStaffEvidence,
   getStaffTicketSteps,
+  getStaffAssignedTickets,
+  extractTicketImages,
   getDepartments,
   DepartmentItem,
   getAdminCategories,
@@ -77,11 +79,49 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
   const [resolutionNote, setResolutionNote] = useState('');
   const [selectedStepId, setSelectedStepId] = useState('');
 
-  // Zoom image
+  // Zoom image & selected gallery index
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+  const [selectedImageIdx, setSelectedImageIdx] = useState<number>(0);
 
   // Timeline / Evidences list
   const [evidencesList, setEvidencesList] = useState<StaffTicketStepEvidence[]>([]);
+
+  useEffect(() => {
+    setSelectedImageIdx(0);
+    if (ticketId) {
+      Promise.allSettled([
+        getStaffAssignedTickets({ page: 0, size: 100 }),
+        getStaffAssignedTickets({ status: 'COMPLETED', page: 0, size: 100 }),
+      ])
+        .then(([activeRes, completedRes]) => {
+          const activeList: StaffTicketItem[] =
+            activeRes.status === 'fulfilled'
+              ? Array.isArray(activeRes.value)
+                ? activeRes.value
+                : activeRes.value?.content || (activeRes.value as any)?.data || []
+              : [];
+          const completedList: StaffTicketItem[] =
+            completedRes.status === 'fulfilled'
+              ? Array.isArray(completedRes.value)
+                ? completedRes.value
+                : completedRes.value?.content || (completedRes.value as any)?.data || []
+              : [];
+          const found = [...activeList, ...completedList].find(
+            (t) => (t.id || t.ticketId) === ticketId
+          );
+          if (found) {
+            setTicket((prev) => ({
+              ...prev,
+              ...found,
+              id: found.id || prev.id || ticketId,
+            }));
+          }
+        })
+        .catch((err) => {
+          console.warn('Lỗi đồng bộ vé từ getStaffAssignedTickets:', err);
+        });
+    }
+  }, [ticketId]);
 
   useEffect(() => {
     async function loadAuxData() {
@@ -416,12 +456,15 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                 <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
                 {si.label}
               </span>
-              {ticket.isLifeThreatening && (
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-lg border text-red-700 bg-red-50 border-red-200 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-                  Khẩn cấp
-                </span>
-              )}
+              {ticket.isLifeThreatening &&
+                !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                  (ticket.status || '').toUpperCase()
+                ) && (
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-lg border text-red-700 bg-red-50 border-red-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                    Khẩn cấp
+                  </span>
+                )}
             </div>
             <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
               <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket.address || 'Chưa xác định địa chỉ hiện trường'}</span>
@@ -501,25 +544,56 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
             </div>
 
             {/* Ảnh hiện trường */}
-            {ticket.imageUrl || (ticket.images && ticket.images.length > 0) || (ticket.evidenceUrls && ticket.evidenceUrls.length > 0) ? (
-              <div
-                onClick={() => setZoomUrl(ticket.imageUrl || ticket.images?.[0] || ticket.evidenceUrls?.[0] || null)}
-                className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-100 aspect-video group cursor-pointer shadow-2xs"
-              >
-                <img
-                  src={ticket.imageUrl || ticket.images?.[0] || ticket.evidenceUrls?.[0]}
-                  alt="Hiện trường"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                  <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Bấm để phóng to</span>
+            {(() => {
+              const ticketImages = extractTicketImages(ticket);
+              const activeImg = ticketImages[selectedImageIdx] || ticketImages[0] || '';
+              if (!activeImg) {
+                return (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400 text-xs bg-gray-50/50">
+                    Không có ảnh chụp hiện trường
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2">
+                  <div
+                    onClick={() => setZoomUrl(activeImg)}
+                    className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-100 aspect-video group cursor-pointer shadow-2xs"
+                  >
+                    <img
+                      src={activeImg}
+                      alt="Hiện trường"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                      <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Bấm để phóng to</span>
+                    </div>
+                    <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
+                      📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
+                    </span>
+                  </div>
+
+                  {ticketImages.length > 1 && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                      {ticketImages.map((imgUrl, idx) => (
+                        <button
+                          key={`${imgUrl}-${idx}`}
+                          type="button"
+                          onClick={() => setSelectedImageIdx(idx)}
+                          className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all cursor-pointer ${
+                            idx === selectedImageIdx
+                              ? 'border-orange-500 ring-2 ring-orange-500/25 scale-[1.02]'
+                              : 'border-gray-200 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={imgUrl} alt={`Hiện trường ${idx + 1}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-400 text-xs bg-gray-50/50">
-                Không có ảnh chụp hiện trường
-              </div>
-            )}
+              );
+            })()}
 
             {/* Mô tả sự cố */}
             <div>
@@ -566,16 +640,25 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
               </div>
             </div>
 
-            {/* Thông tin người báo cáo */}
-            {(ticket.creatorFullName || ticket.reporterName || ticket.creatorPhoneNumber || ticket.reporterPhone) && (
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
-                <span className="font-bold text-gray-700 block mb-1">Người phản ánh:</span>
-                <p className="text-gray-800 font-semibold">{ticket.creatorFullName || ticket.reporterName || 'Người dân'}</p>
-                {(ticket.creatorPhoneNumber || ticket.reporterPhone) && (
-                  <p className="font-mono-cf text-gray-500 flex items-center gap-1"><PhoneIcon className="w-3 h-3 text-gray-400" /> {ticket.creatorPhoneNumber || ticket.reporterPhone}</p>
-                )}
-              </div>
-            )}
+            {/* Thông tin người báo cáo (Chỉ hiển thị cho Staff nếu KHÔNG phải báo cáo ẩn danh) */}
+            {!ticket.isAnonymous &&
+              (ticket.creatorFullName ||
+                ticket.reporterName ||
+                ticket.creatorPhoneNumber ||
+                ticket.reporterPhone) && (
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
+                  <span className="font-bold text-gray-700 block mb-1">Người phản ánh:</span>
+                  <p className="text-gray-800 font-semibold">
+                    {ticket.creatorFullName || ticket.reporterName || 'Người dân'}
+                  </p>
+                  {(ticket.creatorPhoneNumber || ticket.reporterPhone) && (
+                    <p className="font-mono-cf text-gray-500 flex items-center gap-1">
+                      <PhoneIcon className="w-3 h-3 text-gray-400" />{' '}
+                      {ticket.creatorPhoneNumber || ticket.reporterPhone}
+                    </p>
+                  )}
+                </div>
+              )}
           </div>
         </div>
 

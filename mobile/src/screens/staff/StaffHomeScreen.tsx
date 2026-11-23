@@ -107,7 +107,11 @@ export default function StaffHomeScreen({
         sosRes.value &&
         Array.isArray(sosRes.value.content)
       ) {
-        setLifeThreateningTickets(sosRes.value.content);
+        const activeSos = sosRes.value.content.filter((t) => {
+          const st = (t.status || '').toUpperCase();
+          return st !== 'COMPLETED' && st !== 'CANCELLED' && st !== 'REJECTED';
+        });
+        setLifeThreateningTickets(activeSos);
       }
 
       if (unreadRes.status === 'fulfilled') {
@@ -514,29 +518,90 @@ export default function StaffHomeScreen({
                   (t.imageUrls && t.imageUrls.length > 0 ? t.imageUrls[0] : null) ||
                   t.imageUrl ||
                   (t.images && t.images[0]);
+                const isClosed =
+                  st.statusKey === 'done' ||
+                  st.statusKey === 'cancelled' ||
+                  st.statusKey === 'rejected';
+                const isSos =
+                  !isClosed &&
+                  (Boolean(t.isLifeThreatening ?? (t as any).lifeThreatening) ||
+                    lifeThreateningTickets.some((s) => s.id === t.id));
 
                 return (
                   <TouchableOpacity
                     key={t.id}
-                    style={styles.ticketCard}
+                    style={[
+                      styles.ticketCard,
+                      isSos && {
+                        backgroundColor: '#fef2f2',
+                        borderColor: '#fca5a5',
+                        borderWidth: 1.5,
+                      },
+                    ]}
                     onPress={() => openTicket?.(t.id, t)}
                     activeOpacity={0.75}
                   >
                     <View
                       style={[
                         styles.ticketAccentLine,
-                        { backgroundColor: st.color || '#f97316' },
+                        {
+                          backgroundColor: isSos
+                            ? '#dc2626'
+                            : st.color || '#f97316',
+                          width: isSos ? 4 : 3,
+                        },
                       ]}
                     />
                     {photoUrl ? (
                       <Image source={{ uri: photoUrl }} style={styles.ticketThumbnail} />
                     ) : (
-                      <View style={styles.categoryIconBox}>
-                        <MaterialCommunityIcons name={iconName} size={20} color="#f97316" />
+                      <View
+                        style={[
+                          styles.categoryIconBox,
+                          isSos && {
+                            backgroundColor: '#fee2e2',
+                            borderColor: '#fca5a5',
+                          },
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name={isSos ? 'alert-octagon' : iconName}
+                          size={20}
+                          color={isSos ? '#dc2626' : '#f97316'}
+                        />
                       </View>
                     )}
                     <View style={styles.ticketBody}>
-                      <Text style={styles.ticketCategory} numberOfLines={1}>
+                      {isSos && (
+                        <View
+                          style={{
+                            alignSelf: 'flex-start',
+                            backgroundColor: '#dc2626',
+                            paddingHorizontal: 6,
+                            paddingVertical: 1.5,
+                            borderRadius: 5,
+                            marginBottom: 3,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 8,
+                              fontWeight: '800',
+                              color: '#ffffff',
+                              letterSpacing: 0.4,
+                            }}
+                          >
+                            🚨 KHẨN CẤP (SOS)
+                          </Text>
+                        </View>
+                      )}
+                      <Text
+                        style={[
+                          styles.ticketCategory,
+                          isSos && { color: '#991b1b' },
+                        ]}
+                        numberOfLines={1}
+                      >
                         {catName}
                       </Text>
                       <Text style={styles.ticketAddress} numberOfLines={1}>
@@ -801,7 +866,7 @@ const styles = StyleSheet.create({
   },
   alertCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#fef2f2',
     borderWidth: 1,
     borderColor: '#fca5a5',
@@ -817,20 +882,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 2,
   },
   alertContent: {
     flex: 1,
+    minWidth: 0,
   },
   alertTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 5,
+    marginBottom: 2,
   },
   alertTagText: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: '800',
     color: '#dc2626',
-    letterSpacing: 1.2,
+    letterSpacing: 0.4,
+    flexShrink: 1,
   },
   alertDot: {
     width: 6,

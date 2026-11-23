@@ -335,7 +335,7 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
           <table className="w-full text-left min-w-[850px]">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
-                {['MÃ HỒ SƠ', 'DANH MỤC', 'ĐỊA CHỈ', 'TIẾN ĐỘ BƯỚC', 'ĐỘ ƯU TIÊN', 'TRẠNG THÁI', 'NGÀY TẠO', 'THAO TÁC'].map((h) => (
+                {['MÃ HỒ SƠ', 'DANH MỤC', 'NGƯỜI PHẢN ÁNH', 'ĐỊA CHỈ', 'TIẾN ĐỘ BƯỚC', 'TRẠNG THÁI', 'NGÀY TẠO', 'THAO TÁC'].map((h) => (
                   <th key={h} className="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -366,25 +366,44 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
               {filtered.map((t) => {
                 const ticketId = t.id || t.ticketId || '';
                 const si = statusInfo(t.status as any);
-                const _sv = sevInfo(t.severity || 'LOW');
-                const pi = priorityInfo(t.priority || t.subCategories?.[0]?.priority);
                 const stepsCount = t.steps?.length || 0;
-                const resolvedSteps = t.steps?.filter((s) => s.status === 'RESOLVED').length || 0;
+                const resolvedSteps = t.steps?.filter((s) => s.status === 'RESOLVED' || s.status === 'COMPLETED').length || 0;
+                const isClosed = ['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                  (t.status || '').toUpperCase()
+                );
+                const isSos =
+                  !isClosed &&
+                  Boolean(t.isLifeThreatening ?? (t as any).lifeThreatening);
 
                 return (
                   <tr
                     key={ticketId}
                     onClick={() => onOpenTicket(t)}
-                    className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                    className={`transition-colors cursor-pointer group ${
+                      isSos
+                        ? 'bg-red-50/70 hover:bg-red-100/70 border-l-4 border-l-red-600'
+                        : 'hover:bg-orange-50/40'
+                    }`}
                   >
                     <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1.5">
-                        {t.isLifeThreatening && (
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" title="Khẩn cấp" />
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          {isSos && (
+                            <span className="w-2 h-2 rounded-full bg-red-600 animate-ping flex-shrink-0" title="Sự cố Khẩn cấp SOS" />
+                          )}
+                          <span
+                            className={`font-mono-cf text-[11px] font-extrabold transition-colors ${
+                              isSos ? 'text-red-700' : 'text-gray-900 group-hover:text-orange-600'
+                            }`}
+                          >
+                            #{ticketId.slice(0, 8)}
+                          </span>
+                        </div>
+                        {isSos && (
+                          <span className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-md bg-red-600 text-white text-[9px] font-extrabold uppercase tracking-wide shadow-2xs">
+                            🚨 KHẨN CẤP (SOS)
+                          </span>
                         )}
-                        <span className="font-mono-cf text-[11px] font-extrabold text-gray-900 group-hover:text-orange-600 transition-colors">
-                          #{ticketId.slice(0, 8)}
-                        </span>
                       </div>
                     </td>
 
@@ -444,6 +463,30 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                       })()}
                     </td>
 
+                    {/* Người phản ánh (Manager luôn xem được thông tin kể cả khi ẩn danh) */}
+                    <td className="px-4 py-3.5">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[12px] font-bold text-gray-800">
+                            {t.creatorFullName || (t as any).reporterName || 'Cư dân CityFix'}
+                          </span>
+                          {t.isAnonymous && (
+                            <span
+                              className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold"
+                              title="Người dân bật ẩn danh (Chỉ Quản lý xem được thông tin)"
+                            >
+                              Ẩn danh
+                            </span>
+                          )}
+                        </div>
+                        {(t.creatorPhoneNumber || (t as any).reporterPhone) && (
+                          <div className="font-mono-cf text-[11px] text-gray-500">
+                            {t.creatorPhoneNumber || (t as any).reporterPhone}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
                     <td className="px-4 py-3.5 text-[11px] text-gray-600 max-w-[200px] truncate">
                       {t.address || '—'}
                     </td>
@@ -465,12 +508,6 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
                       ) : (
                         <span className="text-[11px] text-gray-400 italic">Chưa thiết lập</span>
                       )}
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${pi.cls}`}>
-                        {pi.label}
-                      </span>
                     </td>
 
                     <td className="px-4 py-3.5">
