@@ -51,29 +51,33 @@ export function decodeJwt(token: string): Record<string, any> | null {
   try {
     const base64Url = token.split('.')[1];
     if (!base64Url) return null;
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/=]/g, '');
+    const padLen = (4 - (base64.length % 4)) % 4;
+    if (padLen > 0) {
+      base64 = base64.padEnd(base64.length + padLen, '=');
+    }
+
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
     let str = '';
     let i = 0;
-    const clean = base64.replace(/[^A-Za-z0-9+/=]/g, '');
-    while (i < clean.length) {
-      const enc1 = chars.indexOf(clean.charAt(i++));
-      const enc2 = chars.indexOf(clean.charAt(i++));
-      const enc3 = chars.indexOf(clean.charAt(i++));
-      const enc4 = chars.indexOf(clean.charAt(i++));
+    while (i < base64.length) {
+      const enc1 = chars.indexOf(base64.charAt(i++));
+      const enc2 = chars.indexOf(base64.charAt(i++));
+      const enc3 = chars.indexOf(base64.charAt(i++));
+      const enc4 = chars.indexOf(base64.charAt(i++));
       const chr1 = (enc1 << 2) | (enc2 >> 4);
       const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
       const chr3 = ((enc3 & 3) << 6) | enc4;
       str += String.fromCharCode(chr1);
-      if (enc3 !== 64) str += String.fromCharCode(chr2);
-      if (enc4 !== 64) str += String.fromCharCode(chr3);
+      if (enc3 !== 64 && enc3 !== -1) str += String.fromCharCode(chr2);
+      if (enc4 !== 64 && enc4 !== -1) str += String.fromCharCode(chr3);
     }
     const jsonPayload = decodeURIComponent(
       str
         .split('')
         .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
-    );
+    ).replace(/\0+$/g, '');
     return JSON.parse(jsonPayload);
   } catch {
     return null;
@@ -83,10 +87,11 @@ export function decodeJwt(token: string): Record<string, any> | null {
 export function isTokenExpired(token?: string | null): boolean {
   if (!token) return true;
   const decoded = decodeJwt(token);
-  if (!decoded) return true;
+  if (!decoded) return false;
   if (typeof decoded.exp === 'number') {
     const nowSec = Date.now() / 1000;
-    return decoded.exp <= nowSec;
+    // Cho phép dung sai lệch đồng hồ (clock skew) 60 giây giữa thiết bị và máy chủ
+    return decoded.exp + 60 <= nowSec;
   }
   return false;
 }
@@ -123,15 +128,17 @@ export interface RegisterPayload {
 export class ApiError extends Error {
   constructor(
     message: string,
-    public readonly status?: number
+    public readonly status?: number,
+    skipUnauthorizedNotify: boolean = false
   ) {
     super(message);
     this.name = 'ApiError';
     if (
-      status === 401 ||
-      message.includes('Phiên đăng nhập đã hết') ||
-      message.toLowerCase().includes('token expired') ||
-      message.toLowerCase().includes('jwt expired')
+      !skipUnauthorizedNotify &&
+      (status === 401 ||
+        message.includes('Phiên đăng nhập đã hết') ||
+        message.toLowerCase().includes('token expired') ||
+        message.toLowerCase().includes('jwt expired'))
     ) {
       notifyUnauthorized();
     }
@@ -165,7 +172,9 @@ export async function login(
     );
   } catch {
     throw new ApiError(
-      'Không thể kết nối đến máy chủ. Vui lòng thử lại.'
+      'Không thể kết nối đến máy chủ. Vui lòng thử lại.',
+      undefined,
+      true
     );
   }
 
@@ -183,7 +192,7 @@ export async function login(
     !payload?.success ||
     !payload.data?.accessToken
   ) {
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, true);
   }
 
   return payload.data;
@@ -1406,7 +1415,10 @@ export async function getTopUpvotedTickets(
     token = await AsyncStorage.getItem('accessToken');
   }
 
-  if (!token || isTokenExpired(token)) {
+  if (!token) {
+    return [];
+  }
+  if (isTokenExpired(token)) {
     notifyUnauthorized();
     return [];
   }
