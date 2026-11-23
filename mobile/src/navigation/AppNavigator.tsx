@@ -73,8 +73,17 @@ export default function AppNavigator() {
     filter: 'all',
     timestamp: Date.now(),
   });
+  const lastLoginTimestampRef = React.useRef<number>(0);
 
   const handleLogout = useCallback(async (showExpiredAlert = false) => {
+    // Nếu vừa mới đăng nhập trong vòng 5 giây, kiểm tra xem token hiện tại có thực sự hết hạn không
+    if (showExpiredAlert && Date.now() - lastLoginTimestampRef.current < 5000) {
+      const currentToken = await AsyncStorage.getItem('accessToken').catch(() => null);
+      if (currentToken && !isTokenExpired(currentToken)) {
+        return;
+      }
+    }
+
     try {
       await Promise.all([
         AsyncStorage.removeItem('accessToken'),
@@ -160,9 +169,13 @@ export default function AppNavigator() {
   }, [user, handleLogout]);
 
   const handleLoginSuccess = async (authUser: AuthUser, token: string) => {
+    lastLoginTimestampRef.current = Date.now();
     setUser(authUser);
     try {
-      await AsyncStorage.setItem('@cityfix_auth_user', JSON.stringify(authUser));
+      await Promise.all([
+        AsyncStorage.setItem('accessToken', token),
+        AsyncStorage.setItem('@cityfix_auth_user', JSON.stringify(authUser)),
+      ]);
     } catch (e) {
       console.warn('Lỗi lưu thông tin user:', e);
     }
