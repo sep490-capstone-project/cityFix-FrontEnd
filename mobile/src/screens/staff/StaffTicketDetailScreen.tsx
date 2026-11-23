@@ -206,16 +206,18 @@ export default function StaffTicketDetailScreen({
     if (initialTicketData) {
       setTicketData(initialTicketData);
       setLoading(false);
-      return;
     }
 
-    if (ticketId && !ticketId.startsWith('CF-')) {
+    const targetId = initialTicketData?.id || (initialTicketData as any)?.ticketId || ticketId;
+    if (targetId && !String(targetId).startsWith('CF-')) {
       let isMounted = true;
-      setLoading(true);
-      getTicketById(ticketId)
+      if (!initialTicketData) {
+        setLoading(true);
+      }
+      getTicketById(String(targetId))
         .then((fetched) => {
           if (isMounted && fetched) {
-            setTicketData(fetched);
+            setTicketData((prev) => (prev ? { ...prev, ...fetched } : fetched));
           }
         })
         .catch((err) => {
@@ -682,6 +684,30 @@ export default function StaffTicketDetailScreen({
                 },
                 { label: 'Đơn vị phụ trách', value: ticket.agency },
                 { label: 'Thời hạn xử lý', value: ticket.deadline },
+                ...(!ticketData?.isAnonymous &&
+                (ticketData?.creatorFullName || (ticketData as any)?.reporterName)
+                  ? [
+                      {
+                        label: 'Người phản ánh',
+                        value:
+                          ticketData?.creatorFullName ||
+                          (ticketData as any)?.reporterName ||
+                          'Người dân',
+                      },
+                      ...(ticketData?.creatorPhoneNumber ||
+                      (ticketData as any)?.reporterPhone
+                        ? [
+                            {
+                              label: 'SĐT liên hệ',
+                              value:
+                                ticketData?.creatorPhoneNumber ||
+                                (ticketData as any)?.reporterPhone ||
+                                '',
+                            },
+                          ]
+                        : []),
+                    ]
+                  : []),
               ].map((row, idx) => (
                 <View key={idx} style={styles.infoRow}>
                   <Text style={styles.infoLabel}>{row.label}</Text>

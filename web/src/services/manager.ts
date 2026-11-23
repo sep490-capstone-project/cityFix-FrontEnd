@@ -354,6 +354,7 @@ export function normalizeManagerTicket(ticket: any): ManagerTicketItem {
   const imgs = extractTicketImages(ticket);
   return {
     ...ticket,
+    isLifeThreatening: Boolean(ticket.isLifeThreatening ?? ticket.lifeThreatening),
     imageUrl: imgs[0] || ticket.imageUrl || undefined,
     imageUrls: imgs.length > 0 ? imgs : ticket.imageUrls,
   };
@@ -848,36 +849,34 @@ export async function getTicketSteps(ticketId: string): Promise<TicketStep[]> {
 }
 
 /**
- * 17. Lấy thông tin chi tiết một vé theo ID
- * GET /api/v1/tickets/{ticketId}
- * Có fallback sang GET /api/v1/manager/tickets nếu backend chưa có endpoint riêng
+ * 17. Lấy thông tin chi tiết một vé theo ID từ các API danh sách của Manager
+ * (GET /api/v1/manager/tickets & GET /api/v1/manager/tickets/initiated)
  */
 export async function getTicketById(ticketId: string): Promise<ManagerTicketItem> {
   try {
-    const item = await managerRequest<ManagerTicketItem>(
-      `/api/v1/tickets/${encodeURIComponent(ticketId)}`,
-      { method: 'GET' }
-    );
-    return normalizeManagerTicket(item);
-  } catch (err: any) {
-    try {
-      const item = await managerRequest<ManagerTicketItem>(
-        `/api/v1/manager/tickets/${encodeURIComponent(ticketId)}`,
-        { method: 'GET' }
-      );
-      if (item) return normalizeManagerTicket(item);
-    } catch {
-      // Fallback 1 failed
-    }
-    try {
-      const page = await getManagerTickets({ size: 100 });
-      const found = page.content?.find((t) => (t.id || t.ticketId) === ticketId);
-      if (found) return normalizeManagerTicket(found);
-    } catch {
-      // Fallback 2 failed
-    }
-    throw err;
+    const page = await getManagerTickets({ size: 100 });
+    const found = page.content?.find((t) => (t.id || t.ticketId) === ticketId);
+    if (found) return normalizeManagerTicket(found);
+  } catch {
+    // ignore
   }
+
+  try {
+    const initRes = await getManagerInitiatedTickets({ page: 0, size: 100 });
+    const initList: any[] = Array.isArray(initRes)
+      ? initRes
+      : Array.isArray((initRes as any)?.content)
+        ? (initRes as any).content
+        : Array.isArray((initRes as any)?.data)
+          ? (initRes as any).data
+          : [];
+    const foundInit = initList.find((t) => (t.id || t.ticketId) === ticketId);
+    if (foundInit) return normalizeManagerTicket(foundInit);
+  } catch {
+    // ignore
+  }
+
+  throw new Error('Không tìm thấy thông tin hồ sơ.');
 }
 
 /**

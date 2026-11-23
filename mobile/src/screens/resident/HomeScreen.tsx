@@ -244,9 +244,13 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
         sosRes.value &&
         Array.isArray(sosRes.value.content)
       ) {
-        console.log('🚨 SOS TICKETS FOUND:', sosRes.value.content.length);
-        setLifeThreateningTickets(sosRes.value.content);
-        if (sosRes.value.content.length > 0) {
+        const activeSosList = sosRes.value.content.filter((t) => {
+          const st = (t.status || '').toUpperCase();
+          return st !== 'COMPLETED' && st !== 'CANCELLED' && st !== 'REJECTED';
+        });
+        console.log('🚨 ACTIVE SOS TICKETS FOUND:', activeSosList.length);
+        setLifeThreateningTickets(activeSosList);
+        if (activeSosList.length > 0) {
           setAlertDismissed(false);
         }
       }
@@ -396,13 +400,19 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
   // 2. Danh sách Sự cố đang được quan tâm (Từ API GET /api/v1/tickets/top-upvoted)
   const communityTrendingList = useMemo(() => {
     const sosIds = new Set(lifeThreateningTickets.map((t) => t.id));
-    return topUpvotedTickets.map((t) => ({
-      ticket: t,
-      isSos:
-        sosIds.has(t.id) ||
-        Boolean(t.isLifeThreatening) ||
-        (t.priority || '').toUpperCase() === 'CRITICAL',
-    }));
+    return topUpvotedTickets.map((t) => {
+      const isClosed = ['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+        (t.status || '').toUpperCase()
+      );
+      return {
+        ticket: t,
+        isSos:
+          !isClosed &&
+          (sosIds.has(t.id) ||
+            Boolean(t.isLifeThreatening) ||
+            (t.priority || '').toUpperCase() === 'CRITICAL'),
+      };
+    });
   }, [topUpvotedTickets, lifeThreateningTickets]);
 
   // 3. Dòng thời gian Hoạt động Cộng đồng (tổng hợp từ in-progress, life-threatening, my-upvoted)
@@ -1728,7 +1738,7 @@ const styles = StyleSheet.create({
   /* Priority Alert */
   alertCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#fef2f2',
     borderWidth: 1,
     borderColor: '#fca5a5',
@@ -1744,20 +1754,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 2,
   },
   alertContent: {
     flex: 1,
+    minWidth: 0,
   },
   alertTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 5,
+    marginBottom: 2,
   },
   alertTagText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '800',
     color: '#dc2626',
-    letterSpacing: 1,
+    letterSpacing: 0.4,
+    flexShrink: 1,
   },
   alertDot: {
     width: 6,

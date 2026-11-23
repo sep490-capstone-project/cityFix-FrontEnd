@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import cityfixLogo from '../assets/cityfix-logo.png';
 import registerBackground from '../assets/register-city-background.jpg';
-import { USERS } from '../data';
 import { login, decodeJwt, ApiError, getProfile, resetPassword } from '../services';
 import {
   loadFirebaseSdk,
@@ -277,20 +276,6 @@ export default function Login({ onLogin, onGoRegister }: Props) {
       onLogin(email.trim(), role, uid);
     } catch (err: any) {
       console.warn('⚠️ Login API error:', err);
-
-      // Cho phép đăng nhập tài khoản mock demo nếu backend chưa có tài khoản admin này
-      const found = USERS.find((u) => u.email === email);
-      if (email === 'admin@cityfix.gov.vn' && password === 'admin123') {
-        onLogin(email, 'ADMIN', found?.userId ?? 'U006');
-        return;
-      } else if (
-        (email.endsWith('@tphcm.gov.vn') || email.endsWith('@evnhcmc.vn')) &&
-        password.length >= 6
-      ) {
-        onLogin(email, 'STAFF', found?.userId ?? 'U010');
-        return;
-      }
-
       const msg = err instanceof ApiError ? err.message : 'Đăng nhập không thành công. Vui lòng thử lại.';
       setError(msg);
     } finally {
@@ -611,28 +596,6 @@ export default function Login({ onLogin, onGoRegister }: Props) {
                   </span>
                 </button>
               </form>
-
-              {/* Information Box: Tài khoản thử nghiệm */}
-              <div className="px-6 pb-5 pt-3 bg-slate-50/80 border-t border-slate-100">
-                <div className="flex items-start gap-2 bg-white border border-slate-200/90 rounded-xl p-2.5 shadow-2xs">
-                  <span className="text-slate-400 mt-0.5">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                  </span>
-                  <div>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.14em]">
-                      TÀI KHOẢN THỬ NGHIỆM
-                    </p>
-                    <p className="font-mono-cf text-[11px] text-slate-600 font-medium">
-                      admin@cityfix.gov.vn <span className="text-slate-400">/</span> admin123
-                    </p>
-                  </div>
-                </div>
-              </div>
             </>
           ) : (
             /* LUỒNG ĐẶT LẠI MẬT KHẨU 3 BƯỚC QUA FIREBASE SMS OTP */

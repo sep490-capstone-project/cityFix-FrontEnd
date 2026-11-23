@@ -16,6 +16,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthUser } from '../LoginScreen';
 import {
   getStaffAssignedTickets,
+  getLifeThreateningTickets,
   ReportedTicket,
   mapBackendStatus,
 } from '../../api';
@@ -122,9 +123,38 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket, fil
       else setLoading(true);
       setError(null);
 
-      const res = await getStaffAssignedTickets(null, 'all', 0, 50);
-      if (res && Array.isArray(res.content)) {
-        setTickets(res.content);
+      const [res, sosRes] = await Promise.allSettled([
+        getStaffAssignedTickets(null, 'all', 0, 50),
+        getLifeThreateningTickets(null, 0, 20),
+      ]);
+
+      const sosIdSet = new Set<string>();
+      if (
+        sosRes.status === 'fulfilled' &&
+        sosRes.value &&
+        Array.isArray(sosRes.value.content)
+      ) {
+        sosRes.value.content.forEach((s) => {
+          const st = (s.status || '').toUpperCase();
+          if (s.id && st !== 'COMPLETED' && st !== 'CANCELLED' && st !== 'REJECTED') {
+            sosIdSet.add(s.id);
+          }
+        });
+      }
+
+      if (
+        res.status === 'fulfilled' &&
+        res.value &&
+        Array.isArray(res.value.content)
+      ) {
+        setTickets(
+          res.value.content.map((t) => ({
+            ...t,
+            isLifeThreatening: Boolean(t.isLifeThreatening || sosIdSet.has(t.id)),
+          }))
+        );
+      } else if (res.status === 'rejected') {
+        throw res.reason;
       } else {
         setTickets([]);
       }
@@ -312,31 +342,91 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket, fil
                 t.imageUrl ||
                 (t.images && t.images[0]);
               const isResolved = stInfo.statusKey === 'done';
+              const isClosed =
+                isResolved ||
+                stInfo.statusKey === 'cancelled' ||
+                stInfo.statusKey === 'rejected';
+              const isSos =
+                !isClosed &&
+                Boolean(t.isLifeThreatening ?? (t as any).lifeThreatening);
 
               return (
                 <TouchableOpacity
                   key={t.id}
-                  style={styles.ticketCard}
+                  style={[
+                    styles.ticketCard,
+                    isSos && {
+                      backgroundColor: '#fef2f2',
+                      borderColor: '#fca5a5',
+                      borderWidth: 1.5,
+                    },
+                  ]}
                   onPress={() => openTicket(t.id, t)}
                   activeOpacity={0.75}
                 >
                   <View
                     style={[
                       styles.ticketAccentLine,
-                      { backgroundColor: stInfo.color || '#f97316' },
+                      {
+                        backgroundColor: isSos
+                          ? '#dc2626'
+                          : stInfo.color || '#f97316',
+                        width: isSos ? 4 : 3,
+                      },
                     ]}
                   />
 
                   {photoUrl ? (
                     <Image source={{ uri: photoUrl }} style={styles.ticketThumbnail} />
                   ) : (
-                    <View style={styles.categoryIconBox}>
-                      <MaterialCommunityIcons name={iconName} size={20} color="#f97316" />
+                    <View
+                      style={[
+                        styles.categoryIconBox,
+                        isSos && {
+                          backgroundColor: '#fee2e2',
+                          borderColor: '#fca5a5',
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={isSos ? 'alert-octagon' : iconName}
+                        size={20}
+                        color={isSos ? '#dc2626' : '#f97316'}
+                      />
                     </View>
                   )}
 
                   <View style={styles.ticketBody}>
-                    <Text style={styles.ticketCategory} numberOfLines={1}>
+                    {isSos && (
+                      <View
+                        style={{
+                          alignSelf: 'flex-start',
+                          backgroundColor: '#dc2626',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 5,
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 8.5,
+                            fontWeight: '800',
+                            color: '#ffffff',
+                            letterSpacing: 0.4,
+                          }}
+                        >
+                          🚨 KHẨN CẤP (SOS)
+                        </Text>
+                      </View>
+                    )}
+                    <Text
+                      style={[
+                        styles.ticketCategory,
+                        isSos && { color: '#991b1b' },
+                      ]}
+                      numberOfLines={1}
+                    >
                       {catName}
                     </Text>
                     <Text style={styles.ticketAddress} numberOfLines={1}>

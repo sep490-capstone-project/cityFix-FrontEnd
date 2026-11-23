@@ -1513,8 +1513,7 @@ export async function cancelTicket(
 }
 
 /* =========================================================
-   GET TICKET BY ID
-   GET /api/v1/tickets/{ticketId}
+   GET TICKET BY ID (Từ các API danh sách hiện có của Resident & Staff)
    ========================================================= */
 
 export async function getTicketById(
@@ -1530,42 +1529,37 @@ export async function getTicketById(
     throw new ApiError('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
   }
 
-  const url = `${API_BASE_URL}/api/v1/tickets/${encodeURIComponent(ticketId)}`;
-  console.log('📋 GET TICKET BY ID URL:', url);
-
+  // 1. Tìm trong danh sách hồ sơ được phân công cho Staff (GET /api/v1/staff/tickets/assigned)
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const text = await response.text();
-    let payload: any = null;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      // not json
-    }
-
-    if (response.ok && payload?.success && payload?.data) {
-      return payload.data;
-    }
-  } catch (err) {
-    console.warn('Lỗi gọi GET /api/v1/tickets/{id}:', err);
+    const staffPage = await getStaffAssignedTickets(token, 'all', 0, 100);
+    const foundStaff = staffPage.content?.find(
+      (t) => (t.id || (t as any).ticketId) === ticketId
+    );
+    if (foundStaff) return foundStaff;
+  } catch {
+    // Không phải role Staff hoặc không tìm thấy trong assigned
   }
 
-  // Fallback: Tìm trong danh sách hồ sơ báo cáo của người dùng
+  // 2. Tìm trong danh sách hồ sơ báo cáo của Resident (GET /api/v1/tickets/my-reports)
   try {
-    const page = await getMyReportedTickets(token, 0, 50);
+    const page = await getMyReportedTickets(token, 0, 100);
     const found = page.content?.find(
       (t) => (t.id || (t as any).ticketId) === ticketId
     );
     if (found) return found;
   } catch (e) {
-    console.warn('Fallback tìm hồ sơ báo cáo trong my-reports thất bại:', e);
+    console.warn('Tìm hồ sơ báo cáo trong my-reports thất bại:', e);
+  }
+
+  // 3. Tìm trong danh sách hồ sơ đã đồng tình của Resident (GET /api/v1/tickets/my-upvoted)
+  try {
+    const upvotedPage = await getMyUpvotedTickets(token, 0, 50);
+    const foundUpvoted = upvotedPage.content?.find(
+      (t) => (t.id || (t as any).ticketId) === ticketId
+    );
+    if (foundUpvoted) return foundUpvoted;
+  } catch {
+    // ignore
   }
 
   throw new ApiError('Không tìm thấy thông tin sự cố.', 404);

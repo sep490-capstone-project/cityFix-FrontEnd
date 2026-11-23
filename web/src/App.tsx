@@ -35,11 +35,27 @@ const NAV: { key: string; label: string; icon: () => React.ReactElement; hasSubm
 
 import RouteSync from './components/RouteSync';
 
+function hasValidStoredToken(): boolean {
+  const token = getAccessToken();
+  if (!token) return false;
+  const decoded = decodeJwt(token);
+  if (!decoded) return false;
+  const now = Date.now() / 1000;
+  if (decoded.exp && decoded.exp < now) return false;
+  return true;
+}
+
 function MainApp() {
   const dispatch = useAppDispatch();
   const reduxState = useAppSelector((s) => s.app);
 
-  const [authPage, setAuthPage] = useState<AuthPage>('login');
+  const [authPage, setAuthPage] = useState<AuthPage>(() => {
+    const path = window.location.pathname;
+    if (hasValidStoredToken()) {
+      return 'app';
+    }
+    return path === '/register' ? 'register' : 'login';
+  });
   const [verifyEmailTarget, setVerifyEmailTarget] = useState('');
   const [collapsed, setCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -59,12 +75,12 @@ function MainApp() {
     const currentPath = window.location.pathname;
     const token = getAccessToken();
 
-    // 1. Không có token: đảm bảo ở trạng thái login
+    // 1. Không có token: đảm bảo ở trạng thái login (hoặc register)
     if (!token) {
       if (reduxState.userEmail) {
         dispatch(resetUser());
       }
-      setAuthPage('login');
+      setAuthPage(currentPath === '/register' ? 'register' : 'login');
       return;
     }
 
@@ -97,15 +113,20 @@ function MainApp() {
         '';
       const rawRole = String(roleCandidate).toUpperCase();
       const role = rawRole.includes('MANAGER') ? 'MANAGER' : rawRole.includes('STAFF') ? 'STAFF' : 'ADMIN';
-      const uid = decoded.userId || decoded.sub || 'U006';
+      const uid = decoded.userId || decoded.sub || '';
 
       dispatch(setUserInfo({ email, role, userId: uid }));
 
-      // Nếu người dùng đang truy cập trực tiếp URL /login thì hiển thị trang login
-      if (currentPath === '/login') {
-        setAuthPage('login');
-      } else {
-        setAuthPage('app');
+      // Khi token hợp lệ, luôn đưa người dùng vào app (kể cả khi F5 từ /login)
+      setAuthPage('app');
+
+      // Đồng bộ lại trang hiện tại từ URL nếu người dùng F5 trực tiếp tại một route con
+      const parts = currentPath.split('/').filter(Boolean);
+      const routePage = parts[0];
+      const routeId = parts[1];
+      const validPages: Page[] = ['dashboard', 'tickets', 'ticket-detail', 'analytics', 'users', 'settings', 'steps', 'ai-prompts'];
+      if (routePage && validPages.includes(routePage as Page)) {
+        dispatch(setCurrentPage({ page: routePage as Page, id: routeId }));
       }
 
       getProfile(token)

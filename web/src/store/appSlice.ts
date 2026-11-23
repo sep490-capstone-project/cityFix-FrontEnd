@@ -16,7 +16,7 @@ const initialState: AppState = {
   settingsTab: 'categories',
   userEmail: '',
   userRole: 'ADMIN',
-  userId: 'U006',
+  userId: '',
 };
 
 export const appSlice = createSlice({

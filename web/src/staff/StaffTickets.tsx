@@ -302,18 +302,6 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
         </select>
 
         <select
-          value={sevF}
-          onChange={(e) => setSevF(e.target.value)}
-          className="h-10 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 focus:border-orange-500 rounded-xl px-3 text-xs text-gray-700 font-semibold outline-none cursor-pointer transition-all"
-        >
-          <option value="all">Tất cả mức độ</option>
-          <option value="CRITICAL">Cực kỳ nghiêm trọng</option>
-          <option value="HIGH">Cao</option>
-          <option value="MEDIUM">Trung bình</option>
-          <option value="LOW">Thấp</option>
-        </select>
-
-        <select
           value={priorityF}
           onChange={(e) => setPriorityF(e.target.value)}
           className="h-10 bg-gray-50 hover:bg-white focus:bg-white border border-gray-200 focus:border-orange-500 rounded-xl px-3 text-xs text-gray-700 font-semibold outline-none cursor-pointer transition-all"
@@ -340,7 +328,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
       {/* 3. Bảng dữ liệu hồ sơ */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[920px]">
+          <table className="w-full text-left border-collapse min-w-[880px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/80">
                 <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
@@ -351,9 +339,6 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
                 </th>
                 <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Địa chỉ
-                </th>
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Mức độ
                 </th>
                 <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Độ ưu tiên
@@ -375,7 +360,7 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
             <tbody className="divide-y divide-gray-100 text-xs">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-14 text-center">
+                  <td colSpan={8} className="px-4 py-14 text-center">
                     {loading ? (
                       <div className="inline-flex items-center gap-2 text-gray-600 font-medium">
                         <svg
@@ -404,23 +389,43 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
               {filtered.map((t) => {
                 const ticketId = t.id || t.ticketId || '';
                 const si = statusInfo(t.status as any);
-                const sv = sevInfo(t.severity || 'LOW');
                 const pi = priorityInfo(t.priority || t.subCategories?.[0]?.priority);
+                const isClosed = ['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                  (t.status || '').toUpperCase()
+                );
+                const isSos =
+                  !isClosed &&
+                  Boolean(t.isLifeThreatening ?? (t as any).lifeThreatening);
 
                 return (
                   <tr
                     key={ticketId}
                     onClick={() => onOpenTicket(t)}
-                    className="hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                    className={`transition-colors cursor-pointer group ${
+                      isSos
+                        ? 'bg-red-50/70 hover:bg-red-100/70 border-l-4 border-l-red-600'
+                        : 'hover:bg-orange-50/40'
+                    }`}
                   >
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        {t.isLifeThreatening && (
-                          <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Khẩn cấp" />
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          {isSos && (
+                            <span className="w-2 h-2 rounded-full bg-red-600 animate-ping flex-shrink-0" title="Sự cố Khẩn cấp SOS" />
+                          )}
+                          <span
+                            className={`font-mono-cf text-xs font-bold transition-colors ${
+                              isSos ? 'text-red-700' : 'text-gray-800 group-hover:text-orange-600'
+                            }`}
+                          >
+                            #{ticketId.slice(0, 8)}
+                          </span>
+                        </div>
+                        {isSos && (
+                          <span className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-md bg-red-600 text-white text-[9px] font-extrabold uppercase tracking-wide shadow-2xs">
+                            🚨 KHẨN CẤP (SOS)
+                          </span>
                         )}
-                        <span className="font-mono-cf text-xs font-bold text-gray-800 group-hover:text-orange-600 transition-colors">
-                          #{ticketId.slice(0, 8)}
-                        </span>
                       </div>
                     </td>
 
@@ -433,12 +438,6 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
 
                     <td className="px-4 py-3.5 text-gray-600 max-w-[200px] truncate" title={t.address || ''}>
                       {t.address || '—'}
-                    </td>
-
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-lg border ${sv.cls}`}>
-                        {sv.label}
-                      </span>
                     </td>
 
                     <td className="px-4 py-3.5 whitespace-nowrap">

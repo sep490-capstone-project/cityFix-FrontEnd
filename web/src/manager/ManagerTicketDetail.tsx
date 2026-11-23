@@ -283,12 +283,15 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
                 {si.label}
               </span>
-              {ticket?.isLifeThreatening && (
-                <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border border-red-300 bg-red-50 text-red-700 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-                  Ưu tiên khẩn cấp
-                </span>
-              )}
+              {ticket?.isLifeThreatening &&
+                !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                  (ticket?.status || '').toUpperCase()
+                ) && (
+                  <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border border-red-300 bg-red-50 text-red-700 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                    Ưu tiên khẩn cấp
+                  </span>
+                )}
             </div>
             <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
               <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket?.address || 'Chưa xác định địa chỉ hiện trường'}</span>
@@ -462,6 +465,42 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 <span className="text-[10px] font-bold text-gray-400 block mb-1">Hạn chót tổng</span>
                 <span className="font-mono-cf text-[11px] font-extrabold text-orange-700 truncate block">
                   {ticket?.deadline ? ticket.deadline.replace('T', ' ').slice(0, 16) : 'Tính theo các bước'}
+                </span>
+              </div>
+            </div>
+
+            {/* Thông tin Người phản ánh (Manager luôn xem được thông tin kể cả khi người dân bật ẩn danh) */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                  Người phản ánh
+                </span>
+                {ticket?.isAnonymous ? (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
+                    Báo cáo ẩn danh (Chỉ Quản lý xem)
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                    Công khai
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-gray-500">Họ và tên:</span>
+                <span className="font-bold text-gray-900">
+                  {ticket?.creatorFullName ||
+                    ticket?.reporterName ||
+                    (ticket as any)?.creator?.fullName ||
+                    'Cư dân CityFix'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Số điện thoại:</span>
+                <span className="font-mono-cf font-semibold text-gray-800">
+                  {ticket?.creatorPhoneNumber ||
+                    ticket?.reporterPhone ||
+                    (ticket as any)?.creator?.phoneNumber ||
+                    '—'}
                 </span>
               </div>
             </div>

@@ -1483,8 +1483,35 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         </div>
                       </div>
 
-                      {/* Đánh giá độ ưu tiên */}
-                      <div className="pt-0.5">
+                      {/* Đánh giá độ ưu tiên & Người phản ánh */}
+                      <div className="pt-0.5 space-y-2.5">
+                        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Người phản ánh</span>
+                            {selectedTicket.isAnonymous ? (
+                              <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
+                                Ẩn danh (Chỉ Quản lý xem)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                Công khai
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Họ và tên:</span>
+                            <span className="font-bold text-slate-900">
+                              {selectedTicket.creatorFullName || (selectedTicket as any).reporterName || 'Cư dân CityFix'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Số điện thoại:</span>
+                            <span className="font-mono-cf font-semibold text-slate-700">
+                              {selectedTicket.creatorPhoneNumber || (selectedTicket as any).reporterPhone || '—'}
+                            </span>
+                          </div>
+                        </div>
+
                         <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
                           <span className="text-[10px] font-bold text-slate-400 block mb-1">Độ ưu tiên</span>
                           <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border inline-block ${priorityInfo(selectedTicket.priority || selectedTicket.subCategories?.[0]?.priority).cls}`}>

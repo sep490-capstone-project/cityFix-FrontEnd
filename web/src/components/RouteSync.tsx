@@ -44,15 +44,19 @@ export default function RouteSync({
     const token = getAccessToken();
 
     if (path === '/login') {
-      // Chỉ ép về login nếu thực sự chưa có token. Nếu đã có token thì giữ nguyên để chuyển về app
-      if (!token) {
+      // Nếu đã có token hợp lệ thì chuyển thẳng vào app thay vì kẹt ở /login
+      if (token) {
+        setAuthPage('app');
+      } else {
         setAuthPage('login');
       }
       return;
     }
 
     if (path === '/register') {
-      if (!token) {
+      if (token) {
+        setAuthPage('app');
+      } else {
         setAuthPage('register');
       }
       return;
