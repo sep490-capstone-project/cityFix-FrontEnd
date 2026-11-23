@@ -98,18 +98,192 @@ export function isTokenExpired(token?: string | null): boolean {
 
 let onUnauthorizedCallback: (() => void) | null = null;
 let lastUnauthorizedTriggerTs = 0;
+let activeMobileRefreshPromise: Promise<LoginResult | null> | null = null;
 
 export function setOnUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorizedCallback = handler;
 }
 
 export function notifyUnauthorized() {
-  const now = Date.now();
-  if (now - lastUnauthorizedTriggerTs < 2000) return;
-  lastUnauthorizedTriggerTs = now;
-  if (onUnauthorizedCallback) {
-    onUnauthorizedCallback();
+  // Nếu vẫn còn refreshToken trong AsyncStorage, thử làm mới token ngầm trước khi buộc đăng xuất
+  AsyncStorage.getItem('refreshToken')
+    .then(async (refreshTok) => {
+      if (refreshTok) {
+        const refreshed = await refreshAccessToken(refreshTok);
+        if (refreshed?.accessToken) {
+          return;
+        }
+      }
+      const now = Date.now();
+      if (now - lastUnauthorizedTriggerTs < 2000) return;
+      lastUnauthorizedTriggerTs = now;
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
+    })
+    .catch(() => {
+      const now = Date.now();
+      if (now - lastUnauthorizedTriggerTs < 2000) return;
+      lastUnauthorizedTriggerTs = now;
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
+    });
+}
+
+/**
+ * Làm mới Access Token bằng Refresh Token trên Mobile
+ * POST /api/v1/auth/refresh
+ */
+export async function refreshAccessToken(
+  customRefreshToken?: string | null
+): Promise<LoginResult | null> {
+  if (activeMobileRefreshPromise) {
+    return activeMobileRefreshPromise;
   }
+
+  activeMobileRefreshPromise = (async () => {
+    try {
+      const refreshTok =
+        customRefreshToken || (await AsyncStorage.getItem('refreshToken'));
+      if (!refreshTok) {
+        return null;
+      }
+
+      const response = await rawGlobalFetch(
+        `${API_BASE_URL}/api/v1/auth/refresh`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            refreshToken: refreshTok,
+          }),
+        }
+      );
+
+      const payload = (await response.json().catch(() => null)) as
+        | ApiResponse<LoginData>
+        | null;
+
+      if (!response.ok || !payload?.success || !payload.data?.accessToken) {
+        return null;
+      }
+
+      await AsyncStorage.setItem('accessToken', payload.data.accessToken);
+      if (payload.data.refreshToken) {
+        await AsyncStorage.setItem('refreshToken', payload.data.refreshToken);
+      }
+
+      console.log('🔄 [Mobile] Access token refreshed via /api/v1/auth/refresh');
+      return payload.data;
+    } catch (err) {
+      console.warn('⚠️ [Mobile] Refresh token error:', err);
+      return null;
+    } finally {
+      activeMobileRefreshPromise = null;
+    }
+  })();
+
+  return activeMobileRefreshPromise;
+}
+
+/**
+ * Helper lấy Access Token hợp lệ (tự động gọi POST /api/v1/auth/refresh nếu token hiện tại đã hết hạn)
+ */
+export async function getValidAccessToken(
+  providedToken?: string | null
+): Promise<string | null> {
+  let token = providedToken || (await AsyncStorage.getItem('accessToken'));
+  if (token && !isTokenExpired(token)) {
+    return token;
+  }
+  const refreshed = await refreshAccessToken();
+  if (refreshed?.accessToken) {
+    return refreshed.accessToken;
+  }
+  return token;
+}
+
+const rawGlobalFetch: typeof fetch = globalThis.fetch.bind(globalThis);
+
+if (!(globalThis as any).__cityfixMobileFetchWrapped) {
+  (globalThis as any).__cityfixMobileFetchWrapped = true;
+  globalThis.fetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> => {
+    const urlStr =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+        ? input.toString()
+        : (input as Request).url || '';
+
+    const isAuthEndpoint =
+      urlStr.includes('/api/v1/auth/login') ||
+      urlStr.includes('/api/v1/auth/register') ||
+      urlStr.includes('/api/v1/auth/refresh') ||
+      urlStr.includes('/api/v1/auth/verify-phone-firebase') ||
+      urlStr.includes('/api/v1/auth/reset-password');
+
+    // 1. Nếu token hiện tại đã hết hạn, tự động refresh trước khi gửi request
+    if (API_BASE_URL && urlStr.startsWith(API_BASE_URL) && !isAuthEndpoint) {
+      const currentToken = await AsyncStorage.getItem('accessToken');
+      if (currentToken && isTokenExpired(currentToken)) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed?.accessToken && init?.headers) {
+          if (init.headers instanceof Headers) {
+            init.headers.set('Authorization', `Bearer ${refreshed.accessToken}`);
+          } else if (Array.isArray(init.headers)) {
+            const idx = init.headers.findIndex(
+              ([k]) => k.toLowerCase() === 'authorization'
+            );
+            if (idx >= 0) init.headers[idx][1] = `Bearer ${refreshed.accessToken}`;
+          } else {
+            (init.headers as Record<string, string>)['Authorization'] =
+              `Bearer ${refreshed.accessToken}`;
+          }
+        }
+      }
+    }
+
+    const response = await rawGlobalFetch(input, init);
+
+    // 2. Nếu Backend trả về 401, tự động gọi POST /api/v1/auth/refresh và retry request đúng 1 lần
+    if (
+      response.status === 401 &&
+      API_BASE_URL &&
+      urlStr.startsWith(API_BASE_URL) &&
+      !isAuthEndpoint
+    ) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed?.accessToken) {
+        const retryInit: RequestInit = { ...(init || {}) };
+        const nextHeaders: Record<string, string> = {};
+        if (init?.headers) {
+          if (init.headers instanceof Headers) {
+            init.headers.forEach((v, k) => {
+              nextHeaders[k] = v;
+            });
+          } else if (Array.isArray(init.headers)) {
+            init.headers.forEach(([k, v]) => {
+              nextHeaders[k] = v;
+            });
+          } else {
+            Object.assign(nextHeaders, init.headers);
+          }
+        }
+        nextHeaders['Authorization'] = `Bearer ${refreshed.accessToken}`;
+        retryInit.headers = nextHeaders;
+        return rawGlobalFetch(input, retryInit);
+      }
+    }
+
+    return response;
+  };
 }
 
 export interface RegisterPayload {
@@ -194,6 +368,14 @@ export async function login(
   ) {
     throw new ApiError(message, response.status, true);
   }
+
+  // Lưu đồng bộ accessToken và refreshToken ngay khi login thành công
+  try {
+    await AsyncStorage.setItem('accessToken', payload.data.accessToken);
+    if (payload.data.refreshToken) {
+      await AsyncStorage.setItem('refreshToken', payload.data.refreshToken);
+    }
+  } catch {}
 
   return payload.data;
 }
@@ -367,6 +549,14 @@ export async function verifyPhoneFirebase(
       firebaseIdToken: firebaseIdToken.trim(),
     }
   );
+  if (payload.data?.accessToken) {
+    try {
+      await AsyncStorage.setItem('accessToken', payload.data.accessToken);
+      if (payload.data.refreshToken) {
+        await AsyncStorage.setItem('refreshToken', payload.data.refreshToken);
+      }
+    } catch {}
+  }
   return payload.data || { accessToken: '', refreshToken: '' };
 }
 
@@ -1410,16 +1600,9 @@ export async function getInProgressTickets(
 export async function getTopUpvotedTickets(
   accessToken?: string | null
 ): Promise<ReportedTicket[]> {
-  let token = accessToken;
-  if (!token) {
-    token = await AsyncStorage.getItem('accessToken');
-  }
+  let token = await getValidAccessToken(accessToken);
 
   if (!token) {
-    return [];
-  }
-  if (isTokenExpired(token)) {
-    notifyUnauthorized();
     return [];
   }
 

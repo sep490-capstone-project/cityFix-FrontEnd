@@ -32,6 +32,7 @@ import {
   getProfile,
   decodeJwt,
   isTokenExpired,
+  refreshAccessToken,
   setOnUnauthorizedHandler,
 } from '../api';
 
@@ -87,6 +88,7 @@ export default function AppNavigator() {
     try {
       await Promise.all([
         AsyncStorage.removeItem('accessToken'),
+        AsyncStorage.removeItem('refreshToken'),
         AsyncStorage.removeItem('@cityfix_auth_user'),
       ]);
     } catch (e) {
@@ -107,20 +109,32 @@ export default function AppNavigator() {
     }
   }, []);
 
-  // Tự động khôi phục phiên đăng nhập khi khởi động ứng dụng & kiểm tra hạn token
+  // Tự động khôi phục phiên đăng nhập khi khởi động ứng dụng & làm mới token nếu hết hạn
   useEffect(() => {
     let isMounted = true;
     async function restoreSession() {
       try {
-        const [token, savedUserStr] = await Promise.all([
+        const [token, refreshTok, savedUserStr] = await Promise.all([
           AsyncStorage.getItem('accessToken'),
+          AsyncStorage.getItem('refreshToken'),
           AsyncStorage.getItem('@cityfix_auth_user'),
         ]);
 
-        if (isMounted && token && savedUserStr) {
-          if (isTokenExpired(token)) {
+        if (isMounted && savedUserStr && (token || refreshTok)) {
+          let activeToken = token;
+          if (!activeToken || isTokenExpired(activeToken)) {
+            if (refreshTok) {
+              const refreshed = await refreshAccessToken(refreshTok);
+              activeToken = refreshed?.accessToken || null;
+            } else {
+              activeToken = null;
+            }
+          }
+
+          if (!activeToken || isTokenExpired(activeToken)) {
             await Promise.all([
               AsyncStorage.removeItem('accessToken'),
+              AsyncStorage.removeItem('refreshToken'),
               AsyncStorage.removeItem('@cityfix_auth_user'),
             ]);
             setUser(null);
@@ -157,7 +171,10 @@ export default function AppNavigator() {
       if (nextState === 'active' && user) {
         const token = await AsyncStorage.getItem('accessToken');
         if (!token || isTokenExpired(token)) {
-          handleLogout(true);
+          const refreshed = await refreshAccessToken();
+          if (!refreshed?.accessToken) {
+            handleLogout(true);
+          }
         }
       }
     });

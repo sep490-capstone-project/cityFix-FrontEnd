@@ -93,17 +93,22 @@ export function setAccessToken(token: string): void {
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  return (
+    localStorage.getItem(REFRESH_TOKEN_KEY) ||
+    localStorage.getItem('refreshToken')
+  );
 }
 
 export function setRefreshToken(token: string): void {
   localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  localStorage.setItem('refreshToken', token);
 }
 
 export function clearTokens(): void {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
   localStorage.removeItem('token');
 }
 
@@ -111,18 +116,141 @@ export function decodeJwt(token: string): Record<string, any> | null {
   try {
     const base64Url = token.split('.')[1];
     if (!base64Url) return null;
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/=]/g, '');
+    const padLen = (4 - (base64.length % 4)) % 4;
+    if (padLen > 0) {
+      base64 = base64.padEnd(base64.length + padLen, '=');
+    }
     const jsonPayload = decodeURIComponent(
       window
         .atob(base64)
         .split('')
         .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
-    );
+    ).replace(/\0+$/g, '');
     return JSON.parse(jsonPayload);
   } catch {
     return null;
   }
+}
+
+export function isTokenExpired(token?: string | null): boolean {
+  if (!token) return true;
+  const decoded = decodeJwt(token);
+  if (!decoded) return false;
+  if (typeof decoded.exp === 'number') {
+    const nowSec = Date.now() / 1000;
+    return decoded.exp + 30 <= nowSec;
+  }
+  return false;
+}
+
+/* =========================================================
+   REFRESH TOKEN & GLOBAL FETCH INTERCEPTOR (AUTO-REFRESH)
+   POST /api/v1/auth/refresh
+   ========================================================= */
+
+const rawFetch = window.fetch.bind(window);
+let activeRefreshPromise: Promise<LoginData | null> | null = null;
+
+/**
+ * Làm mới Access Token bằng Refresh Token
+ * POST /api/v1/auth/refresh
+ */
+export async function refreshAccessToken(customRefreshToken?: string | null): Promise<LoginData | null> {
+  if (activeRefreshPromise) {
+    return activeRefreshPromise;
+  }
+
+  const refreshTok = customRefreshToken || getRefreshToken();
+  if (!refreshTok) {
+    return null;
+  }
+
+  activeRefreshPromise = (async () => {
+    try {
+      const response = await rawFetch(`${BASE_URL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          refreshToken: refreshTok,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as ApiResponse<LoginData> | null;
+      if (!response.ok || !payload?.success || !payload.data?.accessToken) {
+        return null;
+      }
+
+      setAccessToken(payload.data.accessToken);
+      if (payload.data.refreshToken) {
+        setRefreshToken(payload.data.refreshToken);
+      }
+      return payload.data;
+    } catch (err) {
+      console.warn('⚠️ Refresh token failed:', err);
+      return null;
+    } finally {
+      activeRefreshPromise = null;
+    }
+  })();
+
+  return activeRefreshPromise;
+}
+
+// Bọc window.fetch để tự động refresh token và retry cho toàn bộ các service trên Web khi gặp 401
+if (typeof window !== 'undefined' && !(window as any).__cityfixFetchWrapped) {
+  (window as any).__cityfixFetchWrapped = true;
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const isAuthEndpoint =
+      urlStr.includes('/api/v1/auth/login') ||
+      urlStr.includes('/api/v1/auth/register') ||
+      urlStr.includes('/api/v1/auth/refresh') ||
+      urlStr.includes('/api/v1/auth/verify-phone-firebase') ||
+      urlStr.includes('/api/v1/auth/reset-password');
+
+    // Nếu token hiện tại đã hết hạn và có refreshToken, chủ động refresh trước khi gửi request
+    if (urlStr.startsWith(BASE_URL) && !isAuthEndpoint) {
+      const currentToken = getAccessToken();
+      if (currentToken && isTokenExpired(currentToken) && getRefreshToken()) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed?.accessToken && init?.headers) {
+          if (init.headers instanceof Headers) {
+            init.headers.set('Authorization', `Bearer ${refreshed.accessToken}`);
+          } else if (Array.isArray(init.headers)) {
+            const idx = init.headers.findIndex(([k]) => k.toLowerCase() === 'authorization');
+            if (idx >= 0) init.headers[idx][1] = `Bearer ${refreshed.accessToken}`;
+          } else {
+            (init.headers as Record<string, string>)['Authorization'] = `Bearer ${refreshed.accessToken}`;
+          }
+        }
+      }
+    }
+
+    const response = await rawFetch(input, init);
+
+    if (
+      response.status === 401 &&
+      urlStr.startsWith(BASE_URL) &&
+      !isAuthEndpoint &&
+      getRefreshToken()
+    ) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed?.accessToken) {
+        const retryInit: RequestInit = { ...(init || {}) };
+        const nextHeaders = new Headers(init?.headers || {});
+        nextHeaders.set('Authorization', `Bearer ${refreshed.accessToken}`);
+        retryInit.headers = nextHeaders;
+        return rawFetch(input, retryInit);
+      }
+    }
+
+    return response;
+  };
 }
 
 /* =========================================================
