@@ -2104,12 +2104,16 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                       : 'bg-purple-50 text-purple-700 border border-purple-200'
                                   }`}>
-                                    {isParallel
-                                      ? '<span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Bắt đầu ngay từ đầu</span>'
-                                      : `Chờ hoàn tất: ${st.dependsOnStepIds?.map(dId => {
-                                          const foundIdx = reviewSteps.findIndex(r => r.stepId === dId);
-                                          return foundIdx >= 0 ? `Bước ${foundIdx + 1}` : 'Bước trước';
-                                        }).join(', ')}`}
+                                    {isParallel ? (
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500" /> Bắt đầu ngay từ đầu
+                                      </span>
+                                    ) : (
+                                      `Chờ hoàn tất: ${st.dependsOnStepIds?.map(dId => {
+                                        const foundIdx = reviewSteps.findIndex(r => r.stepId === dId);
+                                        return foundIdx >= 0 ? `Bước ${foundIdx + 1}` : 'Bước trước';
+                                      }).join(', ')}`
+                                    )}
                                   </span>
                                 </div>
                               </div>
