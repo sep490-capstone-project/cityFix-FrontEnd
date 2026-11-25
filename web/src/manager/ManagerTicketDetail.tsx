@@ -623,6 +623,9 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                   const isCompleted = st.status === 'COMPLETED';
                   const isResolved = st.status === 'RESOLVED';
                   const isInProgress = st.status === 'IN_PROGRESS';
+                  const isTicketCompleted =
+                    ['COMPLETED', 'CANCELLED', 'REJECTED'].includes((ticket?.status || '').toUpperCase()) ||
+                    (steps.length > 0 && steps.every((s) => s.status === 'COMPLETED'));
                   const evidences = st.evidences || [];
                   const readiness = checkStepReadiness(st, steps);
 
@@ -730,60 +733,47 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                           </div>
                         </div>
 
-                        {/* Thao tác Trạng thái & Xóa */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Nút bấm trực tiếp Phê duyệt hoàn thành bước (Dành cho Quản lý) */}
-                          {!isCompleted ? (
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateStatus(stepInstanceId, 'COMPLETED')}
-                              disabled={!stepInstanceId || loading}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1"
-                              title="Bấm để phê duyệt hoàn thành bước này"
-                            >
-                              <CheckIcon className="w-3.5 h-3.5 text-white" /> Duyệt hoàn thành
-                            </button>
-                          ) : (
+                        {/* Thao tác Trạng thái & Xóa (Ẩn toàn bộ khi vé đã hoàn thành) */}
+                        {!isTicketCompleted && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Nút bấm trực tiếp Phê duyệt hoàn thành bước (Dành cho Quản lý) */}
+                            {!isCompleted && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateStatus(stepInstanceId, 'COMPLETED')}
+                                disabled={!stepInstanceId || loading}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1"
+                                title="Bấm để phê duyệt hoàn thành bước này"
+                              >
+                                <CheckIcon className="w-3.5 h-3.5 text-white" /> Duyệt hoàn thành
+                              </button>
+                            )}
+
+                            {/* Nút Làm lại (thay cho ô dropdown) */}
                             <button
                               type="button"
                               onClick={() => handleUpdateStatus(stepInstanceId, 'IN_PROGRESS')}
                               disabled={!stepInstanceId || loading}
-                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-[11px] rounded-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1"
+                              className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[11px] rounded-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-1 shadow-2xs"
                               title="Yêu cầu cán bộ làm lại bước này"
                             >
-                              <span>↩</span> Yêu cầu làm lại
+                              <span>↩</span> Làm lại
                             </button>
-                          )}
 
-                          {/* Dropdown đổi trạng thái bước: PUT /api/v1/manager/tickets/steps/{stepId}/status */}
-                          <select
-                            value={st.status || 'PENDING'}
-                            onChange={(e) => handleUpdateStatus(stepInstanceId, e.target.value)}
-                            disabled={!stepInstanceId || loading}
-                            className="bg-white border border-gray-300 rounded-lg px-2 py-1 text-[11px] font-bold text-gray-700 outline-none hover:border-orange-500 focus:border-orange-500 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                            title="Quản lý phê duyệt bước hoặc yêu cầu xử lý lại"
-                          >
-                            <option value="PENDING">Chờ xử lý</option>
-                            <option value="IN_PROGRESS">Đang xử lý (Làm lại)</option>
-                            <option value="RESOLVED">Đã giải quyết (Chờ duyệt)</option>
-                            <option value="COMPLETED">Hoàn thành (Đã duyệt)</option>
-                            <option value="TRANSFERRED">Chuyển tiếp</option>
-                            <option value="CANCELLED">Hủy bước</option>
-                          </select>
-
-                          {/* Nút Xóa bước dành cho Manager */}
-                          {currentUser.role === 'MANAGER' && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStep(stepInstanceId)}
-                              disabled={!stepInstanceId || loading}
-                              className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                              title="Xóa bước này"
-                            >
-                              Xóa
-                            </button>
-                          )}
-                        </div>
+                            {/* Nút Xóa bước dành cho Manager */}
+                            {currentUser.role === 'MANAGER' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStep(stepInstanceId)}
+                                disabled={!stepInstanceId || loading}
+                                className="px-2 py-1.5 text-[11px] font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                title="Xóa bước này"
+                              >
+                                Xóa
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Chi tiết Hạn chót & Ghi chú của bước */}
@@ -794,7 +784,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                             <span className="font-mono-cf font-semibold text-gray-800">
                               {st.deadline ? st.deadline.replace('T', ' ').slice(0, 16) : 'Chưa có hạn chót'}
                             </span>
-                            {currentUser.role === 'MANAGER' && !isCompleted && ticket?.status === 'IN_PROGRESS' && (
+                            {currentUser.role === 'MANAGER' && !isTicketCompleted && !isCompleted && ticket?.status === 'IN_PROGRESS' && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -834,20 +824,6 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                           <span className="text-[11px] font-bold text-gray-500 flex items-center gap-1">
                             <span className="inline-flex items-center gap-1"><PaperclipIcon className="w-3.5 h-3.5 text-gray-500" /> Bằng chứng nghiệm thu</span> ({evidences.length} ảnh):
                           </span>
-
-                          {/* Nút Upload bằng chứng */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEvidenceStep(st);
-                              setEvidenceFiles([]);
-                              setEvidencePreviews([]);
-                              setResolutionNote('');
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1"
-                          >
-                            <span>+</span> Tải lên bằng chứng
-                          </button>
                         </div>
 
                         {evidences.length === 0 ? (

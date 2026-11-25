@@ -187,16 +187,6 @@ export default function ManagerApp({ userId, onLogout }: Props) {
           })}
         </nav>
 
-        {/* Dept info */}
-        <div className="mx-3 mb-2.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
-            Cơ quan phụ trách
-          </p>
-          <p className="text-xs text-gray-800 font-semibold leading-snug line-clamp-2">
-            {resolvedDeptLabel}
-          </p>
-        </div>
-
         {/* User Footer */}
         <div className="px-3 py-3 border-t border-gray-100 bg-gray-50/50">
           <div className="flex items-center gap-2.5">
@@ -232,10 +222,6 @@ export default function ManagerApp({ userId, onLogout }: Props) {
                page === 'staff' ? 'Cán bộ & Phòng ban' : 'Hồ sơ cá nhân'}
             </h1>
           </div>
-          <span className="px-2.5 py-1 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 text-xs font-semibold hidden md:inline-block truncate max-w-[260px]">
-            {resolvedDeptLabel}
-          </span>
-          <div className="w-px h-4 bg-gray-200 hidden sm:block" />
           <NotificationBell onOpenTicket={(ticketId) => openTicket(ticketId)} />
           <div className="w-px h-4 bg-gray-200 hidden sm:block" />
           <p className="font-mono-cf text-xs text-gray-500">

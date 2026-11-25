@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { FileTextIcon } from '../components/Icons';
 import {
+  VN_PROVINCES_2025,
+  getWardsForProvince2025,
+  findProvince2025ByName,
+  formatProvinceName,
+  formatWardName,
+} from '../constants/vnProvinces2025';
+import {
   getAdminCategories,
   createAdminCategory,
   updateAdminCategory,
@@ -845,7 +852,7 @@ function DepartmentMgmt() {
   const [sel, setSel] = useState<DepartmentItem | null>(null);
   const [form, setForm] = useState({
     name: '',
-    level: 'CITY',
+    level: 'WARD',
     contactEmail: '',
     phoneNumber: '',
     isActive: true,
@@ -854,7 +861,6 @@ function DepartmentMgmt() {
 
   // Bộ lọc
   const [searchDept, setSearchDept] = useState('');
-  const [filterLevel, setFilterLevel] = useState<string>('ALL');
   const [filterActive, setFilterActive] = useState<string>('all');
 
   async function fetchDepts() {
@@ -889,7 +895,6 @@ function DepartmentMgmt() {
   const filteredDepts = useMemo(() => {
     const q = searchDept.trim();
     return depts.filter((d) => {
-      if (filterLevel !== 'ALL' && d.level !== filterLevel) return false;
       const isAct = d.isActive !== false;
       if (filterActive === 'active' && !isAct) return false;
       if (filterActive === 'inactive' && isAct) return false;
@@ -905,12 +910,12 @@ function DepartmentMgmt() {
       }
       return true;
     });
-  }, [depts, searchDept, filterLevel, filterActive]);
+  }, [depts, searchDept, filterActive]);
 
   function openCreate() {
     setForm({
       name: '',
-      level: 'CITY',
+      level: 'WARD',
       contactEmail: '',
       phoneNumber: '',
       isActive: true,
@@ -926,7 +931,7 @@ function DepartmentMgmt() {
     setSel(d);
     setForm({
       name: d.name || '',
-      level: d.level || 'CITY',
+      level: 'WARD',
       contactEmail: d.contactEmail || '',
       phoneNumber: d.phoneNumber || '',
       isActive: d.isActive !== false,
@@ -939,7 +944,7 @@ function DepartmentMgmt() {
         if (detail) {
           setForm({
             name: detail.name || d.name || '',
-            level: detail.level || d.level || 'CITY',
+            level: 'WARD',
             contactEmail: detail.contactEmail || d.contactEmail || '',
             phoneNumber: detail.phoneNumber || d.phoneNumber || '',
             isActive: detail.isActive !== false,
@@ -972,23 +977,23 @@ function DepartmentMgmt() {
       if (modal === 'create') {
         const created = await createDepartment({
           name: form.name,
-          level: form.level,
+          level: 'WARD',
           contactEmail: form.contactEmail,
           phoneNumber: form.phoneNumber,
         });
-        setDepts((prev) => [created || { ...form, departmentId: `D${Date.now()}` }, ...prev]);
+        setDepts((prev) => [created || { ...form, level: 'WARD', departmentId: `D${Date.now()}` }, ...prev]);
       } else if (sel) {
         const targetId = sel.departmentId;
         const updated = await updateDepartment(targetId, {
           name: form.name,
-          level: form.level,
+          level: 'WARD',
           contactEmail: form.contactEmail,
           phoneNumber: form.phoneNumber,
           isActive: form.isActive,
         });
         setDepts((prev) =>
           prev.map((x) =>
-            x.departmentId === targetId ? { ...x, ...updated, ...form } : x,
+            x.departmentId === targetId ? { ...x, ...updated, ...form, level: 'WARD' } : x,
           ),
         );
       }
@@ -1035,16 +1040,6 @@ function DepartmentMgmt() {
           />
 
           <select
-            value={filterLevel}
-            onChange={(e) => setFilterLevel(e.target.value)}
-            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
-          >
-            <option value="ALL">Tất cả cấp quản lý</option>
-            <option value="CITY">Cấp Thành phố (CITY)</option>
-            <option value="WARD">Cấp Xã/Phường (WARD)</option>
-          </select>
-
-          <select
             value={filterActive}
             onChange={(e) => setFilterActive(e.target.value)}
             className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
@@ -1054,11 +1049,10 @@ function DepartmentMgmt() {
             <option value="inactive">Đã vô hiệu hóa</option>
           </select>
 
-          {(searchDept || filterLevel !== 'ALL' || filterActive !== 'all') && (
+          {(searchDept || filterActive !== 'all') && (
             <button
               onClick={() => {
                 setSearchDept('');
-                setFilterLevel('ALL');
                 setFilterActive('all');
               }}
               className="text-[11px] text-red-600 hover:text-red-700 font-semibold px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 cursor-pointer"
@@ -1104,35 +1098,29 @@ function DepartmentMgmt() {
         ) : (
           filteredDepts.map((d) => (
             <tr key={d.departmentId} className="hover:bg-orange-50/50 transition-colors">
-              <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400">
+              <td className="px-4 py-3 font-mono-cf text-[10px] text-gray-400 max-w-[160px] truncate" title={d.departmentId}>
                 {d.departmentId}
               </td>
-              <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold max-w-[200px] truncate">
+              <td className="px-4 py-3 text-[13px] text-gray-800 font-semibold max-w-[220px] truncate" title={d.name}>
                 {d.name}
               </td>
-              <td className="px-4 py-3">
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-                    d.level === 'CITY'
-                      ? 'text-orange-600 bg-orange-50 border-orange-200'
-                      : 'text-blue-600 bg-blue-50 border-blue-200'
-                  }`}
-                >
-                  {formatDepartmentLevel(d.level)}
+              <td className="px-4 py-3 whitespace-nowrap">
+                <span className="inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-lg border text-blue-600 bg-blue-50 border-blue-200 whitespace-nowrap">
+                  Cấp Xã/Phường
                 </span>
               </td>
-              <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-500">
+              <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-500 whitespace-nowrap">
                 {d.contactEmail}
               </td>
-              <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-500">
+              <td className="px-4 py-3 font-mono-cf text-[11px] text-gray-500 whitespace-nowrap">
                 {d.phoneNumber}
               </td>
-              <td className="px-4 py-3 text-[11px] text-gray-600 font-medium">
+              <td className="px-4 py-3 text-[11px] text-gray-600 font-medium whitespace-nowrap">
                 {d.officerCount ?? 0} cán bộ
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3 whitespace-nowrap">
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                  className={`inline-flex items-center text-[10px] font-bold px-2.5 py-1 rounded-lg border whitespace-nowrap ${
                     d.isActive !== false
                       ? 'text-green-600 bg-green-50 border-green-200'
                       : 'text-red-500 bg-red-50 border-red-200'
@@ -1141,8 +1129,8 @@ function DepartmentMgmt() {
                   {d.isActive !== false ? 'Hoạt động' : 'Vô hiệu hóa'}
                 </span>
               </td>
-              <td className="px-4 py-3">
-                <div className="flex gap-1.5">
+              <td className="px-4 py-3 whitespace-nowrap">
+                <div className="flex items-center gap-1.5">
                   <SmBtn onClick={() => openEdit(d)}>Sửa</SmBtn>
                   <SmBtn onClick={() => del(d)} danger>
                     Vô hiệu hóa
@@ -1170,7 +1158,7 @@ function DepartmentMgmt() {
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="VD: UBND Phường Bến Nghé hoặc Sở GTVT"
+              placeholder="VD: UBND Phường Đức Nhuận hoặc Phòng Cây xanh"
               className={inpModal}
             />
           </div>
@@ -1180,11 +1168,10 @@ function DepartmentMgmt() {
               Cấp quản lý <span className="text-red-500">*</span>
             </label>
             <select
-              value={form.level}
+              value="WARD"
               onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
               className={inpModal}
             >
-              <option value="CITY">Cấp Thành phố</option>
               <option value="WARD">Cấp Xã/Phường</option>
             </select>
           </div>
@@ -1248,7 +1235,37 @@ function RoutingMgmt() {
     ward: '',
     departmentId: '',
   });
+  const [formWardList, setFormWardList] = useState<string[]>([]);
+  const [loadingWards, setLoadingWards] = useState(false);
   const [actionError, setActionError] = useState('');
+
+  // Tự động tải danh sách Phường/Xã theo Tỉnh/Thành phố được chọn trong Modal (chuẩn format TP. và P.)
+  useEffect(() => {
+    let active = true;
+    const provObj = findProvince2025ByName(form.province) || VN_PROVINCES_2025[0];
+    if (!provObj) {
+      setFormWardList([]);
+      return;
+    }
+
+    const defaultFormatted = provObj.defaultWards.map((w) => formatWardName(w));
+    setFormWardList(defaultFormatted);
+    setLoadingWards(true);
+
+    getWardsForProvince2025(provObj)
+      .then((wards) => {
+        if (!active) return;
+        const formatted = Array.from(new Set(wards.map((w) => formatWardName(w)).filter(Boolean)));
+        setFormWardList(formatted);
+      })
+      .finally(() => {
+        if (active) setLoadingWards(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [form.province]);
 
   // Bộ lọc (100% lấy từ dữ liệu thực tế của API, không dùng mock)
   const [searchRule, setSearchRule] = useState('');
@@ -1368,10 +1385,12 @@ function RoutingMgmt() {
   function openCreate() {
     const defaultCat = categories[0]?.id || categories[0]?.categoryId || '';
     const defaultDept = departments[0]?.departmentId || '';
+    const defaultProv = VN_PROVINCES_2025[0];
+    const firstWard = defaultProv?.defaultWards?.[0] ? formatWardName(defaultProv.defaultWards[0]) : '';
     setForm({
       categoryId: defaultCat,
-      province: provinceOptions[0] || 'TP. Hồ Chí Minh',
-      ward: '',
+      province: formatProvinceName(defaultProv?.name || 'TP. Hồ Chí Minh'),
+      ward: firstWard,
       departmentId: defaultDept,
     });
     setSel(null);
@@ -1385,8 +1404,8 @@ function RoutingMgmt() {
     setSel(r);
     setForm({
       categoryId: r.categoryId || '',
-      province: r.province || 'TP. Hồ Chí Minh',
-      ward: r.ward || '',
+      province: formatProvinceName(r.province || 'TP. Hồ Chí Minh'),
+      ward: formatWardName(r.ward || ''),
       departmentId: r.departmentId || '',
     });
     setModal('edit');
@@ -1397,8 +1416,8 @@ function RoutingMgmt() {
         if (detail) {
           setForm({
             categoryId: detail.categoryId || r.categoryId || '',
-            province: detail.province || r.province || '',
-            ward: detail.ward || r.ward || '',
+            province: formatProvinceName(detail.province || r.province || 'TP. Hồ Chí Minh'),
+            ward: formatWardName(detail.ward || r.ward || ''),
             departmentId: detail.departmentId || r.departmentId || '',
           });
         }
@@ -1418,13 +1437,16 @@ function RoutingMgmt() {
       return;
     }
     if (!form.province.trim()) {
-      setActionError('Vui lòng nhập Tỉnh / Thành phố');
+      setActionError('Vui lòng chọn Tỉnh / Thành phố');
       return;
     }
     if (!form.ward.trim()) {
-      setActionError('Vui lòng nhập Phường / Xã');
+      setActionError('Vui lòng chọn Phường / Xã');
       return;
     }
+
+    const finalProvince = formatProvinceName(form.province.trim());
+    const finalWard = formatWardName(form.ward.trim());
 
     setSaving(true);
     setActionError('');
@@ -1434,22 +1456,27 @@ function RoutingMgmt() {
         const created = await createRoutingRule({
           departmentId: form.departmentId,
           categoryId: form.categoryId,
-          province: form.province,
-          ward: form.ward,
+          province: finalProvince,
+          ward: finalWard,
         });
-        setAllRules((prev) => [created || { ...form, ruleId: `RR${Date.now()}` }, ...prev]);
+        setAllRules((prev) => [
+          created || { ...form, province: finalProvince, ward: finalWard, ruleId: `RR${Date.now()}` },
+          ...prev,
+        ]);
       } else if (sel) {
         const targetId = sel.ruleId || sel.id || '';
         const updated = await updateRoutingRule(targetId, {
           departmentId: form.departmentId,
           categoryId: form.categoryId,
-          province: form.province,
-          ward: form.ward,
+          province: finalProvince,
+          ward: finalWard,
         });
 
         setAllRules((prev) =>
           prev.map((x) =>
-            (x.ruleId || x.id) === targetId ? { ...x, ...updated, ...form } : x,
+            (x.ruleId || x.id) === targetId
+              ? { ...x, ...updated, ...form, province: finalProvince, ward: finalWard }
+              : x,
           ),
         );
       }
@@ -1727,24 +1754,59 @@ function RoutingMgmt() {
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
               Tỉnh / Thành phố <span className="text-red-500">*</span>
             </label>
-            <input
+            <select
               value={form.province}
-              onChange={(e) => setForm((f) => ({ ...f, province: e.target.value }))}
-              placeholder="VD: TP. Hồ Chí Minh"
+              onChange={(e) => {
+                const selectedProvName = formatProvinceName(e.target.value);
+                const provObj = findProvince2025ByName(selectedProvName);
+                const firstWard = provObj?.defaultWards?.[0]
+                  ? formatWardName(provObj.defaultWards[0])
+                  : '';
+                setForm((f) => ({
+                  ...f,
+                  province: selectedProvName,
+                  ward: firstWard,
+                }));
+              }}
               className={inpModal}
-            />
+            >
+              <option value="">-- Chọn Tỉnh / Thành phố --</option>
+              {VN_PROVINCES_2025.map((p) => {
+                const formattedProv = formatProvinceName(p.name);
+                return (
+                  <option key={p.code} value={formattedProv}>
+                    {formattedProv}
+                  </option>
+                );
+              })}
+              {form.province &&
+                !VN_PROVINCES_2025.some(
+                  (p) => formatProvinceName(p.name) === form.province
+                ) && <option value={form.province}>{form.province}</option>}
+            </select>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.15em]">
-              Phường / Xã <span className="text-red-500">*</span>
+              Phường / Xã {loadingWards ? '(Đang tải...)' : ''} <span className="text-red-500">*</span>
             </label>
-            <input
+            <select
               value={form.ward}
-              onChange={(e) => setForm((f) => ({ ...f, ward: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, ward: formatWardName(e.target.value) }))
+              }
               className={inpModal}
-              placeholder="VD: Phường Bến Nghé"
-            />
+            >
+              <option value="">-- Chọn Phường / Xã --</option>
+              {form.ward && !formWardList.includes(form.ward) && (
+                <option value={form.ward}>{form.ward}</option>
+              )}
+              {formWardList.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
           </div>
         </StandardModal>
       )}
@@ -1887,7 +1949,7 @@ function SmBtn({
   return (
     <button
       onClick={onClick}
-      className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all active:scale-[0.97] cursor-pointer ${
+      className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all active:scale-[0.97] cursor-pointer whitespace-nowrap ${
         danger
           ? 'border-red-500/30 text-red-600 hover:bg-red-50'
           : warn

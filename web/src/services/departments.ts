@@ -15,9 +15,8 @@ export interface DepartmentItem {
 }
 
 export function formatDepartmentLevel(level?: string): string {
-  if (!level) return '—';
-  if (level === 'CITY') return 'Cấp Thành phố';
-  if (level === 'WARD') return 'Cấp Xã/Phường';
+  if (!level) return 'Cấp Xã/Phường';
+  if (level === 'CITY' || level === 'WARD') return 'Cấp Xã/Phường';
   return level;
 }
 
