@@ -15,9 +15,17 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft, CATEGORIES } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createTicket, checkDuplicates, DuplicateTicketItem } from '../../api';
+import {
+  createTicket,
+  checkDuplicates,
+  DuplicateTicketItem,
+  isVideoUrl,
+  getMediaThumbnailUrl,
+} from '../../api';
 import { AuthUser } from '../LoginScreen';
 import { formatStandardAddress } from '../../constants/vnProvinces2025';
+
+const LOW_CONFIDENCE_THRESHOLD = 70;
 
 interface Props {
   navigate: (s: string) => void;
@@ -43,6 +51,13 @@ export default function ReviewDraftScreen({
   const [showCatPicker, setShowCatPicker] = useState(false);
 
   const ai = draft.aiAnalysis;
+  const isLowConfidence = (ai?.confidenceScore ?? 100) < LOW_CONFIDENCE_THRESHOLD;
+
+  useEffect(() => {
+    if (isLowConfidence) {
+      setEditing(true);
+    }
+  }, [isLowConfidence]);
 
   useEffect(() => {
     if (!draft.userDescription && ai?.description) {
@@ -341,21 +356,56 @@ export default function ReviewDraftScreen({
             </View>
           </View>
 
-          {/* Section 2: Ảnh sự cố */}
+          {/* Section 2: Ảnh / Video sự cố */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <View style={styles.orangeIndicator} />
               <Text style={styles.cardTitle}>
-                ẢNH SỰ CỐ ({draft.imageUrls.length} ẢNH)
+                TỆP ĐÍNH KÈM ({draft.imageUrls.length} TỆP)
               </Text>
             </View>
             <View style={styles.cardBody}>
               <View style={styles.photoGrid}>
-                {draft.imageUrls.map((url, idx) => (
-                  <View key={idx} style={styles.photoThumb}>
-                    <Image source={{ uri: url }} style={styles.photoImg} />
-                  </View>
-                ))}
+                {draft.imageUrls.map((url, idx) => {
+                  const isVid = isVideoUrl(url);
+                  const thumbUri = getMediaThumbnailUrl(url);
+                  return (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.photoThumb,
+                        isVid && { backgroundColor: '#0f172a' },
+                      ]}
+                    >
+                      <Image
+                        source={{ uri: thumbUri }}
+                        style={styles.photoImg}
+                        resizeMode="cover"
+                      />
+                      {isVid ? (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(15, 23, 42, 0.3)',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                          pointerEvents="none"
+                        >
+                          <Ionicons
+                            name="play-circle"
+                            size={24}
+                            color="#ffffff"
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
 
               {editing ? (
@@ -377,6 +427,32 @@ export default function ReviewDraftScreen({
               <Text style={styles.cardTitle}>THÔNG TIN AI ĐỀ XUẤT</Text>
             </View>
             <View style={styles.cardBody}>
+              {isLowConfidence ? (
+                <View
+                  style={{
+                    marginBottom: 10,
+                    padding: 12,
+                    backgroundColor: '#fffbeb',
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                  }}
+                >
+                  <Ionicons name="warning" size={18} color="#d97706" style={{ marginTop: 1 }} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400e' }}>
+                      Cần kiểm tra & chỉnh sửa thủ công ({Math.round(ai?.confidenceScore ?? 0)}% &lt; 70%)
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#b45309', lineHeight: 16 }}>
+                      Độ tin cậy nhận diện AI dưới 70%. Hệ thống đã tự động bật chế độ chỉnh sửa để bạn rà soát lại danh mục con và mô tả sự cố trước khi gửi.
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
               <Text style={styles.fieldLabel}>Loại sự cố</Text>
               <View style={styles.catStaticBox}>
                 <Text style={styles.catStaticText}>{currentCatName}</Text>
@@ -585,7 +661,7 @@ export default function ReviewDraftScreen({
                 placeholderTextColor="#94a3b8"
               />
               <Text style={styles.descHintText}>
-                💡 Mô tả được AI gợi ý từ hình ảnh. Bạn có thể nhấn trực tiếp vào ô trên để chỉnh sửa hoặc bổ sung thêm thông tin.
+                Mô tả được AI gợi ý từ hình ảnh. Bạn có thể nhấn trực tiếp vào ô trên để chỉnh sửa hoặc bổ sung thêm thông tin.
               </Text>
             </View>
           </View>
@@ -594,8 +670,7 @@ export default function ReviewDraftScreen({
           <View style={styles.disclaimerCard}>
             <Ionicons name="shield-checkmark-outline" size={18} color="#64748b" />
             <Text style={styles.disclaimerText}>
-              Bằng cách gửi báo cáo, bạn xác nhận thông tin cung cấp là trung thực. Hệ thống
-              sẽ kiểm tra trùng lặp vị trí bằng PostGIS trước khi lưu hồ sơ báo cáo.
+              Bằng cách gửi báo cáo, bạn xác nhận thông tin cung cấp là trung thực và chính xác.
             </Text>
           </View>
         </View>

@@ -736,7 +736,7 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
                 if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }));
               }}
               error={errors.phone}
-              hint="Mã OTP xác thực sẽ được gửi qua SMS (Firebase) đến số điện thoại này."
+              hint="Mã OTP xác thực sẽ được gửi qua SMS đến số điện thoại này."
             />
 
             <AnimatedField
@@ -877,11 +877,11 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
               ) : null}
             </View>
 
-            {/* PHƯỜNG / XÃ (SAU SÁP NHẬP) SELECTOR */}
+            {/* PHƯỜNG / XÃ SELECTOR */}
             <View style={styles.fieldContainer}>
               <View style={styles.labelRow}>
                 <Text style={styles.label}>
-                  PHƯỜNG / XÃ (SAU SÁP NHẬP)<Text style={styles.requiredStar}> *</Text>
+                  PHƯỜNG / XÃ<Text style={styles.requiredStar}> *</Text>
                 </Text>
               </View>
 
@@ -1256,7 +1256,7 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
                   ]}
                   numberOfLines={1}
                 >
-                  2. {ward || 'Phường / Xã mới'}
+                  2. {ward || 'Phường / Xã'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1410,9 +1410,6 @@ export default function RegisterScreen({ navigate, goBack, onRegistered }: Props
                           ]}
                         >
                           {item}
-                        </Text>
-                        <Text style={styles.modalOptionSub}>
-                          Trực thuộc {province} (sau sáp nhập)
                         </Text>
                       </View>
                       {isSelected ? (

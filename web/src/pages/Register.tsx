@@ -680,8 +680,8 @@ export default function Register({
                 </button>
               </Field>
 
-              {/* PHƯỜNG / XÃ (SAU SÁP NHẬP) SELECTOR */}
-              <Field label="Phường / Xã (Sau sáp nhập) *" error={errors.ward}>
+              {/* PHƯỜNG / XÃ SELECTOR */}
+              <Field label="Phường / Xã *" error={errors.ward}>
                 <button
                   type="button"
                   onClick={() => {
@@ -764,7 +764,10 @@ export default function Register({
               {/* Xem trước địa chỉ chuẩn hóa */}
               {(form.address.trim() || form.ward || form.province) && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3.5 py-2.5 flex items-start gap-2">
-                  <span className="text-orange-600 mt-0.5">📍</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-600 flex-shrink-0 mt-0.5">
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
                   <div className="text-[11px] text-slate-600 leading-relaxed">
                     <span className="font-bold text-slate-700">Địa chỉ ghi nhận: </span>
                     {[
@@ -960,7 +963,10 @@ export default function Register({
             {/* Thanh tìm kiếm nhanh */}
             <div className="p-3.5 border-b border-slate-100 bg-white">
               <div className="relative flex items-center">
-                <span className="absolute left-3 text-slate-400">🔍</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 text-slate-400 pointer-events-none">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
                 <input
                   type="text"
                   autoFocus

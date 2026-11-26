@@ -566,7 +566,7 @@ export default function VerifyPhoneScreen({
               <View style={styles.phoneBadge}>
                 <Ionicons name="call" size={15} color="#ea580c" />
                 <Text style={styles.phoneBadgeText}>
-                  {phonePretty || phoneNumber} ({phoneE164})
+                  {phonePretty || phoneNumber}
                 </Text>
               </View>
 

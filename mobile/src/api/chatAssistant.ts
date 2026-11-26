@@ -24,28 +24,28 @@ export interface AssistantResponse {
 export const QUICK_SUGGESTIONS: Array<{ id: string; label: string; prompt: string }> = [
   {
     id: 'report-flow',
-    label: '📋 Quy trình báo cáo sự cố',
+    label: 'Quy trình báo cáo sự cố',
     prompt: 'Quy trình báo cáo sự cố trên ứng dụng CityFix gồm những bước nào?',
   },
   {
     id: 'track-flow',
-    label: '🔍 Cách theo dõi tiến độ',
+    label: 'Cách theo dõi tiến độ',
     prompt: 'Làm sao để theo dõi tiến độ xử lý báo cáo và xem bằng chứng khắc phục?',
   },
   {
     id: 'minor-fix',
-    label: '🛠️ Sự cố nhỏ tự xử lý tại chỗ',
+    label: 'Sự cố nhỏ tự xử lý tại chỗ',
     prompt: 'Nếu gặp các sự cố nhỏ trước nhà thì tự xử lý thế nào mà không cần gửi báo cáo?',
   },
   {
     id: 'duplicate-upvote',
-    label: '👍 Upvote vé trùng lặp 50m',
-    prompt: 'Tính năng phát hiện sự cố trùng lặp trong bán kính 50m và Upvote hoạt động thế nào?',
+    label: 'Đồng tình sự cố trùng lặp 50m',
+    prompt: 'Tính năng phát hiện sự cố trùng lặp trong bán kính 50m và Đồng tình hoạt động thế nào?',
   },
   {
     id: 'cancel-rate',
-    label: '⭐ Hủy vé & Đánh giá sao',
-    prompt: 'Khi nào tôi có thể hủy vé phản ánh và khi nào được đánh giá sao kết quả xử lý?',
+    label: 'Hủy báo cáo & Đánh giá sao',
+    prompt: 'Khi nào tôi có thể hủy hồ sơ báo cáo và khi nào được đánh giá sao kết quả xử lý?',
   },
 ];
 
@@ -191,7 +191,7 @@ export async function askCityFixAssistant(
         reply: replyText,
         isBlocked: isRefusal,
         suggestedAction: isRefusal ? null : detectSuggestedAction(userMessage, replyText),
-        sourceLabel: '🟢 Trợ lý AI CityFix',
+        sourceLabel: 'Trợ lý AI CityFix',
       };
     }
 

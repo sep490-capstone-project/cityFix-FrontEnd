@@ -1695,13 +1695,13 @@ export default function EvidenceStampModal({
 
                           <Text style={styles.stampedInfoTime}>
 
-                            🕒 {item.timestamp}
+                            Thời gian: {item.timestamp}
 
                           </Text>
 
                           <Text style={styles.stampedInfoAddr} numberOfLines={1}>
 
-                            📍 {item.address}
+                            Địa chỉ: {item.address}
 
                           </Text>
 

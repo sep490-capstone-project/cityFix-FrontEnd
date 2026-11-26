@@ -136,7 +136,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
       : 'Đơn vị Hiện trường');
 
   const NAV = [
-    { key: 'dashboard', label: 'Dashboard', icon: <GridIcon /> },
+    { key: 'dashboard', label: 'Tổng quan', icon: <GridIcon /> },
     { key: 'tickets', label: 'Hồ sơ tiếp nhận', icon: <TicketIcon /> },
     { key: 'profile', label: 'Hồ sơ cá nhân', icon: <UserIcon /> },
   ] as const;
@@ -151,7 +151,7 @@ export default function StaffApp({ userId, onLogout }: Props) {
           <div className="flex items-center gap-2">
             <img src={cityfixLogo} alt="CityFix" className="h-12 w-24 object-contain object-left" />
             <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 border border-orange-200 text-[10px] font-bold uppercase tracking-wider">
-              Staff
+              Cán bộ
             </span>
           </div>
         </div>

@@ -12,6 +12,8 @@ import {
   AdminTicketStepItem,
   AdminTicketRatingItem,
 } from '../services';
+import { MapPinIcon, CameraIcon } from '../components/Icons';
+import PageHeader, { PageBackButton, PAGE_CONTAINER } from '../components/PageHeader';
 
 interface Props {
   ticket?: Ticket | null;
@@ -167,7 +169,7 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
 
   if (!ticketData && loading) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
+      <div className={PAGE_CONTAINER}>
         <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center space-y-2">
           <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs font-semibold text-gray-600">
@@ -180,13 +182,10 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
 
   if (!ticketData) {
     return (
-      <div className="p-6 max-w-6xl mx-auto space-y-4">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-200 hover:border-orange-300 text-gray-600 hover:text-orange-600 text-xs font-semibold transition-all cursor-pointer"
-        >
-          ← Quay lại danh sách
-        </button>
+      <div className={PAGE_CONTAINER}>
+        <div>
+          <PageBackButton onClick={onBack} label="Quay lại" />
+        </div>
         <div className="bg-white rounded-2xl border border-red-200 p-8 text-center space-y-3">
           <p className="text-sm font-bold text-red-600">
             {errorMsg || 'Không tìm thấy dữ liệu hồ sơ sự cố.'}
@@ -257,54 +256,52 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
   const stepsProgressPct = steps.length > 0 ? Math.round((completedStepsCount / steps.length) * 100) : 0;
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in max-w-6xl mx-auto">
-
-      {/* ── Top Bar: Back + Ticket ID + Read-only Admin Badge ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-200 hover:border-orange-300 text-gray-600 hover:text-orange-600 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
-          >
-            <BackIcon /> Quay lại danh sách
-          </button>
-          <span className="text-gray-300">/</span>
-          <span className="font-mono-cf text-sm font-bold text-orange-600" title={ticket.ticketId}>
-            {ticket.ticketId}
-          </span>
-          {ticket.isLifeThreatening && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-600 text-white font-mono-cf text-[11px] font-bold">
-              ● KHẨN CẤP (SOS)
+    <div className={PAGE_CONTAINER}>
+      {/* ── Tiêu đề trang: Quay lại + Mã hồ sơ + Trạng thái ── */}
+      <PageHeader
+        leading={<PageBackButton onClick={onBack} label="Quay lại" />}
+        title={<span title={ticket.ticketId}>Hồ sơ #{String(ticket.ticketId || '').slice(0, 8)}</span>}
+        badges={
+          <>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${st.cls}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+              {st.label}
             </span>
-          )}
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${st.cls}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-            {st.label}
-          </span>
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${sv.cls}`}>
-            Mức độ: {sv.label}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {loading && (
-            <span className="px-2.5 py-1 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 text-xs font-semibold animate-pulse">
-              Đang đồng bộ...
+            {ticket.isLifeThreatening && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-red-300 bg-red-50 text-red-700 text-[11px] font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                Khẩn cấp (SOS)
+              </span>
+            )}
+            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${sv.cls}`}>
+              Mức độ: {sv.label}
             </span>
-          )}
-          <button
-            onClick={loadFullTicketDetail}
-            disabled={loading}
-            className="px-3 py-1.5 rounded-xl bg-white border border-gray-200 hover:border-orange-300 text-gray-600 hover:text-orange-600 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-          >
-            ↻ Làm mới
-          </button>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-medium">
-            <EyeIcon />
-            <span>Chế độ Xem & Tra cứu (Dành cho Quản trị viên)</span>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        subtitle={
+          <span className="inline-flex items-center gap-1 truncate max-w-xl">
+            <MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket.address || 'Chưa xác định địa chỉ hiện trường'}
+          </span>
+        }
+        actions={
+          <>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-[12px] font-medium">
+              <EyeIcon />
+              <span>Chế độ chỉ xem</span>
+            </div>
+            <button
+              onClick={loadFullTicketDetail}
+              disabled={loading}
+              className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <svg className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-orange-500' : 'text-gray-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+              {loading ? 'Đang tải...' : 'Làm mới'}
+            </button>
+          </>
+        }
+      />
 
       {/* ── Thông báo lỗi nếu có ── */}
       {errorMsg && (
@@ -339,11 +336,6 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            {ticket.isLifeThreatening && (
-              <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white font-bold text-[11px] animate-pulse">
-                ⚡ Sự cố SOS
-              </span>
-            )}
             <span className="px-3 py-1 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 font-semibold text-xs shadow-2xs">
               Giai đoạn: <strong className="text-orange-600">{isRejected ? 'Đã từ chối' : `${currentStageIdx + 1}/5`}</strong>
             </span>
@@ -458,8 +450,9 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
                         {ticket.subCategoryName}
                       </span>
                     )}
-                    <p className="text-white text-xs font-medium mt-1 drop-shadow-xs">
-                      📍 {ticket.address} ({ticket.ward}, {ticket.province})
+                    <p className="text-white text-xs font-medium mt-1 drop-shadow-xs flex items-center gap-1.5">
+                      <MapPinIcon className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                      <span>{ticket.address} ({ticket.ward}, {ticket.province})</span>
                     </p>
                   </div>
                   <button
@@ -471,10 +464,14 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
                 </div>
               </div>
             ) : (
-              <div className="h-36 bg-slate-100 border-b border-gray-100 flex flex-col items-center justify-center text-gray-400 text-xs gap-1">
-                <span>📷 Hồ sơ không có ảnh hiện trường đính kèm</span>
-                <span className="text-[11px] text-gray-400">
-                  📍 {ticket.address} ({ticket.ward}, {ticket.province})
+              <div className="h-36 bg-slate-100 border-b border-gray-100 flex flex-col items-center justify-center text-gray-400 text-xs gap-1.5">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <CameraIcon className="w-4 h-4 text-gray-400" />
+                  <span>Hồ sơ không có ảnh hiện trường đính kèm</span>
+                </div>
+                <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                  <MapPinIcon className="w-3 h-3 text-gray-400" />
+                  <span>{ticket.address} ({ticket.ward}, {ticket.province})</span>
                 </span>
               </div>
             )}
@@ -604,7 +601,7 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
                           </div>
 
                           <div className="text-[10px] text-gray-500 truncate mt-1">
-                            {s.assigneeName ? `👤 ${s.assigneeName}` : 'Chưa phân công'}
+                            {s.assigneeName ? `Cán bộ: ${s.assigneeName}` : 'Chưa phân công'}
                           </div>
                         </div>
 
@@ -822,7 +819,8 @@ export default function AdminTicketDetail({ ticket: initialTicket, ticketId: pro
               rel="noreferrer"
               className="mt-2 w-full py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
             >
-              🗺️ Mở vị trí trên Google Maps ↗
+              <MapPinIcon className="w-3.5 h-3.5" />
+              <span>Mở vị trí trên Google Maps ↗</span>
             </a>
           </div>
 

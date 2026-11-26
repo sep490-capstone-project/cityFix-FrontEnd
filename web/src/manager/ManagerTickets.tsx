@@ -191,10 +191,10 @@ export default function ManagerTickets({ currentUser, onOpenTicket }: Props) {
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
+            <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
               Quản lý Hồ sơ Tiếp nhận thuộc Đơn vị
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            </h1>
+            <p className="text-[12px] text-gray-500 mt-1">
               Tra cứu, theo dõi tiến độ các bước xử lý và điều chỉnh hạn chót cho hồ sơ sự cố
             </p>
           </div>

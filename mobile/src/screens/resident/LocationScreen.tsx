@@ -146,13 +146,17 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
       if (results && results.length > 0) {
         const addr = results[0];
 
-        // 1. Số nhà & Tên đường
+        // 1. Số nhà & Tên đường (Tránh ghép trùng nếu addr.name đã chứa sẵn addr.street)
         const namePart = addr.name && addr.name !== addr.street ? addr.name.trim() : '';
         const streetPart = (addr.street || '').trim();
-        const streetFull = [namePart, streetPart]
-          .filter(Boolean)
-          .filter((v, i, a) => a.indexOf(v) === i)
-          .join(' ');
+        const streetFull =
+          namePart && streetPart
+            ? namePart.toLowerCase().includes(streetPart.toLowerCase())
+              ? namePart
+              : streetPart.toLowerCase().includes(namePart.toLowerCase())
+              ? streetPart
+              : `${namePart} ${streetPart}`
+            : namePart || streetPart;
 
         // 2. Tìm Phường / Xã và Quận / Huyện từ district và subregion
         const adminCandidates = [addr.district, addr.subregion].filter(Boolean).map((s) => s!.trim());
@@ -604,7 +608,7 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
                       {draft.address}
                     </Text>
                     <Text style={styles.coordSubText}>
-                      {draft.location.lat.toFixed(5)}, {draft.location.lng.toFixed(5)} · Có thể chạm bản đồ để đổi
+                      Chạm bản đồ hoặc kéo ghim để đổi vị trí
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -947,7 +951,6 @@ export default function LocationScreen({ navigate, goBack, draft, setDraft }: Pr
                       <Ionicons name="location-outline" size={22} color="#f97316" />
                       <View>
                         <Text style={styles.modalTitle}>Nhập địa chỉ thủ công</Text>
-                        <Text style={styles.modalSubtitle}>Định dạng chuẩn hóa P. và TP.</Text>
                       </View>
                     </View>
                     <TouchableOpacity

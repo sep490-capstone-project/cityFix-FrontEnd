@@ -12,6 +12,7 @@ import {
   CheckIcon,
   InfoIcon,
 } from '../components/Icons';
+import PageHeader, { PageBackButton, PAGE_CONTAINER } from '../components/PageHeader';
 import {
   getTicketSteps,
   getTicketById,
@@ -243,7 +244,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
 
   // Xóa mềm bước (DELETE /api/v1/ticket-steps/{id})
   async function handleDeleteStep(stepId: string) {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bước xử lý này? Backend sẽ tự động tính lại hạn chót tổng của Ticket.')) return;
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bước xử lý này? Hệ thống sẽ tự động tính lại hạn chót tổng của hồ sơ.')) return;
     try {
       await deleteTicketStep(stepId);
       setFeedback({ type: 'success', message: 'Đã xóa bước xử lý thành công.' });
@@ -261,56 +262,47 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
   const pi = priorityInfo(ticket?.priority || ticket?.subCategories?.[0]?.priority);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5 screen-enter">
+    <div className={PAGE_CONTAINER}>
       {/* Thanh Điều hướng & Thao tác Đầu trang */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
+      <PageHeader
+        leading={<PageBackButton onClick={onBack} label="Quay lại" />}
+        title={`Hồ sơ #${actualTicketId ? actualTicketId.slice(0, 8) : '—'}`}
+        badges={
+          <>
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1.5 ${si.cls}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
+              {si.label}
+            </span>
+            {ticket?.isLifeThreatening &&
+              !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                (ticket?.status || '').toUpperCase()
+              ) && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-red-300 bg-red-50 text-red-700 inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                  Ưu tiên khẩn cấp
+                </span>
+              )}
+          </>
+        }
+        subtitle={
+          <span className="inline-flex items-center gap-1 truncate max-w-xl">
+            <MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket?.address || 'Chưa xác định địa chỉ hiện trường'}
+          </span>
+        }
+        actions={
           <button
-            onClick={onBack}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-[13px] font-semibold transition-all shadow-xs cursor-pointer active:scale-95"
+            onClick={loadData}
+            disabled={loading}
+            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
+            title="Làm mới dữ liệu"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
+            <svg className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-orange-500' : 'text-gray-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            Quay lại
+            {loading ? 'Đang tải...' : 'Làm mới'}
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-[18px] font-black text-gray-900 tracking-tight">
-                Hồ sơ #{actualTicketId ? actualTicketId.slice(0, 8) : '—'}
-              </h2>
-              <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1.5 ${si.cls}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
-                {si.label}
-              </span>
-              {ticket?.isLifeThreatening &&
-                !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
-                  (ticket?.status || '').toUpperCase()
-                ) && (
-                  <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border border-red-300 bg-red-50 text-red-700 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-                    Ưu tiên khẩn cấp
-                  </span>
-                )}
-            </div>
-            <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
-              <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket?.address || 'Chưa xác định địa chỉ hiện trường'}</span>
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="p-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-2 text-xs font-semibold"
-          title="Làm mới dữ liệu"
-        >
-          <svg className={`w-4 h-4 ${loading ? 'animate-spin text-orange-500' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-          </svg>
-          {loading ? 'Đang tải...' : 'Làm mới'}
-        </button>
-      </div>
+        }
+      />
 
       {/* Thông báo Feedback */}
       {feedback && (
@@ -366,7 +358,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                       <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Bấm để phóng to</span>
                     </div>
                     <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                      📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
+                      {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} tệp
                     </span>
                   </div>
 
@@ -605,7 +597,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                     <div className="flex items-center gap-2">
                       <span className="text-base flex-shrink-0"><ClockIcon className="w-4 h-4 text-blue-600" /></span>
                       <p>
-                        <span className="font-bold text-blue-950">Hồ sơ đang xử lý (IN_PROGRESS):</span> Quản lý có quyền gia hạn và điều chỉnh hạn chót (deadline) cho từng bước xử lý theo tiến độ thực tế.
+                        <span className="font-bold text-blue-950">Hồ sơ đang xử lý:</span> Quản lý có quyền gia hạn và điều chỉnh hạn chót cho từng bước xử lý theo tiến độ thực tế.
                       </p>
                     </div>
                   </div>
@@ -613,7 +605,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                   <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[11px] text-gray-500 flex items-center gap-2">
                     <InfoIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                     <span>
-                      Hạn chót bước chỉ được phép điều chỉnh khi hồ sơ ở trạng thái <strong className="text-gray-700">Đang xử lý (IN_PROGRESS)</strong>. (Trạng thái hiện tại: <strong className="text-orange-600">{ticket?.status || 'N/A'}</strong>)
+                      Hạn chót bước chỉ được phép điều chỉnh khi hồ sơ ở trạng thái <strong className="text-gray-700">Đang xử lý</strong>.
                     </span>
                   </div>
                 )}
@@ -802,7 +794,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                                   });
                                 }}
                                 className="text-[10px] font-bold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs"
-                                title="Gia hạn hoặc cập nhật deadline cho bước này (PUT /api/v1/manager/tickets/steps/{stepId}/deadline)"
+                                title="Gia hạn hoặc cập nhật hạn chót cho bước xử lý này"
                               >
                                 <ClockIcon className="w-3 h-3 text-blue-700" />
                                 <span>Đổi hạn</span>
@@ -943,10 +935,10 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
                 </div>
               )}
 
-              {/* Ghi chú kết quả xử lý (resolutionNote) */}
+              {/* Ghi chú kết quả xử lý */}
               <div>
                 <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
-                  Ghi chú kết quả xử lý (resolutionNote)
+                  Ghi chú kết quả xử lý
                 </label>
                 <textarea
                   rows={3}
@@ -1019,7 +1011,7 @@ export default function ManagerTicketDetail({ ticket: initialTicket, ticketId: p
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Trạng thái hồ sơ:</span>
-                <span className="font-bold text-blue-700">Đang xử lý (IN_PROGRESS)</span>
+                <span className="font-bold text-blue-700">Đang xử lý</span>
               </div>
             </div>
 

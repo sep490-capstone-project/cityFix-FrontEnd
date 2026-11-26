@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
-import { ReportedTicket } from '../../api';
+import { ReportedTicket, getMediaThumbnailUrl } from '../../api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -222,8 +222,8 @@ export default function SOSTicketDetailModal({
               ]}
             >
               {isSos
-                ? '⚠️ Cảnh báo an toàn cho cư dân trong cùng khu vực Phường. Vui lòng giữ khoảng cách an toàn và chú ý khi di chuyển qua tuyến đường này.'
-                : '🛠️ Sự cố đang được đơn vị chuyên môn triển khai xử lý tại hiện trường. Bạn có thể bấm "Đồng tình" bên dưới nếu cũng gặp sự cố này.'}
+                ? 'Cảnh báo an toàn cho cư dân trong cùng khu vực Phường. Vui lòng giữ khoảng cách an toàn và chú ý khi di chuyển qua tuyến đường này.'
+                : 'Sự cố đang được đơn vị chuyên môn triển khai xử lý tại hiện trường. Bạn có thể bấm "Đồng tình" bên dưới nếu cũng gặp sự cố này.'}
             </Text>
           </View>
 
@@ -352,9 +352,9 @@ export default function SOSTicketDetailModal({
               <TouchableOpacity
                 style={styles.mainImgWrap}
                 activeOpacity={0.9}
-                onPress={() => setZoomImgUrl(activeImage)}
+                onPress={() => setZoomImgUrl(getMediaThumbnailUrl(activeImage))}
               >
-                <Image source={{ uri: activeImage }} style={styles.mainImg} resizeMode="cover" />
+                <Image source={{ uri: getMediaThumbnailUrl(activeImage) }} style={styles.mainImg} resizeMode="cover" />
                 <View style={styles.zoomHintBadge}>
                   <Ionicons name="scan-outline" size={14} color="#ffffff" />
                   <Text style={styles.zoomHintText}>Bấm để phóng to</Text>
@@ -374,7 +374,7 @@ export default function SOSTicketDetailModal({
                       onPress={() => setSelectedImgIdx(idx)}
                       activeOpacity={0.8}
                     >
-                      <Image source={{ uri: img }} style={styles.thumbImg} resizeMode="cover" />
+                      <Image source={{ uri: getMediaThumbnailUrl(img) }} style={styles.thumbImg} resizeMode="cover" />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>

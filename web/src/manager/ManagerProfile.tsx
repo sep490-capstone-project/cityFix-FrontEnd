@@ -158,7 +158,48 @@ export default function ManagerProfile({ currentUser, onProfileUpdated }: Props)
   ];
 
   return (
-    <div className="p-6 max-w-2xl mx-auto screen-enter space-y-5">
+    <div className={PAGE_CONTAINER}>
+      {/* Tiêu đề trang: Avatar + Họ tên + Vai trò */}
+      <PageHeader
+        leading={
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-[#b94b00] flex items-center justify-center flex-shrink-0 shadow-sm">
+            <span className="font-display text-white font-extrabold text-lg">
+              {displayFullName.charAt(0).toUpperCase()}
+            </span>
+          </div>
+        }
+        title={displayFullName}
+        badges={
+          <>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+              {displayRole}
+            </span>
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                displayStatus === 'ACTIVE'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-gray-100 text-gray-500 border-gray-300'
+              }`}
+            >
+              {displayStatus === 'ACTIVE' ? 'Hoạt động' : 'Vô hiệu'}
+            </span>
+            {loading && <span className="text-[11px] text-gray-400 italic">Đang tải...</span>}
+          </>
+        }
+        subtitle="Hồ sơ cá nhân • Xem và cập nhật thông tin tài khoản công vụ của bạn"
+        actions={
+          !isEditing && (
+            <button
+              onClick={startEdit}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100 hover:border-orange-300 text-[12px] font-bold transition-all active:scale-[0.97] cursor-pointer"
+            >
+              <EditIcon />
+              <span>Chỉnh sửa</span>
+            </button>
+          )
+        }
+      />
+
       {/* Feedback banner */}
       {feedback && (
         <div
@@ -177,59 +218,6 @@ export default function ManagerProfile({ currentUser, onProfileUpdated }: Props)
           </button>
         </div>
       )}
-
-      {/* Avatar header */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden card-depth">
-        <div className="relative h-[72px] overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-orange-50 to-white" />
-          <div
-            className="absolute inset-0 opacity-[0.04]"
-            style={{
-              background:
-                'repeating-linear-gradient(-45deg,#f97316,#f97316 8px,transparent 8px,transparent 16px)',
-            }}
-          />
-        </div>
-        <div className="px-6 pb-5 -mt-8 relative flex items-end justify-between gap-4">
-          <div className="flex items-end gap-4 min-w-0">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-[#b94b00] flex items-center justify-center flex-shrink-0 glow-orange border-4 border-white shadow-md">
-              <span className="font-display text-white font-extrabold text-2xl">
-                {displayFullName.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <div className="pb-1 min-w-0">
-              <h2 className="font-display text-[22px] font-extrabold text-gray-900 uppercase tracking-tight leading-tight truncate">
-                {displayFullName}
-              </h2>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg border border-orange-500/20 bg-orange-500/10 text-orange-600 uppercase tracking-wide">
-                  {displayRole}
-                </span>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-                    displayStatus === 'ACTIVE'
-                      ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
-                      : 'border-gray-300 bg-gray-100 text-gray-500'
-                  }`}
-                >
-                  {displayStatus === 'ACTIVE' ? 'Hoạt động' : 'Vô hiệu'}
-                </span>
-                {loading && <span className="text-[11px] text-gray-400 italic">Đang tải...</span>}
-              </div>
-            </div>
-          </div>
-
-          {!isEditing && (
-            <button
-              onClick={startEdit}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100 hover:border-orange-300 text-[12px] font-bold transition-all active:scale-[0.97] cursor-pointer"
-            >
-              <EditIcon />
-              <span>Chỉnh sửa</span>
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Edit Form OR View Details */}
       {isEditing ? (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { BuildingIcon, MapPinIcon, TagIcon, TrashIcon, AlertTriangleIcon, InfoIcon, CheckIcon, XIcon, PaperclipIcon, SlidersIcon, ClockIcon } from '../components/Icons';
+import { BuildingIcon, MapPinIcon, TagIcon, TrashIcon, AlertTriangleIcon, InfoIcon, CheckIcon, XIcon, PaperclipIcon, SlidersIcon, ClockIcon, CameraIcon, ZoomInIcon } from '../components/Icons';
+import PageHeader, { PAGE_CONTAINER } from '../components/PageHeader';
 import {
   priorityInfo,
 } from '../data';
@@ -974,32 +975,25 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   });
 
   return (
-    <div className="p-6 space-y-5">
+    <div className={PAGE_CONTAINER}>
       {/* Header Trang */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="font-display text-[22px] font-extrabold text-gray-900 tracking-tight">
-            ĐIỀU PHỐI & PHÂN CÔNG HỒ SƠ
-          </h2>
-          <p className="text-[13px] text-gray-500 mt-1">
-            Xem xét phản ánh từ người dân, kiểm tra tính xác thực và điều động cơ quan chức năng tiếp nhận xử lý
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-orange-50/80 border border-orange-200 px-4 py-2 rounded-2xl">
-            <span className="text-[12px] font-bold text-orange-800">Chờ điều phối:</span>
-            <span className="font-display text-[20px] font-black text-orange-600">
-              {tickets.length}
-            </span>
-          </div>
+      <PageHeader
+        title="Điều phối & Phân công Hồ sơ"
+        subtitle="Xem xét phản ánh từ người dân, kiểm tra tính xác thực và điều động cơ quan chức năng tiếp nhận xử lý"
+        badges={
+          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+            Chờ điều phối: {tickets.length}
+          </span>
+        }
+        actions={
           <button
             onClick={fetchInitialData}
             disabled={loading}
-            className="p-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-all shadow-xs cursor-pointer active:scale-95"
+            className="px-3 py-1.5 text-[12px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1.5 cursor-pointer"
             title="Làm mới danh sách"
           >
             <svg
-              className={`w-4 h-4 ${loading ? 'animate-spin text-orange-500' : ''}`}
+              className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-orange-500' : 'text-gray-500'}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -1007,9 +1001,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             >
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
+            <span>{loading ? 'Đang tải...' : 'Làm mới'}</span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Thông báo kết quả routing thành công */}
       {routingResult && (
@@ -1134,7 +1129,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             className="w-10 h-10 rounded-lg border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-gray-300 text-xs flex-shrink-0"
                             title="Chưa có ảnh đính kèm"
                           >
-                            🖼️
+                            <CameraIcon className="w-4 h-4 text-gray-300" />
                           </div>
                         )}
                         <div className="flex items-center gap-1.5">
@@ -1237,13 +1232,13 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white flex-shrink-0">
               <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-orange-600 text-white flex items-center justify-center font-black text-lg shadow-sm shadow-orange-500/20 flex-shrink-0">
-                  ⚡
+                <div className="w-10 h-10 rounded-2xl bg-orange-600 text-white flex items-center justify-center shadow-sm shadow-orange-500/20 flex-shrink-0">
+                  <SlidersIcon className="w-5 h-5 text-white" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono-cf text-[14px] font-extrabold text-gray-900">
-                      Hồ sơ 
+                      Hồ sơ #{ (selectedTicket.id || selectedTicket.ticketId || '').slice(0, 8) }
                     </span>
                     <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-lg border text-amber-700 bg-amber-50 border-amber-200">
                       Chờ Quản lý điều phối
@@ -1360,11 +1355,13 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   alt="Hiện trường sự cố do người dân báo cáo"
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 />
-                                <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                                  🔍 Bấm để phóng to ảnh hiện trường
+                                <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1.5">
+                                  <ZoomInIcon className="w-4 h-4 text-white" />
+                                  <span>Bấm để phóng to ảnh hiện trường</span>
                                 </div>
-                                <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                  📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
+                                <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                  <CameraIcon className="w-3 h-3 text-white" />
+                                  <span>{Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} tệp</span>
                                 </span>
                               </div>
 
@@ -1544,7 +1541,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                         if (subs.length <= 1) return null;
                         return (
                           <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-3 flex items-start gap-2.5 text-blue-900 shadow-2xs">
-                            <span className="text-base flex-shrink-0">ℹ️</span>
+                            <InfoIcon className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                             <div className="text-[11px] leading-relaxed">
                               <span className="font-bold">Hồ sơ phản ánh gồm {subs.length} loại sự cố đồng thời:</span>{' '}
                               <span className="font-semibold text-blue-800">{subs.map((s) => s.name).join(', ')}</span>.
@@ -1875,7 +1872,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       <option value="">-- Chọn bước có sẵn trong quy trình (*) --</option>
                                       {allSystemSteps.map((s) => (
                                         <option key={s.stepId} value={s.stepId}>
-                                          {s.stepName} (⏱️ {s.duration || 24} giờ)
+                                          {s.stepName} ({s.duration || 24} giờ)
                                         </option>
                                       ))}
                                     </select>

@@ -33,11 +33,11 @@ const ROLE_MAP: Record<string, { label: string; cls: string }> = {
     cls: 'text-orange-700 bg-orange-50 border-orange-200',
   },
   MANAGER: {
-    label: 'Quản lý',
+    label: 'Quản lý điều phối',
     cls: 'text-orange-700 bg-orange-50 border-orange-200',
   },
   STAFF: {
-    label: 'Nhân viên',
+    label: 'Cán bộ kỹ thuật',
     cls: 'text-slate-700 bg-slate-100 border-slate-200',
   },
   RESIDENT: {
@@ -523,11 +523,11 @@ export default function UserManagement() {
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
+            <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
               Quản lý Tài khoản & Phân quyền Hệ thống
-            </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Quản lý danh sách Quản trị viên, Quản lý cơ quan, Cán bộ kỹ thuật và Cư dân trên hệ thống CityFix
+            </h1>
+            <p className="text-[12px] text-gray-500 mt-1">
+              Quản lý danh sách Quản trị viên, Quản lý điều phối, Cán bộ kỹ thuật và Cư dân trên hệ thống CityFix
             </p>
           </div>
 
@@ -594,8 +594,8 @@ export default function UserManagement() {
           >
             <option value="all">Tất cả vai trò</option>
             <option value="ADMIN">Quản trị viên</option>
-            <option value="MANAGER">Quản lý cơ quan</option>
-            <option value="STAFF">Nhân viên kỹ thuật</option>
+            <option value="MANAGER">Quản lý điều phối</option>
+            <option value="STAFF">Cán bộ kỹ thuật</option>
             <option value="RESIDENT">Cư dân</option>
           </select>
 
@@ -619,8 +619,8 @@ export default function UserManagement() {
             className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 font-semibold outline-none cursor-pointer focus:border-orange-500"
           >
             <option value="all">Tất cả trạng thái</option>
-            <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
-            <option value="BLOCKED">Bị khóa (BLOCKED)</option>
+            <option value="ACTIVE">Đang hoạt động</option>
+            <option value="BLOCKED">Bị khóa</option>
           </select>
 
           {hasFilter && (
@@ -1011,7 +1011,7 @@ export default function UserManagement() {
 
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                      Phường / Xã (sau sáp nhập)
+                      Phường / Xã
                     </label>
                     <select
                       value={form.ward}
@@ -1079,8 +1079,8 @@ export default function UserManagement() {
                       className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-xs text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
                     >
                       <option value="ADMIN">Quản trị viên</option>
-                      <option value="MANAGER">Quản lý (Manager)</option>
-                      <option value="STAFF">Nhân viên</option>
+                      <option value="MANAGER">Quản lý điều phối</option>
+                      <option value="STAFF">Cán bộ kỹ thuật</option>
                       <option value="RESIDENT">Cư dân</option>
                     </select>
                   </div>
@@ -1094,8 +1094,8 @@ export default function UserManagement() {
                       onChange={(e) => setField('status', e.target.value)}
                       className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-xs text-gray-900 outline-none focus:border-orange-500 cursor-pointer"
                     >
-                      <option value="ACTIVE">Hoạt động (ACTIVE)</option>
-                      <option value="BLOCKED">Bị khóa (BLOCKED)</option>
+                      <option value="ACTIVE">Hoạt động</option>
+                      <option value="BLOCKED">Bị khóa</option>
                     </select>
                   </div>
 
@@ -1108,14 +1108,9 @@ export default function UserManagement() {
                           </label>
                         </div>
                         <div className="flex items-center gap-2">
-                          {form.departmentIds.length === 1 && (
+                          {form.departmentIds.length > 0 && (
                             <span className="text-[10px] text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md font-semibold">
-                              1 cơ quan (gửi departmentId)
-                            </span>
-                          )}
-                          {form.departmentIds.length > 1 && (
-                            <span className="text-[10px] text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md font-semibold">
-                              {form.departmentIds.length} cơ quan (gửi departmentIds)
+                              {form.departmentIds.length} cơ quan
                             </span>
                           )}
                           {form.departmentIds.length > 0 && (
@@ -1131,15 +1126,7 @@ export default function UserManagement() {
                       </div>
 
                       <p className="text-[11px] text-gray-500">
-                        Vai trò Quản lý có thể phụ trách một hoặc nhiều cơ quan. Nếu chọn 1 cơ quan hệ thống gửi{' '}
-                        <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">
-                          departmentId
-                        </code>
-                        , nếu chọn nhiều cơ quan hệ thống gửi{' '}
-                        <code className="text-orange-600 bg-orange-100/50 px-1 py-0.5 rounded font-mono text-[10px]">
-                          departmentIds
-                        </code>
-                        .
+                        Vai trò Quản lý có thể được phân công phụ trách một hoặc nhiều cơ quan chuyên môn trên hệ thống.
                       </p>
 
                       {/* Filter search */}

@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { uploadReportImage } from '../../api';
+import {
+  uploadReportImage,
+  MAX_UPLOAD_FILES,
+  MAX_IMAGE_SIZE_BYTES,
+  MAX_VIDEO_SIZE_BYTES,
+  isAllowedMediaType,
+  isVideoUrl,
+  getMediaThumbnailUrl,
+} from '../../api';
 
 import {
   View,
@@ -18,7 +26,35 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft } from '../../types';
 
-const MAX_IMAGES = 5;
+const MAX_IMAGES = MAX_UPLOAD_FILES; // Đồng bộ Backend: tối đa 7 tệp (Ảnh <= 10MB, Video <= 50MB)
+
+function validateAssetBeforeUpload(
+  asset: ImagePicker.ImagePickerAsset
+): string | null {
+  const isVideoAsset =
+    asset.type === 'video' ||
+    isAllowedMediaType(asset.mimeType, asset.fileName || asset.uri).isVideo;
+  const mediaCheck = isAllowedMediaType(
+    asset.mimeType || (asset.type === 'video' ? 'video/mp4' : asset.type === 'image' ? 'image/jpeg' : undefined),
+    asset.fileName || asset.uri
+  );
+
+  if (!mediaCheck.allowed) {
+    return `Định dạng tệp "${asset.fileName || 'đã chọn'}" không hợp lệ. Hệ thống chỉ chấp nhận Ảnh hoặc Video.`;
+  }
+
+  const sizeBytes = asset.fileSize;
+  if (typeof sizeBytes === 'number' && sizeBytes > 0) {
+    if (isVideoAsset && sizeBytes > MAX_VIDEO_SIZE_BYTES) {
+      return `Video "${asset.fileName || 'đã chọn'}" có dung lượng ${(sizeBytes / (1024 * 1024)).toFixed(1)}MB, vượt quá giới hạn tối đa 50MB/video.`;
+    }
+    if (!isVideoAsset && sizeBytes > MAX_IMAGE_SIZE_BYTES) {
+      return `Ảnh "${asset.fileName || 'đã chọn'}" có dung lượng ${(sizeBytes / (1024 * 1024)).toFixed(1)}MB, vượt quá giới hạn tối đa 10MB/ảnh.`;
+    }
+  }
+
+  return null;
+}
 
 interface Props {
   navigate: (s: string) => void;
@@ -85,6 +121,12 @@ export default function PhotoScreen({
       if (!photo?.uri) {
         Alert.alert(
           'Không thể chụp ảnh', 'Không lấy được hình ảnh từ máy ảnh. Vui lòng thử lại.');
+        return;
+      }
+
+      const preCheckError = validateAssetBeforeUpload(photo);
+      if (preCheckError) {
+        Alert.alert('Tệp không hợp lệ', preCheckError);
         return;
       }
 
@@ -193,9 +235,27 @@ console.log('================================');
         return;
       }
 
+      const remainingSlots = MAX_IMAGES - images.length;
+      if (result.assets.length > remainingSlots) {
+        Alert.alert(
+          'Vượt quá số lượng tệp tối đa',
+          `Chỉ được phép tải lên tối đa ${MAX_IMAGES} tệp cho một lần báo cáo (còn thêm được ${remainingSlots} tệp).`
+        );
+      }
+
+      const assetsToUpload = result.assets.slice(0, remainingSlots);
+
+      for (const asset of assetsToUpload) {
+        const preCheckError = validateAssetBeforeUpload(asset);
+        if (preCheckError) {
+          Alert.alert('Tệp không hợp lệ', preCheckError);
+          return;
+        }
+      }
+
       console.log(
-        '🖼️ Selected images:',
-        result.assets.length
+        '🖼️ Selected media files:',
+        assetsToUpload.length
       );
 
       // 3. Lấy access token
@@ -210,10 +270,10 @@ console.log('================================');
         return;
       }
 
-      // 4. Upload từng ảnh
+      // 4. Upload từng tệp
       const uploadedUrls: string[] = [];
 
-      for (const asset of result.assets) {
+      for (const asset of assetsToUpload) {
         if (!asset.uri) {
           continue;
         }
@@ -367,33 +427,98 @@ console.log('================================');
                   Đã chọn ({images.length}/
                   {MAX_IMAGES})
                 </Text>
+                <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '600' }}>
+                  Ảnh ≤ 10MB · Video ≤ 50MB
+                </Text>
               </View>
 
               <View style={styles.imageGrid}>
-                {images.map((url) => (
-                  <View
-                    key={url}
-                    style={styles.gridImageItem}
-                  >
-                    <Image
-                      source={{ uri: url }}
-                      style={styles.thumbImage}
-                    />
-
-                    <TouchableOpacity
-                      style={styles.removeBadge}
-                      onPress={() =>
-                        removeImage(url)
-                      }
+                {images.map((url, idx) => {
+                  const isVid = isVideoUrl(url);
+                  const thumbUri = getMediaThumbnailUrl(url);
+                  return (
+                    <View
+                      key={`${url}-${idx}`}
+                      style={[
+                        styles.gridImageItem,
+                        isVid && { backgroundColor: '#0f172a' },
+                      ]}
                     >
-                      <Ionicons
-                        name="close-circle"
-                        size={20}
-                        color="#ef4444"
+                      <Image
+                        source={{ uri: thumbUri }}
+                        style={styles.thumbImage}
+                        resizeMode="cover"
                       />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+
+                      {isVid ? (
+                        <>
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              backgroundColor: 'rgba(15, 23, 42, 0.28)',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                            pointerEvents="none"
+                          >
+                            <Ionicons
+                              name="play-circle"
+                              size={30}
+                              color="#ffffff"
+                            />
+                          </View>
+                          <View
+                            style={{
+                              position: 'absolute',
+                              bottom: 4,
+                              left: 4,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 3,
+                              backgroundColor: 'rgba(15, 23, 42, 0.78)',
+                              paddingHorizontal: 5,
+                              paddingVertical: 2,
+                              borderRadius: 5,
+                            }}
+                            pointerEvents="none"
+                          >
+                            <Ionicons
+                              name="videocam"
+                              size={10}
+                              color="#ffffff"
+                            />
+                            <Text
+                              style={{
+                                fontSize: 8,
+                                fontWeight: '800',
+                                color: '#ffffff',
+                              }}
+                            >
+                              VIDEO
+                            </Text>
+                          </View>
+                        </>
+                      ) : null}
+
+                      <TouchableOpacity
+                        style={styles.removeBadge}
+                        onPress={() =>
+                          removeImage(url)
+                        }
+                      >
+                        <Ionicons
+                          name="close-circle"
+                          size={20}
+                          color="#ef4444"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
 
                 {/* Add more */}
                 {canAddMore ? (
@@ -461,7 +586,7 @@ console.log('================================');
               <Text
                 style={styles.uploadSub}
               >
-                Tối đa {MAX_IMAGES} ảnh · Nhiều
+                Tối đa {MAX_IMAGES} tệp (Ảnh ≤ 10MB, Video ≤ 50MB) · Nhiều
                 góc chụp giúp AI phân tích chính
                 xác
               </Text>
@@ -494,9 +619,7 @@ console.log('================================');
                 {/* Thư viện */}
                 <TouchableOpacity
                   style={styles.galleryBtn}
-                  onPress={() =>
-                    setShowGalleryModal(true)
-                  }
+                  onPress={handlePickFromGallery}
                   disabled={uploading}
                   activeOpacity={0.8}
                 >
@@ -592,7 +715,7 @@ console.log('================================');
               style={styles.modalDescription}
             >
               Còn có thể thêm tối đa{' '}
-              {MAX_IMAGES - images.length} file.
+              {MAX_IMAGES - images.length} tệp (Ảnh ≤ 10MB, Video ≤ 50MB).
             </Text>
 
             {/* Camera button */}
@@ -683,11 +806,11 @@ console.log('================================');
         >
           <Text style={styles.nextBtnText}>
             PHÂN TÍCH BẰNG AI ({images.length}{' '}
-            ẢNH)
+            TỆP)
           </Text>
 
           <Ionicons
-            name="sparkles"
+            name="arrow-forward"
             size={18}
             color="#ffffff"
           />
