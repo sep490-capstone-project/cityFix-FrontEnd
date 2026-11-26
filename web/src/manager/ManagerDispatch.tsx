@@ -29,13 +29,19 @@ import {
   AdminSubCategory,
   ApiError,
   getManagerDepartments,
-  getStepsBySubCategory,
+  getStepsBySubCategories,
+  getDepartmentStaffsBySubCategories,
   DepartmentStaffUser,
   ReviewStepItemPayload,
   ReviewTicketPayload,
   getAdminSteps,
   AdminStep,
 } from '../services';
+import {
+  formatProvinceName,
+  formatWardName,
+  detectProvinceFromCoords,
+} from '../constants/vnProvinces2025';
 
 interface Props {
   onOpenTicket: (ticketOrId: any) => void;
@@ -53,8 +59,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   const [, setSubCategories] = useState<AdminSubCategory[]>([]);
   const [allSystemSteps, setAllSystemSteps] = useState<AdminStep[]>([]);
 
-  // Danh sách cán bộ lấy từ GET /api/v1/manager/tickets/departments
+  // Danh sách cán bộ lấy từ GET /api/v1/manager/tickets/departments (fallback chung)
   const [staffList, setStaffList] = useState<DepartmentStaffUser[]>([]);
+  // Danh sách cán bộ theo từng subCategoryId từ GET /api/v1/departments/staffs/by-sub-category
+  const [staffBySubCategoryMap, setStaffBySubCategoryMap] = useState<Record<string, DepartmentStaffUser[]>>({});
 
   // 2. Vé đang chọn thao tác
   const [selectedTicket, setSelectedTicket] = useState<ManagerTicketItem | null>(null);
@@ -260,16 +268,18 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
       // Fallback cho Manager nếu /api/v1/admin/steps bị 403 Forbidden:
       if (stepsList.length === 0 && subCatsRes.status === 'fulfilled' && Array.isArray(subCatsRes.value)) {
         try {
-          const sampleSubCats = subCatsRes.value.slice(0, 15);
-          const stepsPromises = sampleSubCats.map((sc: any) =>
-            getStepsBySubCategory(sc.subCategoryId).catch(() => [])
-          );
-          const subCatStepsResults = await Promise.all(stepsPromises);
-          const stepMap = new Map();
-          subCatStepsResults.flat().forEach((st: any) => {
-            if (st && st.stepId) stepMap.set(st.stepId, st);
-          });
-          stepsList = Array.from(stepMap.values());
+          const sampleSubCatIds = subCatsRes.value
+            .map((sc: any) => sc?.subCategoryId)
+            .filter(Boolean)
+            .slice(0, 20);
+          if (sampleSubCatIds.length > 0) {
+            const fetchedSteps = await getStepsBySubCategories(sampleSubCatIds).catch(() => []);
+            const stepMap = new Map();
+            fetchedSteps.forEach((st: any) => {
+              if (st && st.stepId) stepMap.set(st.stepId, st);
+            });
+            stepsList = Array.from(stepMap.values());
+          }
         } catch (e) {
           console.warn('Lỗi tải fallback steps cho Manager:', e);
         }
@@ -289,26 +299,130 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     fetchInitialData();
   }, []);
 
-  // Helper tải các bước của SubCategory cho modal Review
+  // Helper trích xuất Province (TP. ...) và Ward (P. ...) từ thông tin vé để gọi API /api/v1/departments/staffs/by-sub-category
+  function extractTicketProvinceAndWard(t?: ManagerTicketItem | null): { province: string; ward: string } {
+    if (!t) return { province: 'TP. Hồ Chí Minh', ward: '' };
+
+    let rawProv = (t.province || '').trim();
+    let rawWard = (t.ward || '').trim();
+    const addr = (t.address || '').trim();
+
+    if (addr) {
+      const parts = addr.split(',').map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (!rawWard && /^(P\.|Phường|phường|PHƯỜNG|Xã|xã|XÃ|Đặc khu)\s+/i.test(part)) {
+          rawWard = part;
+        }
+        if (!rawProv && /^(TP\.|TP\s|Thành phố|thành phố|Tỉnh|tỉnh)\s*/i.test(part)) {
+          rawProv = part;
+        }
+      }
+      // Nếu phần cuối cùng của địa chỉ là tên thành phố (ví dụ "Hồ Chí Minh", "Hà Nội", "Đà Nẵng")
+      if (!rawProv && parts.length > 0) {
+        const lastPart = parts[parts.length - 1];
+        const formattedLast = formatProvinceName(lastPart);
+        if (formattedLast.startsWith('TP.') || formattedLast.startsWith('Tỉnh')) {
+          rawProv = formattedLast;
+        }
+      }
+      // Nếu phần kế cuối là tên phường
+      if (!rawWard && parts.length >= 2) {
+        const secondLast = parts[parts.length - 2];
+        if (/^(P\.|Phường|phường|Xã|xã)\s*/i.test(secondLast)) {
+          rawWard = secondLast;
+        }
+      }
+    }
+
+    const province = rawProv
+      ? formatProvinceName(rawProv)
+      : detectProvinceFromCoords(t.latitude, t.longitude, { city: addr });
+    const ward = rawWard ? formatWardName(rawWard) : '';
+
+    return {
+      province: province || 'TP. Hồ Chí Minh',
+      ward,
+    };
+  }
+
+  // Helper tải danh sách cán bộ phụ trách cho danh sách subCategoryIds theo địa bàn của vé
+  // Dùng API mới: GET /api/v1/departments/staffs/by-sub-category?subCategoryIds=...&province=...&ward=...
+  async function fetchStaffMapForSubCategories(
+    subCatIds: string[],
+    ticket?: ManagerTicketItem | null
+  ): Promise<Record<string, DepartmentStaffUser[]>> {
+    const validIds = Array.from(new Set(subCatIds.filter((id) => isValidUuid(id))));
+    if (validIds.length === 0) return {};
+
+    const { province, ward } = extractTicketProvinceAndWard(ticket || selectedTicket);
+
+    // Gọi gộp toàn bộ danh sách subCategoryIds (1 lần) hoặc theo từng subCategoryId để map chính xác
+    const fetchForIds = async (idsToQuery: string[]) => {
+      let list = await getDepartmentStaffsBySubCategories({
+        subCategoryIds: idsToQuery,
+        province,
+        ward,
+      });
+      // Nếu lọc kèm ward chưa có kết quả, thử lọc chỉ với province
+      if (list.length === 0 && ward) {
+        list = await getDepartmentStaffsBySubCategories({
+          subCategoryIds: idsToQuery,
+          province,
+        });
+      }
+      // Nếu vẫn chưa có kết quả, thử gọi không truyền province/ward (vì province, ward đều tùy chọn)
+      if (list.length === 0) {
+        list = await getDepartmentStaffsBySubCategories({
+          subCategoryIds: idsToQuery,
+        });
+      }
+      return list;
+    };
+
+    const [combinedList, ...perSubLists] = await Promise.all([
+      fetchForIds(validIds),
+      ...(validIds.length > 1 ? validIds.map((id) => fetchForIds([id])) : []),
+    ]);
+
+    const nextMap: Record<string, DepartmentStaffUser[]> = {
+      __ALL__: combinedList,
+    };
+
+    if (validIds.length === 1) {
+      nextMap[validIds[0]] = combinedList;
+    } else {
+      validIds.forEach((subCatId, idx) => {
+        const singleList = perSubLists[idx] || [];
+        nextMap[subCatId] = singleList.length > 0 ? singleList : combinedList;
+      });
+    }
+
+    setStaffBySubCategoryMap((prev) => ({ ...prev, ...nextMap }));
+    return nextMap;
+  }
+
+  // Helper tải các bước của danh sách SubCategoryIds cho modal Review
+  // Dùng: GET /api/v1/admin/steps/sub-category?subCategoryIds=...
+  // Và:   GET /api/v1/departments/staffs/by-sub-category?subCategoryId=...&province=...&ward=...
   async function loadStepsForReview(subCatIdsInput: string[] | string, ticket?: ManagerTicketItem) {
     const ids = Array.isArray(subCatIdsInput) ? subCatIdsInput : [subCatIdsInput];
-    const validIds = ids.filter((id) => isValidUuid(id));
+    const validIds = Array.from(new Set(ids.filter((id) => isValidUuid(id))));
+    const activeTicket = ticket || selectedTicket;
     setLoadingSteps(true);
     try {
-      let stepsFromApi: any[] = [];
-      if (validIds.length > 0) {
-        const stepResults = await Promise.all(
-          validIds.map((id) => getStepsBySubCategory(id).catch(() => []))
-        );
-        stepsFromApi = stepResults.flat();
-      }
+      const [stepsFromApiRaw, fetchedStaffMap] = await Promise.all([
+        validIds.length > 0 ? getStepsBySubCategories(validIds) : Promise.resolve([]),
+        validIds.length > 0 ? fetchStaffMapForSubCategories(validIds, activeTicket) : Promise.resolve({} as Record<string, DepartmentStaffUser[]>),
+      ]);
 
-      // Nếu API subcategory chưa có bước, thử lọc từ allSystemSteps theo subCategoryIds
+      let stepsFromApi: any[] = Array.isArray(stepsFromApiRaw) ? stepsFromApiRaw : [];
+
+      // Nếu API chưa trả về bước, thử lọc từ allSystemSteps theo subCategoryIds
       if (stepsFromApi.length === 0 && validIds.length > 0) {
         stepsFromApi = allSystemSteps.filter((st) => validIds.includes(st.subCategoryId || ''));
       }
 
-      // Đồng bộ các bước này vào allSystemSteps để Manager có thể chọn khi thêm bước
+      // Đồng bộ các bước này vào allSystemSteps
       if (stepsFromApi && stepsFromApi.length > 0) {
         setAllSystemSteps((prev) => {
           const map = new Map(prev.map((s) => [s.stepId, s]));
@@ -318,25 +432,44 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           return Array.from(map.values());
         });
 
-        const formatted: ReviewStepItemPayload[] = stepsFromApi.map((st, idx) => ({
-          stepId: st.stepId,
-          stepName: st.stepName,
-          duration: st.duration || 24,
-          assigneeId: staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
-          dependsOnStepIds: idx === 0 ? [] : (stepsFromApi[idx - 1]?.stepId ? [stepsFromApi[idx - 1].stepId] : []),
-          deadline: null,
-          notes: st.description || st.stepName || '',
-        }));
+        const formatted: ReviewStepItemPayload[] = stepsFromApi.map((st, idx) => {
+          const stepSubCatId = st.subCategoryId || validIds[0] || '';
+          const candidateStaffs =
+            (stepSubCatId && fetchedStaffMap[stepSubCatId]?.length > 0
+              ? fetchedStaffMap[stepSubCatId]
+              : null) ||
+            (validIds[0] && fetchedStaffMap[validIds[0]]?.length > 0
+              ? fetchedStaffMap[validIds[0]]
+              : null) ||
+            staffList;
+
+          const defaultAssigneeId =
+            candidateStaffs.length > 0
+              ? candidateStaffs[idx % candidateStaffs.length]?.userId || ''
+              : '';
+
+          return {
+            stepId: st.stepId,
+            subCategoryId: stepSubCatId,
+            stepName: st.stepName,
+            duration: st.duration || 24,
+            assigneeId: defaultAssigneeId,
+            dependsOnStepIds: idx === 0 ? [] : (stepsFromApi[idx - 1]?.stepId ? [stepsFromApi[idx - 1].stepId] : []),
+            deadline: null,
+            notes: st.description || st.stepName || '',
+          };
+        });
         setReviewSteps(formatted);
-      } else if (ticket?.steps && ticket.steps.length > 0) {
+      } else if (activeTicket?.steps && activeTicket.steps.length > 0) {
         // Đồng bộ các bước từ vé vào allSystemSteps
         setAllSystemSteps((prev) => {
           const map = new Map(prev.map((s) => [s.stepId, s]));
-          ticket.steps?.forEach((s: any) => {
+          activeTicket.steps?.forEach((s: any) => {
             const sId = s.stepId || s.id;
             if (sId && isValidUuid(sId)) {
               map.set(sId, {
                 stepId: sId,
+                subCategoryId: s.subCategoryId || validIds[0] || '',
                 stepName: s.stepName,
                 duration: s.duration || 24,
                 description: s.notes || s.stepName,
@@ -346,20 +479,31 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
           return Array.from(map.values());
         });
 
-        const tSteps = ticket.steps;
+        const tSteps = activeTicket.steps;
         setReviewSteps(
-          tSteps.map((st, idx) => ({
-            stepId: st.stepId || st.id || '',
-            stepName: st.stepName || `Bước ${idx + 1}`,
-            duration: 24,
-            assigneeId: st.assigneeId || staffList[idx % Math.max(staffList.length, 1)]?.userId || '',
-            dependsOnStepIds: st.dependsOnStepIds || (idx === 0 ? [] : [tSteps[idx - 1]?.stepId || tSteps[idx - 1]?.id || '']),
-            deadline: st.deadline || null,
-            notes: st.notes || '',
-          }))
+          tSteps.map((st, idx) => {
+            const stepSubCatId = (st as any).subCategoryId || validIds[0] || '';
+            const candidateStaffs =
+              (stepSubCatId && fetchedStaffMap[stepSubCatId]?.length > 0
+                ? fetchedStaffMap[stepSubCatId]
+                : null) || staffList;
+            return {
+              stepId: st.stepId || st.id || '',
+              subCategoryId: stepSubCatId,
+              stepName: st.stepName || `Bước ${idx + 1}`,
+              duration: (st as any).duration || 24,
+              assigneeId:
+                st.assigneeId ||
+                (candidateStaffs.length > 0
+                  ? candidateStaffs[idx % candidateStaffs.length]?.userId || ''
+                  : ''),
+              dependsOnStepIds: st.dependsOnStepIds || (idx === 0 ? [] : [tSteps[idx - 1]?.stepId || tSteps[idx - 1]?.id || '']),
+              deadline: st.deadline || null,
+              notes: st.notes || '',
+            };
+          })
         );
       } else {
-        // Để trống để yêu cầu chọn bước hợp lệ thay vì gửi mã giả gây 400 Bad Request
         setReviewSteps([]);
       }
     } catch (err) {
@@ -375,25 +519,14 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
     if (selectedSubCategoryIds.includes(subCatId)) return;
     const newSelected = [...selectedSubCategoryIds, subCatId];
     setSelectedSubCategoryIds(newSelected);
-    try {
-      const extraSteps = await getStepsBySubCategory(subCatId);
-      if (extraSteps && extraSteps.length > 0) {
-        setAllSystemSteps((prev) => {
-          const map = new Map(prev.map((s) => [s.stepId, s]));
-          extraSteps.forEach((s) => {
-            if (s && s.stepId) map.set(s.stepId, s);
-          });
-          return Array.from(map.values());
-        });
-      }
-    } catch (e) {
-      console.warn('Lỗi khi nạp bước cho danh mục phối hợp:', e);
-    }
+    await loadStepsForReview(newSelected, selectedTicket || undefined);
   }
 
   // Xóa bớt một SubCategory phối hợp
-  function handleRemoveSupportingSubCategory(subCatId: string) {
-    setSelectedSubCategoryIds((prev) => prev.filter((id) => id !== subCatId));
+  async function handleRemoveSupportingSubCategory(subCatId: string) {
+    const nextSelected = selectedSubCategoryIds.filter((id) => id !== subCatId);
+    setSelectedSubCategoryIds(nextSelected);
+    await loadStepsForReview(nextSelected, selectedTicket || undefined);
   }
 
   // Trích xuất danh sách subCategories đầy đủ (gồm ID và Name) từ vé
@@ -631,38 +764,6 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
   }
 
   // Thao tác chỉnh sửa các bước trong Modal Duyệt vé
-  function handleAddReviewStep() {
-    const nextIndex = reviewSteps.length + 1;
-    // Tìm bước trong allSystemSteps chưa được sử dụng
-    const usedStepIds = new Set(reviewSteps.map((s) => s.stepId).filter(Boolean));
-    const unusedCandidate = allSystemSteps.find((s) => s.stepId && !usedStepIds.has(s.stepId));
-    const candidate = unusedCandidate || allSystemSteps[nextIndex % Math.max(allSystemSteps.length, 1)] || allSystemSteps[0];
-
-    // Mặc định phụ thuộc vào bước liền trước (nếu có)
-    const prevStep = reviewSteps.length > 0 ? reviewSteps[reviewSteps.length - 1] : null;
-    const defaultDependsOn = prevStep && prevStep.stepId && isValidUuid(prevStep.stepId) ? [prevStep.stepId] : [];
-
-    if (!candidate || !candidate.stepId) {
-      setFeedback({
-        type: 'error',
-        message: 'Lưu ý: Không tìm thấy thêm bước mẫu trong quy trình của danh mục này. Vui lòng chọn bước có sẵn hoặc liên hệ Admin cấu hình thêm.',
-      });
-    }
-
-    setReviewSteps((prev) => [
-      ...prev,
-      {
-        stepId: candidate?.stepId || '',
-        stepName: candidate?.stepName || `Bước ${nextIndex}: Xử lý sự cố`,
-        duration: candidate?.duration || 24,
-        assigneeId: staffList[0]?.userId || '',
-        dependsOnStepIds: defaultDependsOn,
-        deadline: null,
-        notes: candidate?.description || candidate?.stepName || '',
-      },
-    ]);
-  }
-
   function handleRemoveReviewStep(index: number) {
     const removedStep = reviewSteps[index];
     setReviewSteps((prev) => {
@@ -1731,17 +1832,9 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                             Quy trình xử lý & Phân công cán bộ ({reviewSteps.length} bước)
                           </h4>
                           <p className="text-[11px] text-slate-500 mt-0.5">
-                            Mỗi bước có thể bắt đầu ngay từ đầu (chạy song song) hoặc chờ bước khác làm xong trước.
+                            Các bước quy trình được tải tự động theo danh mục sự cố của hồ sơ. Mỗi bước có thể chạy song song hoặc chờ bước khác làm xong trước.
                           </p>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={handleAddReviewStep}
-                          className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl text-[11px] font-extrabold text-orange-700 transition-all cursor-pointer flex items-center gap-1 shadow-2xs active:scale-95"
-                        >
-                          <span>+</span> Thêm bước mới
-                        </button>
                       </div>
 
                       {/* SƠ ĐỒ TRỰC QUAN TÓM TẮT TRÌNH TỰ CÁC BƯỚC */}
@@ -1795,12 +1888,42 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                       {/* Danh sách các bước */}
                       {reviewSteps.length === 0 ? (
                         <div className="py-8 text-center text-slate-400 text-xs border border-dashed border-slate-300 rounded-xl bg-slate-50/50">
-                          Chưa có bước xử lý nào. Hãy bấm "+ Thêm bước mới" để thiết lập quy trình.
+                          {loadingSteps
+                            ? 'Đang tải quy trình các bước theo danh mục sự cố...'
+                            : 'Danh mục sự cố này hiện chưa có bước xử lý mẫu nào trên hệ thống.'}
                         </div>
                       ) : (
                         <div className="space-y-3">
                           {reviewSteps.map((st, idx) => {
                             const isParallel = !st.dependsOnStepIds || st.dependsOnStepIds.length === 0;
+                            const stepSubCatId = st.subCategoryId || selectedSubCategoryIds[0] || '';
+                            const stepSubCatObj = allSubCategories.find(
+                              (s) => s.subCategoryId === stepSubCatId || (s as any).id === stepSubCatId
+                            );
+                            // Chỉ hiển thị các bước mẫu thuộc các subCategoryIds của vé
+                            const availableStepsForSelect = allSystemSteps.filter((s) =>
+                              selectedSubCategoryIds.length > 0 && s.subCategoryId
+                                ? selectedSubCategoryIds.includes(s.subCategoryId)
+                                : true
+                            );
+                            // Lấy danh sách cán bộ từ API GET /api/v1/departments/staffs/by-sub-category?subCategoryIds=...
+                            const staffsForCurrentStep: DepartmentStaffUser[] =
+                              (stepSubCatId &&
+                              Array.isArray(staffBySubCategoryMap[stepSubCatId]) &&
+                              staffBySubCategoryMap[stepSubCatId].length > 0
+                                ? staffBySubCategoryMap[stepSubCatId]
+                                : null) ||
+                              (Array.isArray(staffBySubCategoryMap.__ALL__) &&
+                              staffBySubCategoryMap.__ALL__.length > 0
+                                ? staffBySubCategoryMap.__ALL__
+                                : null) ||
+                              (selectedSubCategoryIds[0] &&
+                              Array.isArray(staffBySubCategoryMap[selectedSubCategoryIds[0]]) &&
+                              staffBySubCategoryMap[selectedSubCategoryIds[0]].length > 0
+                                ? staffBySubCategoryMap[selectedSubCategoryIds[0]]
+                                : null) ||
+                              staffList;
+
                             return (
                               <div
                                 key={st.stepId || idx}
@@ -1808,7 +1931,7 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                               >
                                 {/* Header của từng bước */}
                                 <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <span className="w-5 h-5 rounded-full bg-orange-600 text-white font-mono text-[11px] font-bold flex items-center justify-center shadow-xs">
                                       {idx + 1}
                                     </span>
@@ -1818,6 +1941,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                     {st.duration && (
                                       <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
                                         Dự kiến: {st.duration} giờ
+                                      </span>
+                                    )}
+                                    {stepSubCatObj?.name && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">
+                                        {stepSubCatObj.name}
                                       </span>
                                     )}
                                   </div>
@@ -1836,90 +1964,63 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                   </div>
                                 </div>
 
-                                {/* Lựa chọn bước quy trình mẫu & Tự điền / Tùy chỉnh tên bước */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {/* Cột 1: Mẫu bước quy trình chuẩn */}
-                                  <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                                        Chọn mẫu quy trình chuẩn <span className="text-red-500">*</span>
-                                      </label>
-                                      {!isValidUuid(st.stepId) && (
-                                        <span className="text-[10px] font-bold text-red-600">
-                                          <span className="inline-flex items-center gap-1"><AlertTriangleIcon className="w-3 h-3 text-red-600" /> Cần chọn bước</span>
-                                        </span>
-                                      )}
-                                    </div>
-                                    <select
-                                      value={st.stepId || ''}
-                                      onChange={(e) => {
-                                        const chosen = allSystemSteps.find((s) => s.stepId === e.target.value);
-                                        if (chosen) {
-                                          handleReviewStepFieldChange(idx, 'stepId', chosen.stepId);
-                                          handleReviewStepFieldChange(idx, 'stepName', chosen.stepName);
-                                          handleReviewStepFieldChange(idx, 'duration', chosen.duration || 24);
-                                          handleReviewStepFieldChange(idx, 'notes', chosen.description || chosen.stepName);
-                                        } else {
-                                          handleReviewStepFieldChange(idx, 'stepId', e.target.value);
-                                        }
-                                      }}
-                                      className={`w-full bg-white border rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none transition-colors cursor-pointer ${
-                                        !isValidUuid(st.stepId)
-                                          ? 'border-red-400 bg-red-50/20 focus:border-red-500 ring-1 ring-red-200'
-                                          : 'border-slate-300 focus:border-orange-500'
-                                      }`}
-                                    >
-                                      <option value="">-- Chọn bước có sẵn trong quy trình (*) --</option>
-                                      {allSystemSteps.map((s) => (
-                                        <option key={s.stepId} value={s.stepId}>
-                                          {s.stepName} ({s.duration || 24} giờ)
-                                        </option>
-                                      ))}
-                                    </select>
-                                    {allSystemSteps.length === 0 && (
-                                      <p className="text-[10px] text-amber-600 mt-1">
-                                        <span className="inline-flex items-center gap-1"><InfoIcon className="w-3.5 h-3.5 text-amber-600" /> Chưa có bước mẫu được tải từ hệ thống.</span>
-                                      </p>
+                                {/* Lựa chọn bước quy trình mẫu */}
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+                                      Chọn mẫu quy trình chuẩn <span className="text-red-500">*</span>
+                                    </label>
+                                    {!isValidUuid(st.stepId) && (
+                                      <span className="text-[10px] font-bold text-red-600">
+                                        <span className="inline-flex items-center gap-1"><AlertTriangleIcon className="w-3 h-3 text-red-600" /> Cần chọn bước</span>
+                                      </span>
                                     )}
                                   </div>
-
-                                  {/* Cột 2: Tên bước xử lý thực tế */}
-                                  <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                                        Tên bước thực tế (Tự sửa nếu cần) <span className="text-red-500">*</span>
-                                      </label>
-                                      <span className="text-[10px] text-slate-400">Có thể chỉnh sửa</span>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      value={st.stepName || ''}
-                                      onChange={(e) => {
-                                        const newName = e.target.value;
-                                        setReviewSteps((prev) =>
-                                          prev.map((s, i) => {
-                                            if (i !== idx) return s;
-                                            const shouldSyncNotes = !s.notes || s.notes === s.stepName;
-                                            return {
-                                              ...s,
-                                              stepName: newName,
-                                              name: newName,
-                                              title: newName,
-                                              stepTitle: newName,
-                                              ...(shouldSyncNotes ? { notes: newName } : {}),
-                                            };
-                                          })
-                                        );
-                                      }}
-                                      placeholder="Nhập tên bước xử lý thực tế..."
-                                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
-                                    />
-                                  </div>
+                                  <select
+                                    value={st.stepId || ''}
+                                    onChange={(e) => {
+                                      const chosen = allSystemSteps.find((s) => s.stepId === e.target.value);
+                                      if (chosen) {
+                                        const nextSubCatId = chosen.subCategoryId || st.subCategoryId || selectedSubCategoryIds[0] || '';
+                                        const nextStaffs =
+                                          (nextSubCatId && staffBySubCategoryMap[nextSubCatId]?.length > 0
+                                            ? staffBySubCategoryMap[nextSubCatId]
+                                            : null) || staffsForCurrentStep;
+                                        handleReviewStepFieldChange(idx, 'stepId', chosen.stepId);
+                                        handleReviewStepFieldChange(idx, 'subCategoryId', nextSubCatId);
+                                        handleReviewStepFieldChange(idx, 'stepName', chosen.stepName);
+                                        handleReviewStepFieldChange(idx, 'duration', chosen.duration || 24);
+                                        handleReviewStepFieldChange(idx, 'notes', chosen.description || chosen.stepName);
+                                        if (nextStaffs.length > 0 && !nextStaffs.some((u) => u.userId === st.assigneeId)) {
+                                          handleReviewStepFieldChange(idx, 'assigneeId', nextStaffs[0]?.userId || '');
+                                        }
+                                      } else {
+                                        handleReviewStepFieldChange(idx, 'stepId', e.target.value);
+                                      }
+                                    }}
+                                    className={`w-full bg-white border rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-800 outline-none transition-colors cursor-pointer ${
+                                      !isValidUuid(st.stepId)
+                                        ? 'border-red-400 bg-red-50/20 focus:border-red-500 ring-1 ring-red-200'
+                                        : 'border-slate-300 focus:border-orange-500'
+                                    }`}
+                                  >
+                                    <option value="">-- Chọn bước có sẵn trong quy trình (*) --</option>
+                                    {(availableStepsForSelect.length > 0 ? availableStepsForSelect : allSystemSteps).map((s) => (
+                                      <option key={s.stepId} value={s.stepId}>
+                                        {s.stepName} ({s.duration || 24} giờ)
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {allSystemSteps.length === 0 && (
+                                    <p className="text-[10px] text-amber-600 mt-1">
+                                      <span className="inline-flex items-center gap-1"><InfoIcon className="w-3.5 h-3.5 text-amber-600" /> Chưa có bước mẫu được tải từ hệ thống.</span>
+                                    </p>
+                                  )}
                                 </div>
 
                                 {/* Form cấu hình bước: Cán bộ phụ trách & Nội dung chi tiết */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {/* Dropdown chọn cán bộ phụ trách */}
+                                  {/* Dropdown chọn cán bộ phụ trách từ GET /api/v1/departments/staffs/by-sub-category */}
                                   <div>
                                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide block mb-1">
                                       Cán bộ phụ trách thực hiện <span className="text-red-500">*</span>
@@ -1932,9 +2033,11 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                                       className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-[11px] font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-200"
                                     >
                                       <option value="">-- Chọn cán bộ tiếp nhận công việc --</option>
-                                      {staffList.map((staff) => (
+                                      {staffsForCurrentStep.map((staff) => (
                                         <option key={staff.userId || staff.email} value={staff.userId}>
-                                          {staff.fullName} ({staff.departmentName || 'Cán bộ'})
+                                          {staff.fullName}
+                                          {staff.phoneNumber ? ` - ${staff.phoneNumber}` : ''}
+                                          {staff.departmentName ? ` (${staff.departmentName})` : ' (Cán bộ)'}
                                         </option>
                                       ))}
                                     </select>
@@ -2475,9 +2578,10 @@ export default function ManagerDispatch({ onOpenTicket }: Props) {
                   <button
                     type="button"
                     onClick={() => setModalView('reject')}
-                    className="px-4 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 text-[12px] font-bold transition-all cursor-pointer shadow-2xs hover:border-red-300"
+                    className="px-4 py-2 rounded-xl border border-red-200 bg-white hover:bg-red-50 text-red-600 text-[12px] font-bold transition-all cursor-pointer shadow-2xs hover:border-red-300 inline-flex items-center gap-1.5"
                   >
-                    <span className="inline-flex items-center gap-1"><XIcon className="w-3.5 h-3.5" /> Từ chối</span> tiếp nhận
+                    <XIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Từ chối tiếp nhận</span>
                   </button>
 
                   <div className="flex items-center gap-2.5">

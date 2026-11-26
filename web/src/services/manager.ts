@@ -122,6 +122,7 @@ export interface ManagerTicketRoute {
 
 export interface ReviewStepItemPayload {
   stepId: string;
+  subCategoryId?: string;
   assigneeId: string;
   dependsOnStepIds?: string[];
   notes?: string;
@@ -156,9 +157,11 @@ export interface DepartmentStaffUser {
   address?: string;
   roleId?: string;
   role?: string;
+  roleName?: string;
   departmentId?: string;
   departmentName?: string;
   status?: string;
+  joinedAt?: string;
   createdAt?: string;
 }
 
@@ -743,11 +746,11 @@ export async function removeDepartmentUser(
 }
 
 /**
- * 13. Lấy danh sách quy trình các bước của subcategory
- * GET /api/v1/admin/steps/sub-category/{subCategoryId}
+ * 13. Lấy danh sách quy trình các bước theo danh sách subCategoryIds
+ * GET /api/v1/admin/steps/sub-category?subCategoryIds=...
  */
-export async function getStepsBySubCategory(
-  subCategoryId: string
+export async function getStepsBySubCategories(
+  subCategoryIds: string[]
 ): Promise<Array<{
   stepId: string;
   subCategoryId: string;
@@ -755,9 +758,15 @@ export async function getStepsBySubCategory(
   description: string;
   duration: number;
 }>> {
+  const validIds = Array.from(new Set((subCategoryIds || []).map((id) => (id || '').trim()).filter(Boolean)));
+  if (validIds.length === 0) return [];
+
+  const query = new URLSearchParams();
+  validIds.forEach((id) => query.append('subCategoryIds', id));
+
   try {
     const res = await managerRequest<any>(
-      `/api/v1/admin/steps/sub-category/${encodeURIComponent(subCategoryId)}`,
+      `/api/v1/admin/steps/sub-category?${query.toString()}`,
       {
         method: 'GET',
       }
@@ -769,7 +778,7 @@ export async function getStepsBySubCategory(
   } catch (err: any) {
     try {
       const fallback = await managerRequest<any>(
-        `/api/v1/steps/sub-category/${encodeURIComponent(subCategoryId)}`,
+        `/api/v1/steps/sub-category?${query.toString()}`,
         { method: 'GET' }
       );
       if (Array.isArray(fallback)) return fallback;
@@ -778,9 +787,103 @@ export async function getStepsBySubCategory(
     } catch {
       // Ignored
     }
-    console.warn(`Lỗi khi tải quy trình của subcategory ${subCategoryId}:`, err);
+    console.warn(`Lỗi khi tải quy trình của danh sách subCategoryIds (${validIds.join(', ')}):`, err);
     return [];
   }
+}
+
+export async function getStepsBySubCategory(
+  subCategoryId: string
+): Promise<Array<{
+  stepId: string;
+  subCategoryId: string;
+  stepName: string;
+  description: string;
+  duration: number;
+}>> {
+  if (!subCategoryId || !subCategoryId.trim()) return [];
+  return getStepsBySubCategories([subCategoryId.trim()]);
+}
+
+/**
+ * 13.1. Lấy danh sách nhân viên (STAFF) của phòng ban theo danh sách SubCategory và địa bàn (tùy chọn)
+ * GET /api/v1/departments/staffs/by-sub-category?subCategoryIds=...&province=...&ward=...
+ */
+export async function getDepartmentStaffsBySubCategories(params: {
+  subCategoryIds?: string[];
+  subCategoryId?: string;
+  province?: string;
+  ward?: string;
+}): Promise<DepartmentStaffUser[]> {
+  const rawIds: string[] = [];
+  if (Array.isArray(params.subCategoryIds)) {
+    rawIds.push(...params.subCategoryIds);
+  }
+  if (params.subCategoryId) {
+    rawIds.push(params.subCategoryId);
+  }
+  const validIds = Array.from(new Set(rawIds.map((id) => (id || '').trim()).filter(Boolean)));
+  if (validIds.length === 0) return [];
+
+  const query = new URLSearchParams();
+  validIds.forEach((id) => query.append('subCategoryIds', id));
+
+  if (params.province && params.province.trim()) {
+    query.append('province', params.province.trim());
+  }
+  if (params.ward && params.ward.trim()) {
+    query.append('ward', params.ward.trim());
+  }
+
+  try {
+    const res = await managerRequest<any>(
+      `/api/v1/departments/staffs/by-sub-category?${query.toString()}`,
+      {
+        method: 'GET',
+      }
+    );
+    const rawList: any[] = Array.isArray(res)
+      ? res
+      : Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res?.content)
+          ? res.content
+          : [];
+
+    return rawList
+      .map((u: any) => ({
+        userId: u.userId || u.id,
+        id: u.userId || u.id,
+        email: u.email || '',
+        fullName: u.fullName || u.name || 'Cán bộ',
+        phoneNumber: u.phoneNumber || u.phone || '',
+        role: u.roleName || u.role || 'STAFF',
+        roleName: u.roleName || u.role || 'STAFF',
+        status: u.status || 'ACTIVE',
+        joinedAt: u.joinedAt,
+        departmentId: u.departmentId,
+        departmentName: u.departmentName,
+      }))
+      .filter((u) => Boolean(u.userId));
+  } catch (err) {
+    console.warn(
+      `Lỗi khi tải danh sách cán bộ theo subCategoryIds=[${validIds.join(', ')}], province=${params.province || ''}, ward=${params.ward || ''}:`,
+      err
+    );
+    return [];
+  }
+}
+
+export async function getDepartmentStaffsBySubCategory(params: {
+  subCategoryId: string;
+  province?: string;
+  ward?: string;
+}): Promise<DepartmentStaffUser[]> {
+  return getDepartmentStaffsBySubCategories({
+    subCategoryIds: [params.subCategoryId],
+    province: params.province,
+    ward: params.ward,
+  });
 }
 
 /**
