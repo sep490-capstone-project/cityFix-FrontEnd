@@ -27,6 +27,7 @@ import {
   ReportedTicket,
   mapBackendStatus,
   getUnreadNotificationCount,
+  getMediaThumbnailUrl,
 } from '../../api';
 import ResidentChatModal from './ResidentChatModal';
 import SOSTicketDetailModal from './SOSTicketDetailModal';
@@ -737,7 +738,6 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
                 <View style={styles.aiHeroCtaBtn}>
                   <Ionicons name="camera" size={14} color="#ffffff" />
                   <Text style={styles.aiHeroCtaText}>Báo cáo sự cố ngay</Text>
-                  <Ionicons name="arrow-forward" size={13} color="#ffffff" />
                 </View>
               </View>
 
@@ -762,7 +762,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
               <Text style={styles.statValue}>{totalCount}</Text>
               <Text style={styles.statLabel}>Hồ sơ tiếp nhận</Text>
               <Text style={styles.statSub}>
-                {receivedCount > 0 ? `${receivedCount} chờ xử lý` : 'Chạm để xem →'}
+                {receivedCount > 0 ? `${receivedCount} chờ xử lý` : 'Đã tiếp nhận'}
               </Text>
             </TouchableOpacity>
 
@@ -774,7 +774,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
               <Ionicons name="construct-outline" size={18} color="#f97316" />
               <Text style={styles.statValue}>{processingCount}</Text>
               <Text style={styles.statLabel}>Đang xử lý</Text>
-              <Text style={styles.statSub}>Chạm để xem →</Text>
+              <Text style={styles.statSub}>Tại hiện trường</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1000,7 +1000,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
                       color: selectedMapPin.isSos ? '#dc2626' : '#ea580c',
                     }}
                   >
-                    {selectedMapPin.isSos ? 'KHẨN CẤP (SOS)' : 'ĐANG XỬ LÝ (IN_PROGRESS)'}
+                    {selectedMapPin.isSos ? 'KHẨN CẤP (SOS)' : 'SỰ CỐ ĐANG XỬ LÝ'}
                   </Text>
                   {selectedMapPin.ticket.departmentName ? (
                     <Text style={{ fontSize: 10, color: '#64748b' }} numberOfLines={1}>
@@ -1034,7 +1034,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
             </TouchableOpacity>
           ) : (
             <Text style={styles.mapHintSubText}>
-              💡 Chạm vào các ghim đỏ (SOS) hoặc ghim cam (Đang xử lý) trên bản đồ để xem chi tiết hiện trường.
+              Chạm vào các ghim đỏ (SOS) hoặc ghim cam (Đang xử lý) trên bản đồ để xem chi tiết hiện trường.
             </Text>
           )}
         </View>
@@ -1055,11 +1055,12 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
               contentContainerStyle={styles.trendingScrollContent}
             >
               {communityTrendingList.map(({ ticket: t, isSos }) => {
-                const imgUri =
+                const rawImgUri =
                   t.imageUrls?.[0] ||
                   t.imageUrl ||
                   t.images?.[0] ||
                   'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=400&h=260&fit=crop&auto=format';
+                const imgUri = getMediaThumbnailUrl(rawImgUri);
                 const catName =
                   t.categories?.[0]?.categoryName ||
                   t.subCategories?.[0]?.name ||
@@ -1337,7 +1338,7 @@ export default function HomeScreen({ navigate, authUser, openTicket, isActive = 
                         <Text style={{ color: '#475569' }}>{item.action}</Text>
                       </Text>
                       <Text style={styles.feedLoc} numberOfLines={1}>
-                        📍 {item.loc}
+                        {item.loc}
                       </Text>
                     </View>
                     <View style={styles.feedRight}>

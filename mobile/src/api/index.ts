@@ -595,6 +595,59 @@ export async function verifyEmail(
    POST /api/v1/tickets/upload-image
    ========================================================= */
 
+export const MAX_UPLOAD_FILES = 7;
+export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+export const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+
+export function isAllowedMediaType(
+  mimeType?: string | null,
+  fileNameOrUri?: string | null
+): { allowed: boolean; isVideo: boolean } {
+  const mime = (mimeType || '').toLowerCase().trim();
+  const uri = (fileNameOrUri || '').toLowerCase().trim();
+
+  const isVideoMime = mime.startsWith('video/');
+  const isImageMime = mime.startsWith('image/');
+  const isVideoExt = /\.(mp4|mov|m4v|avi|mkv|webm|3gp)(\?.*)?$/i.test(uri);
+  const isImageExt = /\.(jpg|jpeg|png|webp|heic|heif|gif|bmp)(\?.*)?$/i.test(uri);
+
+  const isVideo = isVideoMime || (!isImageMime && isVideoExt);
+  const isImage = isImageMime || (!isVideoMime && isImageExt);
+
+  return {
+    allowed: isImage || isVideo,
+    isVideo,
+  };
+}
+
+/**
+ * Kiểm tra xem URL có phải là tệp Video (trên Cloudinary hoặc local URI) hay không.
+ */
+export function isVideoUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const clean = url.split('?')[0].toLowerCase();
+  return (
+    clean.includes('/video/upload/') ||
+    /\.(mp4|mov|webm|avi|3gp|mkv|m4v)$/i.test(clean)
+  );
+}
+
+/**
+ * Chuyển đổi URL video Cloudinary (/video/upload/.../*.mp4|.mov) sang URL ảnh frame thumbnail (.jpg)
+ * để component <Image> của React Native hiển thị được ảnh xem trước của video.
+ */
+export function getMediaThumbnailUrl(url?: string | null): string {
+  if (!url) return '';
+  if (!isVideoUrl(url)) return url;
+  if (url.includes('res.cloudinary.com') || url.includes('/video/upload/')) {
+    if (/\.(mp4|mov|webm|avi|3gp|mkv|m4v)(\?.*)?$/i.test(url)) {
+      return url.replace(/\.(mp4|mov|webm|avi|3gp|mkv|m4v)(\?.*)?$/i, '.jpg$2');
+    }
+    return `${url}.jpg`;
+  }
+  return url;
+}
+
 interface UploadImageItem {
   publicId: string;
   secureUrl: string;
@@ -700,6 +753,26 @@ export async function uploadReportImage(
 
     console.log('📄 File created:', file.name);
     console.log('📏 File size:', file.size);
+
+    const mediaCheck = isAllowedMediaType((file as any).type, file.name || uri);
+    if (!mediaCheck.allowed) {
+      throw new ApiError(
+        `Định dạng tệp không hợp lệ (${file.name || 'unknown'}). Hệ thống chỉ chấp nhận Ảnh hoặc Video.`
+      );
+    }
+
+    if (typeof file.size === 'number' && file.size > 0) {
+      if (mediaCheck.isVideo && file.size > MAX_VIDEO_SIZE_BYTES) {
+        throw new ApiError(
+          `Dung lượng video (${(file.size / (1024 * 1024)).toFixed(1)}MB) vượt quá giới hạn cho phép (Tối đa 50MB).`
+        );
+      }
+      if (!mediaCheck.isVideo && file.size > MAX_IMAGE_SIZE_BYTES) {
+        throw new ApiError(
+          `Dung lượng ảnh (${(file.size / (1024 * 1024)).toFixed(1)}MB) vượt quá giới hạn cho phép (Tối đa 10MB).`
+        );
+      }
+    }
 
     const formData = new FormData();
 

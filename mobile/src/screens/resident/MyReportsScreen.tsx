@@ -31,6 +31,7 @@ import {
   updateRating,
   getMyRating,
   TicketRating,
+  getMediaThumbnailUrl,
 } from '../../api';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -496,7 +497,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket, filter
               </View>
 
               <Text style={styles.serverErrorHint}>
-                💡 Vuốt màn hình từ trên xuống để thử tải lại tự động
+                Vuốt màn hình từ trên xuống để thử tải lại tự động
               </Text>
             </View>
           ) : null}
@@ -565,7 +566,7 @@ export default function MyReportsScreen({ navigate, authUser, openTicket, filter
                 />
 
                 {photoUrl ? (
-                  <Image source={{ uri: photoUrl }} style={styles.ticketThumbnail} />
+                  <Image source={{ uri: getMediaThumbnailUrl(photoUrl) }} style={styles.ticketThumbnail} />
                 ) : (
                   <View style={styles.categoryIconBox}>
                     <MaterialCommunityIcons name={iconName} size={20} color="#f97316" />
@@ -620,21 +621,8 @@ export default function MyReportsScreen({ navigate, authUser, openTicket, filter
         </View>
       </ScrollView>
 
-      {/* CTA FAB + Bottom Navigation */}
+      {/* Bottom Navigation */}
       <View style={styles.footerContainer}>
-        <View style={styles.paddingHorizontal}>
-          <TouchableOpacity
-            style={styles.fabBtn}
-            onPress={() => navigate('location')}
-            activeOpacity={0.85}
-          >
-            <View style={styles.fabIconBox}>
-              <Ionicons name="add" size={20} color="#ffffff" />
-            </View>
-            <Text style={styles.fabText}>TẠO BÁO CÁO MỚI</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Bottom Tab Bar */}
         <View style={styles.bottomTabBar}>
           {[

@@ -12,7 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { mapBackendStatus } from '../../api';
+import { mapBackendStatus, getMediaThumbnailUrl } from '../../api';
 import { ReportDraft, CATEGORIES } from '../../types';
 import { Haptics } from '../../utils/haptics';
 
@@ -138,23 +138,23 @@ export default function SuccessScreen({
     draft?.address ||
     'Chưa xác định vị trí';
 
-  // 7. Mức độ ưu tiên
+  // 7. Mức độ ưu tiên (Đồng bộ bảng màu tối giản: Slate & Cam/Đỏ cảnh báo)
   const severityRaw = (ticket?.priority || ticket?.severity || draft?.aiAnalysis?.priority || draft?.aiAnalysis?.severity || 'LOW').toUpperCase();
   const severityMap: Record<string, { label: string; color: string; bg: string }> = {
-    LOW: { label: 'Thấp', color: '#16a34a', bg: '#f0fdf4' },
-    MEDIUM: { label: 'Trung bình', color: '#2563eb', bg: '#eff6ff' },
-    HIGH: { label: 'Cao', color: '#dc2626', bg: '#fef2f2' },
-    CRITICAL: { label: 'Khẩn cấp', color: '#991b1b', bg: '#fee2e2' },
+    LOW: { label: 'Thấp', color: '#0f172a', bg: '#f8fafc' },
+    MEDIUM: { label: 'Trung bình', color: '#0f172a', bg: '#f8fafc' },
+    HIGH: { label: 'Cao', color: '#ea580c', bg: '#fff7ed' },
+    CRITICAL: { label: 'Khẩn cấp', color: '#dc2626', bg: '#fef2f2' },
   };
   const severityInfo = severityMap[severityRaw] || severityMap.LOW;
 
   // 8. Trạng thái hồ sơ báo cáo
   const stInfo = isUpvote
     ? {
-        statusText: 'ĐÃ ĐỒNG THUẬN',
-        color: '#2563eb',
-        bgColor: '#eff6ff',
-        borderColor: '#bfdbfe',
+        statusText: 'ĐÃ ĐỒNG TÌNH',
+        color: '#ea580c',
+        bgColor: '#fff7ed',
+        borderColor: '#fed7aa',
       }
     : mapBackendStatus(ticket?.status || 'INITIATED');
 
@@ -214,7 +214,6 @@ export default function SuccessScreen({
             <Animated.View
               style={[
                 styles.successIconBox,
-                isUpvote && { backgroundColor: '#2563eb', shadowColor: '#2563eb' },
                 {
                   opacity: iconOpacity,
                   transform: [{ scale: iconScale }],
@@ -287,7 +286,7 @@ export default function SuccessScreen({
               {/* 1. Loại sự cố */}
               <View style={styles.infoGridItem}>
                 <View style={styles.gridItemHeader}>
-                  <Ionicons name="construct-outline" size={14} color="#f97316" />
+                  <Ionicons name="construct-outline" size={14} color="#64748b" />
                   <Text style={styles.gridLabel}>Loại sự cố</Text>
                 </View>
                 <Text style={styles.gridValue} numberOfLines={1}>
@@ -299,15 +298,15 @@ export default function SuccessScreen({
                       <View
                         key={idx}
                         style={{
-                          backgroundColor: '#fff7ed',
+                          backgroundColor: '#f1f5f9',
                           borderWidth: 1,
-                          borderColor: '#fed7aa',
+                          borderColor: '#e2e8f0',
                           paddingHorizontal: 6,
                           paddingVertical: 2,
                           borderRadius: 6,
                         }}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#c2410c' }} numberOfLines={1}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#334155' }} numberOfLines={1}>
                           {name}
                         </Text>
                       </View>
@@ -323,7 +322,7 @@ export default function SuccessScreen({
               {/* 2. Cơ quan xử lý */}
               <View style={styles.infoGridItem}>
                 <View style={styles.gridItemHeader}>
-                  <Ionicons name="business-outline" size={14} color="#3b82f6" />
+                  <Ionicons name="business-outline" size={14} color="#64748b" />
                   <Text style={styles.gridLabel}>Cơ quan tiếp nhận</Text>
                 </View>
                 <Text style={styles.gridValue} numberOfLines={2}>
@@ -334,7 +333,7 @@ export default function SuccessScreen({
               {/* 3. Mức độ ưu tiên / nghiêm trọng */}
               <View style={styles.infoGridItem}>
                 <View style={styles.gridItemHeader}>
-                  <Ionicons name="alert-circle-outline" size={14} color={severityInfo.color} />
+                  <Ionicons name="alert-circle-outline" size={14} color="#64748b" />
                   <Text style={styles.gridLabel}>Mức độ</Text>
                 </View>
                 <Text style={[styles.gridValue, { color: severityInfo.color }]}>
@@ -345,7 +344,7 @@ export default function SuccessScreen({
               {/* 4. Thời hạn xử lý */}
               <View style={styles.infoGridItem}>
                 <View style={styles.gridItemHeader}>
-                  <Ionicons name="time-outline" size={14} color="#eab308" />
+                  <Ionicons name="time-outline" size={14} color="#64748b" />
                   <Text style={styles.gridLabel}>Thời hạn dự kiến</Text>
                 </View>
                 <Text style={styles.gridValue}>{deadlineText}</Text>
@@ -354,17 +353,18 @@ export default function SuccessScreen({
               {/* 5. Thời gian gửi */}
               <View style={styles.infoGridItem}>
                 <View style={styles.gridItemHeader}>
-                  <Ionicons name="calendar-outline" size={14} color="#8b5cf6" />
+                  <Ionicons name="calendar-outline" size={14} color="#64748b" />
                   <Text style={styles.gridLabel}>Thời gian gửi</Text>
                 </View>
-                <Text style={styles.gridValue}>{timeFormatted}</Text>
-                <Text style={styles.gridSubValue}>{dateFormatted}</Text>
+                <Text style={styles.gridValue}>
+                  {timeFormatted} · {dateFormatted}
+                </Text>
               </View>
 
               {/* 6. Phương thức vị trí */}
               <View style={styles.infoGridItem}>
                 <View style={styles.gridItemHeader}>
-                  <Ionicons name="navigate-outline" size={14} color="#10b981" />
+                  <Ionicons name="navigate-outline" size={14} color="#64748b" />
                   <Text style={styles.gridLabel}>Phương thức</Text>
                 </View>
                 <Text style={styles.gridValue}>
@@ -377,7 +377,7 @@ export default function SuccessScreen({
 
             {/* Address Row */}
             <View style={styles.addressBox}>
-              <Ionicons name="location" size={16} color="#ea580c" style={{ marginTop: 1 }} />
+              <Ionicons name="location-outline" size={16} color="#64748b" style={{ marginTop: 1 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.addressLabel}>Địa điểm phản ánh</Text>
                 <Text style={styles.addressValue} numberOfLines={2}>
@@ -389,15 +389,15 @@ export default function SuccessScreen({
             {/* Photo Thumbnail Row if available */}
             {photoUrl ? (
               <View style={styles.photoRow}>
-                <Image source={{ uri: photoUrl }} style={styles.photoThumb} />
+                <Image source={{ uri: getMediaThumbnailUrl(photoUrl) }} style={styles.photoThumb} />
                 <View style={{ flex: 1, justifyContent: 'center' }}>
-                  <Text style={styles.photoLabel}>Hình ảnh đính kèm</Text>
+                  <Text style={styles.photoLabel}>Tệp hiện trường đính kèm</Text>
                   <Text style={styles.photoSub} numberOfLines={1}>
-                    Đã upload thành công lên máy chủ
+                    Đã tải lên hệ thống thành công
                   </Text>
                 </View>
                 <View style={styles.photoCheckBadge}>
-                  <Ionicons name="checkmark" size={14} color="#16a34a" />
+                  <Ionicons name="checkmark" size={14} color="#ea580c" />
                 </View>
               </View>
             ) : null}
@@ -474,7 +474,8 @@ const styles = StyleSheet.create({
   heroBox: {
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
   successIconBox: {
     width: 68,
@@ -604,7 +605,7 @@ const styles = StyleSheet.create({
   },
   gridSubValue: {
     fontSize: 10,
-    color: '#ea580c',
+    color: '#64748b',
     fontWeight: '600',
   },
 
@@ -613,23 +614,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#fff7ed',
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: '#fed7aa',
+    borderColor: '#e2e8f0',
     borderRadius: 12,
     padding: 10,
   },
   addressLabel: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#c2410c',
+    fontWeight: '600',
+    color: '#64748b',
     marginBottom: 2,
   },
   addressValue: {
     fontSize: 12,
     color: '#0f172a',
-    fontWeight: '500',
-    lineHeight: 16,
+    fontWeight: '600',
+    lineHeight: 17,
   },
 
   /* Photo Thumbnail Row */
@@ -656,14 +657,16 @@ const styles = StyleSheet.create({
   },
   photoSub: {
     fontSize: 10,
-    color: '#16a34a',
+    color: '#64748b',
     marginTop: 2,
   },
   photoCheckBadge: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#dcfce7',
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
     alignItems: 'center',
     justifyContent: 'center',
   },

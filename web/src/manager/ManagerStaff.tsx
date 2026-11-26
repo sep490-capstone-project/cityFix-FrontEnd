@@ -429,8 +429,8 @@ export default function ManagerStaff({ currentUser }: Props) {
           headers: ['Chỉ tiêu', 'Số lượng', 'Ghi chú'],
           rows: [
             ['Tổng số Phòng ban / Đơn vị phụ trách', departments.length, 'Đơn vị chuyên môn được phân quyền'],
-            ['Cán bộ Quản lý (MANAGER)', allManagers.length, 'Phụ trách xét duyệt, phân công & nghiệm thu'],
-            ['Cán bộ Kỹ thuật Hiện trường (STAFF)', allFieldStaff.length, 'Trực tiếp xử lý các bước sự cố'],
+            ['Quản lý điều phối', allManagers.length, 'Phụ trách xét duyệt, phân công & nghiệm thu'],
+            ['Cán bộ kỹ thuật', allFieldStaff.length, 'Trực tiếp xử lý các bước sự cố'],
             ['Cán bộ đang sẵn sàng nhận việc', availableStaffCount, 'Không có việc tồn đọng'],
             ['Cán bộ đang thực hiện nhiệm vụ', busyStaffCount, 'Đang xử lý hồ sơ hiện trường'],
           ],
@@ -480,7 +480,7 @@ export default function ManagerStaff({ currentUser }: Props) {
             </span>
           </div>
           <p className="text-[12px] text-gray-500 mt-1">
-            Quản lý danh bạ cán bộ kỹ thuật (<strong className="text-gray-700">STAFF</strong>), theo dõi khối lượng công việc thực tế và điều phối nhân sự theo phòng ban
+            Quản lý danh bạ cán bộ kỹ thuật, theo dõi khối lượng công việc thực tế và điều phối nhân sự theo phòng ban
           </p>
         </div>
 
@@ -589,7 +589,7 @@ export default function ManagerStaff({ currentUser }: Props) {
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Cán Bộ Kỹ Thuật (STAFF)
+              Cán bộ kỹ thuật
             </span>
             <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <UserBadgeIcon className="w-4 h-4" />
@@ -713,8 +713,8 @@ export default function ManagerStaff({ currentUser }: Props) {
             className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 outline-none focus:border-orange-500 focus:bg-white transition-colors cursor-pointer"
           >
             <option value="all">Mọi vai trò ({allStaff.length})</option>
-            <option value="STAFF">Cán bộ Kỹ thuật ({allFieldStaff.length})</option>
-            <option value="MANAGER">Quản lý ({allManagers.length})</option>
+            <option value="STAFF">Cán bộ kỹ thuật ({allFieldStaff.length})</option>
+            <option value="MANAGER">Quản lý điều phối ({allManagers.length})</option>
           </select>
         </div>
 
@@ -874,7 +874,7 @@ export default function ManagerStaff({ currentUser }: Props) {
                     </div>
                   </div>
 
-                  {/* Danh sách Cán bộ Kỹ thuật (STAFF) trong phòng ban */}
+                  {/* Danh sách Cán bộ Kỹ thuật trong phòng ban */}
                   <div className="p-5">
                     {roleFilter === 'MANAGER' && manager ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -887,7 +887,7 @@ export default function ManagerStaff({ currentUser }: Props) {
                               <div>
                                 <p className="text-sm font-bold text-gray-900">{manager.fullName}</p>
                                 <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-orange-800 mt-0.5">
-                                  MANAGER • Điều phối
+                                  Quản lý điều phối
                                 </span>
                               </div>
                             </div>
@@ -940,7 +940,7 @@ export default function ManagerStaff({ currentUser }: Props) {
                                         {staff.fullName}
                                       </p>
                                       <span className="inline-block text-[10px] font-bold px-2 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200 mt-0.5">
-                                        STAFF • Kỹ thuật
+                                        Cán bộ kỹ thuật
                                       </span>
                                     </div>
                                   </div>
@@ -1105,7 +1105,7 @@ export default function ManagerStaff({ currentUser }: Props) {
                                 : 'bg-blue-50 text-blue-700 border-blue-200'
                             }`}
                           >
-                            {isManager ? 'MANAGER • Điều phối' : 'STAFF • Kỹ thuật'}
+                            {isManager ? 'Quản lý điều phối' : 'Cán bộ kỹ thuật'}
                           </span>
                         </td>
 
@@ -1219,8 +1219,8 @@ export default function ManagerStaff({ currentUser }: Props) {
                       }`}
                     >
                       {selectedUser.role === 'MANAGER'
-                        ? 'MANAGER • CÁN BỘ QUẢN LÝ'
-                        : 'STAFF • CÁN BỘ KỸ THUẬT HIỆN TRƯỜNG'}
+                        ? 'Quản lý điều phối'
+                        : 'Cán bộ kỹ thuật'}
                     </span>
                   </div>
                 </div>

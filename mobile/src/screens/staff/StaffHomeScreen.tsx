@@ -17,6 +17,7 @@ import {
   ReportedTicket,
   mapBackendStatus,
   getUnreadNotificationCount,
+  getMediaThumbnailUrl,
 } from '../../api';
 
 interface Props {
@@ -553,7 +554,7 @@ export default function StaffHomeScreen({
                       ]}
                     />
                     {photoUrl ? (
-                      <Image source={{ uri: photoUrl }} style={styles.ticketThumbnail} />
+                      <Image source={{ uri: getMediaThumbnailUrl(photoUrl) }} style={styles.ticketThumbnail} />
                     ) : (
                       <View
                         style={[
@@ -591,7 +592,7 @@ export default function StaffHomeScreen({
                               letterSpacing: 0.4,
                             }}
                           >
-                            🚨 KHẨN CẤP (SOS)
+                            KHẨN CẤP (SOS)
                           </Text>
                         </View>
                       )}

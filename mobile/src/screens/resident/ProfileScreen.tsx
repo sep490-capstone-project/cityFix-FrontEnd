@@ -337,7 +337,7 @@ export default function ProfileScreen({
               <Text style={styles.userPhone}>{authUser?.phone || '—'}</Text>
               <Text style={styles.userWard}>
                 {(() => {
-                  const w = (authUser?.ward || '').trim();
+                  const w = (authUser?.ward || '').trim().replace(/^p\.\s*/i, 'Phường ');
                   const p = (authUser?.province || '').trim();
                   let fw = w ? (/^(phường|xa|xã|phuong)/i.test(w) ? w : `Phường ${w}`) : '';
                   if (fw && p) return `${fw}, ${p}`;
@@ -531,72 +531,6 @@ export default function ProfileScreen({
                   <Text style={styles.infoValue}>{authUser?.address || '—'}</Text>
                 )}
               </View>
-            </View>
-          </View>
-
-          {/* My Recent Tickets */}
-          <View style={{ marginTop: 16 }}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeaderTitle}>HỒ SƠ BÁO CÁO CỦA TÔI</Text>
-              <TouchableOpacity
-                onPress={() => navigate('my-reports')}
-                style={styles.seeAllBtn}
-              >
-                <Text style={styles.seeAllText}>Tất cả →</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ gap: 8 }}>
-              {realTickets.length > 0 ? (
-                realTickets.slice(0, 3).map((t) => {
-                  const st = mapBackendStatus(t.status);
-                  const catName = t.categoryName || t.subCategories?.[0]?.name || t.description || 'Sự cố';
-                  const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleDateString('vi-VN') : '';
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={styles.ticketCard}
-                      onPress={() => openTicket?.(t.id, t)}
-                      activeOpacity={0.75}
-                    >
-                      <View style={styles.ticketLeft}>
-                        <Text style={styles.ticketCategory} numberOfLines={1}>
-                          {catName}
-                        </Text>
-                        <Text style={styles.ticketTime}>{timeStr}</Text>
-                      </View>
-                      <View style={styles.ticketRight}>
-                        <View
-                          style={[
-                            styles.statusChip,
-                            { backgroundColor: st.bgColor, borderColor: st.borderColor },
-                          ]}
-                        >
-                          <Text style={[styles.statusChipText, { color: st.color }]}>
-                            {st.statusText}
-                          </Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-              ) : (
-                <View style={styles.emptyReportsCard}>
-                  <Ionicons name="document-text-outline" size={32} color="#94a3b8" />
-                  <Text style={styles.emptyReportsTitle}>Chưa có hồ sơ báo cáo nào</Text>
-                  <Text style={styles.emptyReportsSub}>
-                    Các phản ánh sự cố đô thị bạn đã gửi sẽ xuất hiện tại đây.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.emptyCreateBtn}
-                    onPress={() => navigate('location')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.emptyCreateBtnText}>+ Tạo báo cáo mới</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
           </View>
 

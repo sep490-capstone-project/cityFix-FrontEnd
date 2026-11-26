@@ -705,6 +705,8 @@ import {
   upvoteTicket,
   createTicket,
   DuplicateTicketItem,
+  mapBackendStatus,
+  getMediaThumbnailUrl,
 } from '../../api';
 
 import { ReportDraft } from '../../types';
@@ -1097,7 +1099,7 @@ export default function DuplicateScreen({
                       {imageUrl ? (
                         <Image
                           source={{
-                            uri: imageUrl,
+                            uri: getMediaThumbnailUrl(imageUrl),
                           }}
                           style={styles.thumbImg}
                           resizeMode="cover"
@@ -1166,7 +1168,6 @@ export default function DuplicateScreen({
                         style={styles.ticketLoc}
                         numberOfLines={2}
                       >
-                        📍{' '}
                         {item.address ||
                           draft.address ||
                           'Khu vực lân cận'}
@@ -1178,18 +1179,29 @@ export default function DuplicateScreen({
                           styles.ticketFooterRow
                         }
                       >
-                        <View
-                          style={styles.statusChip}
-                        >
-                          <Text
-                            style={
-                              styles.statusChipText
-                            }
-                          >
-                            {item.status ||
-                              'INITIATED'}
-                          </Text>
-                        </View>
+                        {(() => {
+                          const stInfo = mapBackendStatus(item.status || 'INITIATED');
+                          return (
+                            <View
+                              style={[
+                                styles.statusChip,
+                                {
+                                  backgroundColor: stInfo.bgColor,
+                                  borderColor: stInfo.borderColor,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.statusChipText,
+                                  { color: stInfo.color },
+                                ]}
+                              >
+                                {stInfo.statusText}
+                              </Text>
+                            </View>
+                          );
+                        })()}
 
                         <View
                           style={

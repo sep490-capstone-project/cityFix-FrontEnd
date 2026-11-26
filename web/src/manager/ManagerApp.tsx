@@ -142,9 +142,9 @@ export default function ManagerApp({ userId, onLogout }: Props) {
       : 'Cơ quan Quản lý');
 
   const NAV = [
-    { key: 'dashboard', label: 'Dashboard', icon: <GridIcon /> },
+    { key: 'dashboard', label: 'Tổng quan', icon: <GridIcon /> },
     { key: 'tickets', label: 'Quản lý Hồ sơ', icon: <TicketIcon /> },
-    { key: 'dispatch', label: 'Điều phối & Duyệt vé', icon: <DispatchIcon /> },
+    { key: 'dispatch', label: 'Điều phối & Duyệt hồ sơ', icon: <DispatchIcon /> },
     { key: 'staff', label: 'Cán bộ & Phòng ban', icon: <StaffIcon /> },
     { key: 'profile', label: 'Hồ sơ cá nhân', icon: <UserIcon /> },
   ] as const;
@@ -196,7 +196,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-gray-900 truncate">{currentUser.fullName}</p>
               <p className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">
-                Quản lý cơ quan
+                Quản lý điều phối
               </p>
             </div>
             <button
@@ -218,7 +218,7 @@ export default function ManagerApp({ userId, onLogout }: Props) {
             <h1 className="font-display text-base font-extrabold text-gray-900 tracking-tight truncate">
               {page === 'dashboard' ? 'Tổng quan Đơn vị' :
                page === 'tickets' || page === 'ticket-detail' ? 'Quản lý Hồ sơ Tiếp nhận' :
-               page === 'dispatch' ? 'Điều phối & Duyệt vé' :
+               page === 'dispatch' ? 'Điều phối & Duyệt hồ sơ' :
                page === 'staff' ? 'Cán bộ & Phòng ban' : 'Hồ sơ cá nhân'}
             </h1>
           </div>

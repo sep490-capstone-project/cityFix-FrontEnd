@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { analyzeReportImage } from '../../api';
+import {
+  analyzeReportImage,
+  isVideoUrl,
+  getMediaThumbnailUrl,
+} from '../../api';
 import {
   View,
   Alert,
@@ -16,7 +20,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { ReportDraft } from '../../types';
 
-
+const LOW_CONFIDENCE_THRESHOLD = 70;
 
 const AI_STEPS = [
   'Tải ảnh lên hệ thống',
@@ -253,7 +257,32 @@ useEffect(() => {
           {/* Scan Image Preview */}
           <View style={styles.scanImageCard}>
             {draft.imageUrls[0] ? (
-              <Image source={{ uri: draft.imageUrls[0] }} style={styles.scanImage} />
+              <Image
+                source={{ uri: getMediaThumbnailUrl(draft.imageUrls[0]) }}
+                style={styles.scanImage}
+              />
+            ) : null}
+            {isVideoUrl(draft.imageUrls[0]) ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  bottom: 12,
+                  left: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 6,
+                  zIndex: 5,
+                }}
+              >
+                <Ionicons name="videocam" size={13} color="#ffffff" />
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>
+                  VIDEO HIỆN TRƯỜNG
+                </Text>
+              </View>
             ) : null}
             <View style={styles.imageOverlay} />
 
@@ -355,7 +384,7 @@ useEffect(() => {
                 </View>
 
                 <Text style={{ fontSize: 12, color: '#7f1d1d', lineHeight: 18 }}>
-                  💡 Vui lòng chụp trực tiếp hoặc chọn ảnh rõ nét hiện trường sự cố thực tế (ổ gà, ngập nước, cây đổ, đèn đường hỏng, rác thải...) để tiếp tục tạo báo cáo.
+                  Lưu ý: Vui lòng chụp trực tiếp hoặc chọn ảnh rõ nét hiện trường sự cố thực tế (ổ gà, ngập nước, cây đổ, đèn đường hỏng, rác thải...) để tiếp tục tạo báo cáo.
                 </Text>
               </View>
             </View>
@@ -364,12 +393,54 @@ useEffect(() => {
               <View style={styles.resultHeader}>
                 <Ionicons name="sparkles" size={18} color="#f97316" />
                 <Text style={styles.resultTitle}>KẾT QUẢ PHÂN TÍCH AI</Text>
-                <View style={styles.confidenceBadge}>
-                  <Text style={styles.confidenceBadgeText}>
+                <View
+                  style={[
+                    styles.confidenceBadge,
+                    (draft.aiAnalysis?.confidenceScore ?? 0) < LOW_CONFIDENCE_THRESHOLD && {
+                      backgroundColor: '#fef3c7',
+                      borderColor: '#f59e0b',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.confidenceBadgeText,
+                      (draft.aiAnalysis?.confidenceScore ?? 0) < LOW_CONFIDENCE_THRESHOLD && {
+                        color: '#b45309',
+                      },
+                    ]}
+                  >
                     {Math.round(draft.aiAnalysis?.confidenceScore ?? 0)}% tin cậy
                   </Text>
                 </View>
               </View>
+
+              {(draft.aiAnalysis?.confidenceScore ?? 0) < LOW_CONFIDENCE_THRESHOLD ? (
+                <View
+                  style={{
+                    marginHorizontal: 16,
+                    marginTop: 12,
+                    padding: 12,
+                    backgroundColor: '#fffbeb',
+                    borderWidth: 1,
+                    borderColor: '#fcd34d',
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                  }}
+                >
+                  <Ionicons name="warning" size={18} color="#d97706" style={{ marginTop: 1 }} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400e' }}>
+                      Độ tin cậy nhận diện thấp ({Math.round(draft.aiAnalysis?.confidenceScore ?? 0)}% &lt; 70%)
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#b45309', lineHeight: 16 }}>
+                      Hình ảnh chưa thật sự rõ nét hoặc góc chụp khó nhận diện. Vui lòng kiểm tra kỹ và chỉnh sửa lại Danh mục / Mô tả ở bước tiếp theo.
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
               <View style={styles.resultRowsList}>
                 {/* 1. Danh mục sự cố */}
@@ -457,9 +528,24 @@ useEffect(() => {
 
                 {/* 4. Lý do đánh giá ưu tiên (nếu có) */}
                 {draft.aiAnalysis?.priorityReasoning ? (
-                  <View style={styles.resultRow}>
-                    <Text style={styles.rowLabel}>Lý do ưu tiên</Text>
-                    <Text style={[styles.rowValue, { color: '#475569', flex: 1, textAlign: 'right' }]} numberOfLines={2}>
+                  <View
+                    style={[
+                      styles.descBlock,
+                      {
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#f1f5f9',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.descLabel}>Lý do đánh giá ưu tiên:</Text>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        color: '#334155',
+                        lineHeight: 19,
+                        fontWeight: '500',
+                      }}
+                    >
                       {draft.aiAnalysis.priorityReasoning}
                     </Text>
                   </View>

@@ -19,6 +19,7 @@ import {
   getLifeThreateningTickets,
   ReportedTicket,
   mapBackendStatus,
+  getMediaThumbnailUrl,
 } from '../../api';
 
 interface Props {
@@ -377,7 +378,7 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket, fil
                   />
 
                   {photoUrl ? (
-                    <Image source={{ uri: photoUrl }} style={styles.ticketThumbnail} />
+                    <Image source={{ uri: getMediaThumbnailUrl(photoUrl) }} style={styles.ticketThumbnail} />
                   ) : (
                     <View
                       style={[
@@ -416,7 +417,7 @@ export default function StaffTicketsScreen({ navigate, authUser, openTicket, fil
                             letterSpacing: 0.4,
                           }}
                         >
-                          🚨 KHẨN CẤP (SOS)
+                          KHẨN CẤP (SOS)
                         </Text>
                       </View>
                     )}

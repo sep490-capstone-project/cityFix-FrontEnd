@@ -30,6 +30,7 @@ import {
   createRating,
   updateRating,
   deleteRating,
+  getMediaThumbnailUrl,
 } from '../../api';
 import { AuthUser } from '../LoginScreen';
 
@@ -141,7 +142,7 @@ const SEVERITY_MAP = {
   LOW: { label: 'Thấp', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
   MEDIUM: { label: 'Trung bình', color: '#ea580c', bg: 'rgba(249, 115, 22, 0.08)', border: 'rgba(249, 115, 22, 0.25)' },
   HIGH: { label: 'Cao', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
-  CRITICAL: { label: 'Nghiêm trọng', color: '#991b1b', bg: '#fee2e2', border: '#f87171' },
+  CRITICAL: { label: 'Khẩn cấp', color: '#991b1b', bg: '#fee2e2', border: '#f87171' },
 };
 
 function getTimeline(statusKey: string) {
@@ -563,10 +564,10 @@ export default function TicketDetailScreen({
               <TouchableOpacity
                 style={styles.heroCard}
                 activeOpacity={0.9}
-                onPress={() => setFullscreenImage(ticket.imageUrls?.[selectedImageIndex] || ticket.imageUrl)}
+                onPress={() => setFullscreenImage(getMediaThumbnailUrl(ticket.imageUrls?.[selectedImageIndex] || ticket.imageUrl))}
               >
                 <Image
-                  source={{ uri: ticket.imageUrls[selectedImageIndex] || ticket.imageUrl }}
+                  source={{ uri: getMediaThumbnailUrl(ticket.imageUrls[selectedImageIndex] || ticket.imageUrl) }}
                   style={styles.heroImage}
                   resizeMode="cover"
                 />
@@ -618,7 +619,7 @@ export default function TicketDetailScreen({
                         onPress={() => setSelectedImageIndex(idx)}
                         activeOpacity={0.8}
                       >
-                        <Image source={{ uri: url }} style={styles.thumbnailImg} resizeMode="cover" />
+                        <Image source={{ uri: getMediaThumbnailUrl(url) }} style={styles.thumbnailImg} resizeMode="cover" />
                         {isSelected && <View style={styles.thumbnailActiveBorder} />}
                       </TouchableOpacity>
                     );
@@ -957,7 +958,7 @@ export default function TicketDetailScreen({
                 )}
               </TouchableOpacity>
               <Text style={styles.cancelHintText}>
-                Người dân chỉ có thể hủy hồ sơ báo cáo khi ở trạng thái tiếp nhận (INITIATED).
+                Người dân chỉ có thể hủy khi hồ sơ báo cáo đang ở trạng thái Mới tiếp nhận (chưa phân công xử lý).
               </Text>
             </View>
           ) : null}

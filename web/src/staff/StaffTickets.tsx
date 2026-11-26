@@ -184,10 +184,10 @@ export default function StaffTickets({ currentUser, onOpenTicket }: Props) {
       {/* 1. Header khu vực nội dung chính */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
+          <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
             Hồ sơ Tiếp nhận & Xử lý Hiện trường
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          </h1>
+          <p className="text-[12px] text-gray-500 mt-1">
             Danh sách các phản ánh và sự cố kỹ thuật hạ tầng được phân công xử lý
           </p>
         </div>

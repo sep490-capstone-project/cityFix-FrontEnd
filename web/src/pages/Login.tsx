@@ -424,7 +424,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
           <div className="absolute -inset-1.5 rounded-full bg-orange-400/50 animate-beacon" />
         </div>
         <span className="bg-white/95 backdrop-blur-xs border border-slate-200 text-[11px] font-bold text-slate-800 px-3 py-1 rounded-full shadow-xs">
-          📍 Hạ tầng đô thị
+          Hạ tầng đô thị
         </span>
       </div>
 
@@ -434,7 +434,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
           <div className="absolute -inset-1.5 rounded-full bg-emerald-400/50 animate-beacon" />
         </div>
         <span className="bg-white/95 backdrop-blur-xs border border-slate-200 text-[11px] font-bold text-slate-800 px-3 py-1 rounded-full shadow-xs">
-          🌳 Cây xanh
+          Cây xanh
         </span>
       </div>
 
@@ -444,7 +444,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
           <div className="absolute -inset-1.5 rounded-full bg-amber-400/50 animate-beacon" />
         </div>
         <span className="bg-white/95 backdrop-blur-xs border border-slate-200 text-[11px] font-bold text-slate-800 px-3 py-1 rounded-full shadow-xs">
-          💧 Môi trường
+          Môi trường
         </span>
       </div>
 
@@ -454,7 +454,7 @@ export default function Login({ onLogin, onGoRegister }: Props) {
           <div className="absolute -inset-1.5 rounded-full bg-red-400/50 animate-beacon" />
         </div>
         <span className="bg-white/95 backdrop-blur-xs border border-slate-200 text-[11px] font-bold text-slate-800 px-3 py-1 rounded-full shadow-xs">
-          ⚠️ Ổ gà
+          Ổ gà & Mặt đường
         </span>
       </div>
 

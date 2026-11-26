@@ -196,7 +196,7 @@ export default function AdminSteps() {
       message.error(
         error instanceof Error
           ? error.message
-          : 'Không thể tải danh sách Step.',
+          : 'Không thể tải danh sách bước xử lý.',
       );
     } finally {
       setLoading(false);
@@ -264,10 +264,10 @@ export default function AdminSteps() {
 
       if (editingStep) {
         await adminStepApi.update(editingStep.stepId, payload);
-        message.success('Cập nhật Step thành công.');
+        message.success('Cập nhật bước xử lý thành công.');
       } else {
         await adminStepApi.create(payload);
-        message.success('Tạo Step thành công.');
+        message.success('Tạo bước xử lý thành công.');
       }
 
       setModalOpen(false);
@@ -280,7 +280,7 @@ export default function AdminSteps() {
       ]);
     } catch (error) {
       message.error(
-        error instanceof Error ? error.message : 'Không thể lưu Step.',
+        error instanceof Error ? error.message : 'Không thể lưu bước xử lý.',
       );
     } finally {
       setSaving(false);
@@ -291,14 +291,14 @@ export default function AdminSteps() {
     try {
       await adminStepApi.delete(stepId);
 
-      message.success('Xóa Step thành công.');
+      message.success('Xóa bước xử lý thành công.');
       await Promise.all([
         loadSteps(filterSubCategoryId),
         loadSubCategories(),
       ]);
     } catch (error) {
       message.error(
-        error instanceof Error ? error.message : 'Không thể xóa Step.',
+        error instanceof Error ? error.message : 'Không thể xóa bước xử lý.',
       );
     }
   };
@@ -407,7 +407,7 @@ export default function AdminSteps() {
           </Button>
 
           <Popconfirm
-            title="Xóa Step này?"
+            title="Xóa bước xử lý này?"
             description="Bạn có chắc chắn muốn xóa bước xử lý này?"
             okText="Xóa"
             cancelText="Hủy"
@@ -426,12 +426,12 @@ export default function AdminSteps() {
   return (
     <div className="p-6 space-y-5 max-w-7xl mx-auto screen-enter">
       {/* Header Card */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-extrabold text-gray-900 tracking-tight">
-            Quản lý Quy trình Xử lý (Steps)
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <h1 className="font-display text-xl lg:text-2xl font-extrabold text-gray-900">
+            Quản lý Quy trình Xử lý
+          </h1>
+          <p className="text-[12px] text-gray-500 mt-1">
             Thiết lập các bước xử lý sự cố và thời lượng thực hiện chuẩn theo từng danh mục con
           </p>
         </div>
@@ -453,7 +453,7 @@ export default function AdminSteps() {
             icon={<PlusOutlined />}
             onClick={openCreateModal}
           >
-            Thêm Step
+            Thêm bước xử lý
           </Button>
         </Space>
       </div>
@@ -540,7 +540,7 @@ export default function AdminSteps() {
           {/* Flowchart Nodes */}
           {pipelineSteps.length === 0 ? (
             <div className="p-8 text-center text-xs text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-              Chưa có bước quy trình nào được định nghĩa cho danh mục này. Nhấn <strong>Thêm Step</strong> để khởi tạo bước đầu tiên.
+              Chưa có bước quy trình nào được định nghĩa cho danh mục này. Nhấn <strong>Thêm bước xử lý</strong> để khởi tạo bước đầu tiên.
             </div>
           ) : (
             <div className="overflow-x-auto pb-2 scrollbar-thin">
@@ -548,8 +548,8 @@ export default function AdminSteps() {
                 {/* Start Node: Tiếp nhận sự cố */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div className="w-28 bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex flex-col items-center text-center">
-                    <span className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center mb-1.5 shadow-2xs">
-                      📍
+                    <span className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 text-xs font-bold flex items-center justify-center mb-1.5 shadow-2xs">
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
                     </span>
                     <span className="text-[11px] font-bold text-slate-800 leading-tight">
                       Tiếp nhận sự cố
@@ -577,7 +577,7 @@ export default function AdminSteps() {
                               {String(idx + 1).padStart(2, '0')}
                             </span>
                             <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">
-                              ⏱️ {s.duration ?? 0}h
+                              {s.duration ?? 0}h
                             </span>
                           </div>
 
@@ -636,16 +636,16 @@ export default function AdminSteps() {
           pagination={{
             pageSize: 10,
             showSizeChanger: true,
-            showTotal: (total) => `Tổng ${total} Step`,
+            showTotal: (total) => `Tổng ${total} bước xử lý`,
           }}
           locale={{
-            emptyText: 'Chưa có dữ liệu Step phù hợp.',
+            emptyText: 'Chưa có dữ liệu bước xử lý phù hợp.',
           }}
         />
       </div>
 
       <Modal
-        title={editingStep ? 'Cập nhật Step' : 'Tạo Step mới'}
+        title={editingStep ? 'Cập nhật bước xử lý' : 'Tạo bước xử lý mới'}
         open={modalOpen}
         onCancel={() => {
           if (saving) return;

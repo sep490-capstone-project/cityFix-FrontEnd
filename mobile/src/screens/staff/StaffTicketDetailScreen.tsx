@@ -27,6 +27,7 @@ import {
   updateStaffTicketStatus,
   createStaffRequest,
   checkStepReadiness,
+  getMediaThumbnailUrl,
 } from '../../api';
 import { AuthUser } from '../LoginScreen';
 import EvidenceStampModal from './EvidenceStampModal';
@@ -99,7 +100,7 @@ const SEVERITY_MAP = {
   },
   HIGH: { label: 'Cao', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
   CRITICAL: {
-    label: 'Nghiêm trọng',
+    label: 'Khẩn cấp',
     color: '#991b1b',
     bg: '#fee2e2',
     border: '#f87171',
@@ -568,13 +569,17 @@ export default function StaffTicketDetailScreen({
                 activeOpacity={0.9}
                 onPress={() =>
                   setFullscreenImage(
-                    ticket.imageUrls?.[selectedImageIndex] || ticket.imageUrl
+                    getMediaThumbnailUrl(
+                      ticket.imageUrls?.[selectedImageIndex] || ticket.imageUrl
+                    )
                   )
                 }
               >
                 <Image
                   source={{
-                    uri: ticket.imageUrls[selectedImageIndex] || ticket.imageUrl,
+                    uri: getMediaThumbnailUrl(
+                      ticket.imageUrls[selectedImageIndex] || ticket.imageUrl
+                    ),
                   }}
                   style={styles.heroImage}
                   resizeMode="cover"
@@ -625,7 +630,7 @@ export default function StaffTicketDetailScreen({
                         activeOpacity={0.8}
                       >
                         <Image
-                          source={{ uri: url }}
+                          source={{ uri: getMediaThumbnailUrl(url) }}
                           style={styles.thumbnailImg}
                           resizeMode="cover"
                         />
@@ -831,7 +836,7 @@ export default function StaffTicketDetailScreen({
                         <View style={{ flex: 1 }}>
                           <Text style={styles.staffStepTitleText}>{stepLabel}</Text>
                           <Text style={styles.staffStepAssigneeText}>
-                            👤 Người giải quyết: {readiness.assigneeName}
+                            Người giải quyết: {readiness.assigneeName}
                           </Text>
                         </View>
 
@@ -892,8 +897,8 @@ export default function StaffTicketDetailScreen({
                             ]}
                           >
                             {readiness.canDoNow
-                              ? '⚡ Có thể thực hiện ngay tức thì'
-                              : `⏳ Chờ hoàn tất: ${readiness.pendingDependencies
+                              ? 'Có thể thực hiện ngay tức thì'
+                              : `Chờ hoàn tất: ${readiness.pendingDependencies
                                   .map((d) => d.name)
                                   .join(', ')}`}
                           </Text>
@@ -991,7 +996,7 @@ export default function StaffTicketDetailScreen({
                       {stItem.evidences && stItem.evidences.length > 0 ? (
                         <View style={styles.staffStepEvidenceBox}>
                           <Text style={styles.staffStepEvidenceLabel}>
-                            📎 Bằng chứng đã nộp ({stItem.evidences.length} ảnh — chạm để xem rõ Ngày giờ & Địa chỉ):
+                            Bằng chứng đã nộp ({stItem.evidences.length} ảnh):
                           </Text>
                           <ScrollView
                             horizontal

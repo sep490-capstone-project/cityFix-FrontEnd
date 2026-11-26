@@ -13,6 +13,7 @@ import {
   PaperclipIcon,
   InfoIcon,
 } from './StaffIcons';
+import PageHeader, { PageBackButton, PAGE_CONTAINER } from '../components/PageHeader';
 import {
   StaffTicketItem,
   StaffTicketStepEvidence,
@@ -434,46 +435,35 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
   const cat = categories.find((c) => c.categoryId === ticket.categoryId) || (ticket.categoryId ? getCat(ticket.categoryId) : undefined);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5 screen-enter">
+    <div className={PAGE_CONTAINER}>
       {/* Thanh Điều hướng & Thao tác Đầu trang */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-[13px] font-semibold transition-all shadow-xs cursor-pointer active:scale-95"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Quay lại danh sách
-          </button>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono-cf text-[14px] font-black text-gray-900">
-                #{ticketId.slice(0, 8)}
-              </span>
-              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border inline-flex items-center gap-1 ${si.cls}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
-                {si.label}
-              </span>
-              {ticket.isLifeThreatening &&
-                !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
-                  (ticket.status || '').toUpperCase()
-                ) && (
-                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-lg border text-red-700 bg-red-50 border-red-200 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-                    Khẩn cấp
-                  </span>
-                )}
-            </div>
-            <p className="text-[12px] text-gray-500 mt-0.5 truncate max-w-xl">
-              <span className="inline-flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket.address || 'Chưa xác định địa chỉ hiện trường'}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Thanh nút hành động nghiệp vụ Staff */}
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeader
+        leading={<PageBackButton onClick={onBack} label="Quay lại" />}
+        title={`Hồ sơ #${ticketId.slice(0, 8)}`}
+        badges={
+          <>
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1.5 ${si.cls}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${si.dot}`} />
+              {si.label}
+            </span>
+            {ticket.isLifeThreatening &&
+              !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(
+                (ticket.status || '').toUpperCase()
+              ) && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full border text-red-700 bg-red-50 border-red-300 inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                  Ưu tiên khẩn cấp
+                </span>
+              )}
+          </>
+        }
+        subtitle={
+          <span className="inline-flex items-center gap-1 truncate max-w-xl">
+            <MapPinIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> {ticket.address || 'Chưa xác định địa chỉ hiện trường'}
+          </span>
+        }
+        actions={
+        <>
           {ticket.status === 'ASSIGNED' && (
             <button
               type="button"
@@ -510,8 +500,9 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
           >
             <SendIcon className="w-3.5 h-3.5 text-indigo-700" /> Gửi yêu cầu tới Quản lý
           </button>
-        </div>
-      </div>
+        </>
+        }
+      />
 
       {/* Thông báo Feedback */}
       {feedback && (
@@ -569,7 +560,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                       <span className="inline-flex items-center gap-1"><ZoomInIcon className="w-3.5 h-3.5 text-white" /> Bấm để phóng to</span>
                     </div>
                     <span className="absolute top-2.5 right-2.5 bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                      📷 {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} ảnh
+                      {Math.min(selectedImageIdx + 1, ticketImages.length)}/{ticketImages.length} tệp
                     </span>
                   </div>
 
@@ -799,10 +790,10 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                               className="text-[11px] font-bold text-gray-800 bg-transparent outline-none cursor-pointer"
                               title="Chọn để cập nhật trạng thái bước này"
                             >
-                              <option value="PENDING">Chờ xử lý (Pending)</option>
-                              <option value="IN_PROGRESS">Đang xử lý (In Progress)</option>
-                              <option value="RESOLVED">Đã giải quyết (Resolved)</option>
-                              {st.status === 'COMPLETED' && <option value="COMPLETED">Đã duyệt xong (Completed)</option>}
+                              <option value="PENDING">Chờ xử lý</option>
+                              <option value="IN_PROGRESS">Đang xử lý</option>
+                              <option value="RESOLVED">Đã giải quyết</option>
+                              {st.status === 'COMPLETED' && <option value="COMPLETED">Đã hoàn thành</option>}
                             </select>
                           </div>
 
@@ -962,7 +953,7 @@ export default function StaffTicketDetail({ ticket: initialTicket, currentUser, 
                     content: 'Kính gửi Quản lý: Hồ sơ này không thuộc chuyên môn xử lý của phòng ban hiện tại. Đề xuất xem xét chuyển giao sang phòng ban phụ trách phù hợp.',
                   },
                   {
-                    label: 'Đề xuất từ chối vé',
+                    label: 'Đề xuất từ chối hồ sơ',
                     title: 'Đề xuất từ chối tiếp nhận hồ sơ do không hợp lệ',
                     content: 'Kính gửi Quản lý: Qua khảo sát thực tế, sự cố không tồn tại hoặc phản ánh không đúng sự thật. Đề xuất Quản lý xem xét từ chối hồ sơ.',
                   },

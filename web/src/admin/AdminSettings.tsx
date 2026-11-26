@@ -596,9 +596,9 @@ function SubCategoryMgmt({
             className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-[12px] text-gray-700 outline-none focus:border-orange-500 cursor-pointer"
           >
             <option value="ALL">Mọi mức độ ưu tiên</option>
-            <option value="LOW">Thấp (LOW)</option>
-            <option value="MEDIUM">Trung bình (MEDIUM)</option>
-            <option value="HIGH">Cao (HIGH)</option>
+            <option value="LOW">Thấp</option>
+            <option value="MEDIUM">Trung bình</option>
+            <option value="HIGH">Cao</option>
           </select>
 
           {/* Status Dropdown */}
@@ -803,9 +803,9 @@ function SubCategoryMgmt({
               }
               className={inpModal}
             >
-              <option value="LOW">Thấp (LOW)</option>
-              <option value="MEDIUM">Trung bình (MEDIUM)</option>
-              <option value="HIGH">Cao (HIGH)</option>
+              <option value="LOW">Thấp</option>
+              <option value="MEDIUM">Trung bình</option>
+              <option value="HIGH">Cao</option>
             </select>
           </div>
 
@@ -1185,8 +1185,8 @@ function DepartmentMgmt() {
               onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.value === 'ACTIVE' }))}
               className={inpModal}
             >
-              <option value="ACTIVE">Hoạt động (ACTIVE)</option>
-              <option value="INACTIVE">Vô hiệu hóa (INACTIVE)</option>
+              <option value="ACTIVE">Hoạt động</option>
+              <option value="INACTIVE">Vô hiệu hóa</option>
             </select>
           </div>
 

@@ -41,9 +41,9 @@ export default function ResidentChatModal({
       id: 'welcome-msg',
       sender: 'assistant',
       text:
-        `Xin chào ${userName || 'bạn'}! 👋 Tôi là **Trợ lý AI CityFix** dành cho Người dân.\n\n` +
+        `Xin chào ${userName || 'bạn'}! Tôi là **Trợ lý AI CityFix** dành cho Người dân.\n\n` +
         'Bạn có thể hỏi tôi về:\n' +
-        '• **Quy trình 5 bước tạo báo cáo** sự cố trên bản đồ\n' +
+        '• **Quy trình 4 bước tạo báo cáo** sự cố trên bản đồ\n' +
         '• **Cách theo dõi tiến độ**, xem ảnh bằng chứng & đánh giá sao\n' +
         '• **Cách tự xử lý an toàn các sự cố nhỏ** mà không cần gửi báo cáo\n\n' +
         '*(Lưu ý: Tôi chỉ trả lời các câu hỏi liên quan đến hệ thống CityFix và sự cố đô thị)*',
