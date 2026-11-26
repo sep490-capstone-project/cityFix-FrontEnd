@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, getDept } from '../data';
+import PageHeader, { PAGE_CONTAINER } from '../components/PageHeader';
 import { getProfile, updateProfile, getDepartments, getDepartmentById, DepartmentItem, formatDepartmentLevel, UserProfile, ApiError } from '../services';
 
 interface Props {
