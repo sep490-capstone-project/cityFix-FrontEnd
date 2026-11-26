@@ -28,6 +28,7 @@ import {
   createStaffRequest,
   checkStepReadiness,
   getMediaThumbnailUrl,
+  formatVietnamDateTime,
 } from '../../api';
 import { AuthUser } from '../LoginScreen';
 import EvidenceStampModal from './EvidenceStampModal';
@@ -280,19 +281,13 @@ export default function StaffTicketDetailScreen({
       'Hồ sơ sự cố đô thị',
     address: ticketData?.address || 'Chưa xác định vị trí',
     submittedAt: ticketData?.createdAt
-      ? new Date(ticketData.createdAt).toLocaleString('vi-VN')
+      ? formatVietnamDateTime(ticketData.createdAt)
       : 'Vừa xong',
     locationMethod:
       ticketData?.locationMethod === 'MANUAL_ENTRY' ? 'MANUAL_PIN' : 'AUTO_GPS',
     agency: ticketData?.departmentName || 'Đơn vị xử lý kỹ thuật',
     deadline: ticketData?.deadline
-      ? new Date(ticketData.deadline).toLocaleString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        })
+      ? formatVietnamDateTime(ticketData.deadline)
       : 'Theo quy trình SLA',
     severity: ((
       ticketData?.priority ||

@@ -12,7 +12,13 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { mapBackendStatus, getMediaThumbnailUrl } from '../../api';
+import {
+  mapBackendStatus,
+  getMediaThumbnailUrl,
+  formatVietnamDate,
+  formatVietnamTime,
+  formatShortTicketCode,
+} from '../../api';
 import { ReportDraft, CATEGORIES } from '../../types';
 import { Haptics } from '../../utils/haptics';
 
@@ -54,15 +60,9 @@ export default function SuccessScreen({
   const [isPaused, setIsPaused] = useState(false);
   const [subscribed, setSubscribed] = useState(true);
 
-  // 1. Mã hồ sơ báo cáo động
-  const rawId = ticket?.ticketCode || ticket?.id || ticket?.ticketId || '';
-  const displayTicketId = rawId
-    ? rawId.length >= 8 && rawId.includes('-')
-      ? `CF-${rawId.replace(/-/g, '').slice(0, 8).toUpperCase()}`
-      : rawId.startsWith('CF-')
-      ? rawId
-      : `CF-${rawId.toUpperCase()}`
-    : 'CHỜ CẤP MÃ';
+  // 1. Mã hồ sơ báo cáo động (đồng bộ chuẩn #8ký_tự_đầu với cổng Web Manager/Admin)
+  const rawId = ticket?.id || ticket?.ticketId || ticket?.ticketCode || '';
+  const displayTicketId = formatShortTicketCode(rawId);
 
   // 2. Loại sự cố động
   const categoryName =
@@ -101,15 +101,11 @@ export default function SuccessScreen({
     ticket?.agency ||
     (isUpvote ? 'Cơ quan chức năng phụ trách' : 'Chờ điều phối tiếp nhận');
 
-  // 4. Thời hạn xử lý động
+  // 4. Thời hạn xử lý động (theo múi giờ Việt Nam UTC+7)
   let deadlineText = 'Theo chuẩn SLA';
   if (ticket?.deadline) {
     try {
-      deadlineText = new Date(ticket.deadline).toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
+      deadlineText = formatVietnamDate(ticket.deadline, true);
     } catch {
       deadlineText = '24 - 72 giờ';
     }
@@ -121,16 +117,9 @@ export default function SuccessScreen({
     deadlineText = '24 - 72 giờ';
   }
 
-  // 5. Thời gian gửi động
-  const createdDate = ticket?.createdAt ? new Date(ticket.createdAt) : new Date();
-  const timeFormatted = createdDate.toLocaleTimeString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const dateFormatted = createdDate.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-  });
+  // 5. Thời gian gửi động (chuẩn hóa theo múi giờ Việt Nam UTC+7)
+  const timeFormatted = formatVietnamTime(ticket?.createdAt);
+  const dateFormatted = formatVietnamDate(ticket?.createdAt || new Date(), true);
 
   // 6. Địa chỉ sự cố
   const address =
@@ -188,7 +177,7 @@ export default function SuccessScreen({
     setIsPaused(true);
     Alert.alert(
       'Mã hồ sơ báo cáo phản ánh',
-      `Mã đầy đủ: ${rawId || displayTicketId}\n\nBạn có thể dùng mã này để tra cứu tiến độ xử lý sự cố bất kỳ lúc nào.`,
+      `Mã hồ sơ: ${displayTicketId}\nMã định danh đầy đủ (UUID): ${rawId || displayTicketId}\n\nBạn có thể dùng mã này để đối chiếu và tra cứu tiến độ xử lý sự cố bất kỳ lúc nào.`,
       [{ text: 'Đã hiểu' }]
     );
   };

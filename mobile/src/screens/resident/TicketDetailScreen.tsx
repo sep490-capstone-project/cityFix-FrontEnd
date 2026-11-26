@@ -31,6 +31,9 @@ import {
   updateRating,
   deleteRating,
   getMediaThumbnailUrl,
+  formatVietnamDate,
+  formatVietnamDateTime,
+  formatShortTicketCode,
 } from '../../api';
 import { AuthUser } from '../LoginScreen';
 
@@ -229,17 +232,11 @@ export default function TicketDetailScreen({
       id: ticketData.id,
       category: ticketData.categoryName || ticketData.subCategories?.[0]?.name || ticketData.description || 'Sự cố hạ tầng',
       address: ticketData.address || 'Chưa xác định vị trí',
-      submittedAt: ticketData.createdAt ? new Date(ticketData.createdAt).toLocaleString('vi-VN') : 'Vừa xong',
+      submittedAt: ticketData.createdAt ? formatVietnamDateTime(ticketData.createdAt) : 'Vừa xong',
       locationMethod: ticketData.locationMethod === 'MANUAL_ENTRY' ? 'MANUAL_PIN' : 'AUTO_GPS',
       agency: ticketData.departmentName || 'Chờ phân công cơ quan xử lý',
       deadline: ticketData.deadline
-        ? new Date(ticketData.deadline).toLocaleString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          })
+        ? formatVietnamDateTime(ticketData.deadline)
         : (ticketData.status === 'INITIATED' ? 'Chờ duyệt / Chưa có hạn chót' : 'Chưa có hạn chót'),
       upvotes: (ticketData as any).upvotes ?? (ticketData as any).upvoteCount ?? 0,
       severity: (((ticketData.priority || ticketData.severity || 'LOW')).toUpperCase() as any),
@@ -656,6 +653,7 @@ export default function TicketDetailScreen({
             </View>
             <View style={styles.infoList}>
               {[
+                { label: 'Mã hồ sơ', value: formatShortTicketCode(ticket.id) },
                 { label: 'Loại sự cố', value: ticket.category },
                 { label: 'Địa điểm', value: ticket.address },
                 { label: 'Thời gian gửi', value: ticket.submittedAt },

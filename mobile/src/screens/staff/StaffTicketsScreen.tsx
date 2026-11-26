@@ -20,6 +20,7 @@ import {
   ReportedTicket,
   mapBackendStatus,
   getMediaThumbnailUrl,
+  formatVietnamDate,
 } from '../../api';
 
 interface Props {
@@ -87,16 +88,7 @@ function ReportCardSkeleton() {
 
 function formatDate(dateString?: string): string {
   if (!dateString) return '';
-  try {
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-  } catch {
-    return '';
-  }
+  return formatVietnamDate(dateString, true);
 }
 
 function getCategoryIcon(catName?: string): any {

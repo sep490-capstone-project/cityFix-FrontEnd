@@ -28,6 +28,7 @@ import {
   mapBackendStatus,
   getUnreadNotificationCount,
   getMediaThumbnailUrl,
+  parseBackendDate,
 } from '../../api';
 import ResidentChatModal from './ResidentChatModal';
 import SOSTicketDetailModal from './SOSTicketDetailModal';
@@ -158,7 +159,7 @@ function formatLocation(ward?: string, province?: string): string {
 
 function formatRelativeTime(isoString?: string | null): string {
   if (!isoString) return 'Vừa xong';
-  const time = new Date(isoString).getTime();
+  const time = parseBackendDate(isoString).getTime();
   if (isNaN(time)) return 'Vừa xong';
   const diffSec = Math.max(0, Math.floor((Date.now() - time) / 1000));
   if (diffSec < 60) return 'Vừa xong';

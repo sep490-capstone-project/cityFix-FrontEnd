@@ -707,6 +707,7 @@ import {
   DuplicateTicketItem,
   mapBackendStatus,
   getMediaThumbnailUrl,
+  formatVietnamDateTime,
 } from '../../api';
 
 import { ReportDraft } from '../../types';
@@ -858,24 +859,13 @@ export default function DuplicateScreen({
   };
 
   /**
-   * Format ngày giờ
+   * Format ngày giờ theo múi giờ Việt Nam (UTC+7)
    */
   const formatCreatedAt = (createdAt?: string) => {
     if (!createdAt) {
       return 'Gần đây';
     }
-
-    try {
-      return new Date(createdAt).toLocaleString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return 'Gần đây';
-    }
+    return formatVietnamDateTime(createdAt);
   };
 
   /**

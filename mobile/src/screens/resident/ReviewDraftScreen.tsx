@@ -477,6 +477,13 @@ export default function ReviewDraftScreen({
                 if (subNames.length === 0) return null;
 
                 if (subNames.length === 1) {
+                  // Nếu tên chi tiết sự cố trùng khớp với Loại sự cố đang hiển thị ở trên thì ẩn để tránh lặp lại
+                  if (
+                    currentCatName &&
+                    subNames[0].trim().toLowerCase() === currentCatName.trim().toLowerCase()
+                  ) {
+                    return null;
+                  }
                   return (
                     <View style={{ marginTop: 6, marginBottom: 4 }}>
                       <Text style={styles.metaLabel}>Chi tiết sự cố:</Text>

@@ -17,6 +17,8 @@ import {
   getUnreadNotificationCount,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  parseBackendDate,
+  formatVietnamDate,
 } from '../api';
 import { Haptics } from '../utils/haptics';
 
@@ -29,9 +31,9 @@ interface Props {
 function formatRelativeTime(dateStr?: string | null): string {
   if (!dateStr) return '';
 
-  const date = new Date(dateStr);
+  const date = parseBackendDate(dateStr);
   const now = new Date();
-  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const diffSec = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
 
   if (isNaN(diffSec)) return dateStr;
   if (diffSec < 60) return 'Vừa xong';
@@ -45,11 +47,7 @@ function formatRelativeTime(dateStr?: string | null): string {
   const diffDay = Math.floor(diffHour / 24);
   if (diffDay < 7) return `${diffDay} ngày trước`;
 
-  return date.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return formatVietnamDate(dateStr, true);
 }
 
 /**

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker } from 'react-native-maps';
-import { ReportedTicket, getMediaThumbnailUrl } from '../../api';
+import { ReportedTicket, getMediaThumbnailUrl, formatVietnamDateTime } from '../../api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -30,18 +30,7 @@ interface Props {
 
 function formatDateTime(isoString?: string | null): string {
   if (!isoString) return 'Chưa xác định';
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    const hours = String(d.getHours()).padStart(2, '0');
-    const mins = String(d.getMinutes()).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${hours}:${mins} - ${day}/${month}/${year}`;
-  } catch {
-    return isoString;
-  }
+  return formatVietnamDateTime(isoString);
 }
 
 function getStatusBadge(status?: string) {
