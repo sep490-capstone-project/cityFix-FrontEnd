@@ -299,6 +299,87 @@ export interface RegisterPayload {
   address: string;
 }
 
+/* =========================================================
+   VIETNAM TIMEZONE DATE/TIME HELPERS (UTC+7 / Asia/Ho_Chi_Minh)
+   Backend trả về chuỗi ISO LocalDateTime theo giờ UTC nhưng không có hậu tố 'Z'
+   (ví dụ: "2026-11-26T05:50:12.123456"), khiến new Date() hiểu nhầm là giờ local
+   và bị lệch 7 tiếng. Các hàm dưới đây tự động chuẩn hóa chuỗi UTC và hiển thị
+   đúng múi giờ Việt Nam (UTC+7).
+   ========================================================= */
+
+export function parseBackendDate(dateInput?: string | number | Date | null): Date {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) return dateInput;
+  if (typeof dateInput === 'number') return new Date(dateInput);
+
+  const str = String(dateInput).trim();
+  if (!str) return new Date();
+
+  // Nếu chuỗi có định dạng ISO (YYYY-MM-DDTHH:mm:ss...) hoặc YYYY-MM-DD HH:mm:ss mà chưa có Z hoặc +HH:mm
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(str);
+  const isIsoDateTime = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(str);
+
+  const normalized = !hasTimezone && isIsoDateTime ? `${str.replace(' ', 'T')}Z` : str;
+  const parsed = new Date(normalized);
+  return isNaN(parsed.getTime()) ? new Date(str) : parsed;
+}
+
+export function getVietnamDateParts(dateInput?: string | number | Date | null): {
+  day: string;
+  month: string;
+  year: string;
+  hours: string;
+  minutes: string;
+  seconds: string;
+} {
+  const date = parseBackendDate(dateInput);
+  const utcMs = date.getTime();
+  const validMs = isNaN(utcMs) ? Date.now() : utcMs;
+  // Cộng 7 tiếng (UTC+7) rồi đọc qua getUTC* để luôn cố định giờ Việt Nam bất kể múi giờ cài đặt trên máy
+  const vnDate = new Date(validMs + 7 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  return {
+    day: pad(vnDate.getUTCDate()),
+    month: pad(vnDate.getUTCMonth() + 1),
+    year: String(vnDate.getUTCFullYear()),
+    hours: pad(vnDate.getUTCHours()),
+    minutes: pad(vnDate.getUTCMinutes()),
+    seconds: pad(vnDate.getUTCSeconds()),
+  };
+}
+
+export function formatVietnamDate(
+  dateInput?: string | number | Date | null,
+  includeYear: boolean = true
+): string {
+  if (!dateInput) return '';
+  const { day, month, year } = getVietnamDateParts(dateInput);
+  return includeYear ? `${day}/${month}/${year}` : `${day}/${month}`;
+}
+
+export function formatVietnamTime(dateInput?: string | number | Date | null): string {
+  const { hours, minutes } = getVietnamDateParts(dateInput);
+  return `${hours}:${minutes}`;
+}
+
+export function formatVietnamDateTime(dateInput?: string | number | Date | null): string {
+  if (!dateInput) return 'Vừa xong';
+  const { hours, minutes, day, month, year } = getVietnamDateParts(dateInput);
+  return `${hours}:${minutes} · ${day}/${month}/${year}`;
+}
+
+export function formatShortTicketCode(rawId?: string | null): string {
+  const clean = String(rawId || '').trim();
+  if (!clean) return 'CHỜ CẤP MÃ';
+  // Loại bỏ tiền tố CF- hoặc # nếu có để đồng bộ với cổng Web (#8ký_tự_đầu)
+  const stripped = clean.replace(/^(CF-|#)/i, '');
+  const shortHex = stripped.includes('-')
+    ? stripped.split('-')[0]
+    : stripped.slice(0, 8);
+  return `#${shortHex.toLowerCase()}`;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

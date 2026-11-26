@@ -166,7 +166,8 @@ useEffect(() => {
           subCategoryNames: subCatNames,
           categoryName: invalidIssue
             ? 'Ảnh không hợp lệ / Không phải sự cố đô thị'
-            : result.categoryName || effectiveSubCatName || 'Sự cố hạ tầng',
+            : result.categoryName ||
+              (subCatNames.length > 0 ? subCatNames.join(', ') : 'Sự cố hạ tầng'),
           priority: effectivePriority,
           severity: effectivePriority,
         },
@@ -443,59 +444,91 @@ useEffect(() => {
               ) : null}
 
               <View style={styles.resultRowsList}>
-                {/* 1. Danh mục sự cố */}
-                <View style={styles.resultRow}>
-                  <Text style={styles.rowLabel}>Danh mục sự cố</Text>
-                  <Text style={[styles.rowValue, { color: '#0f172a' }]}>
-                    {draft.aiAnalysis?.categoryName ||
-                      draft.aiAnalysis?.categoryId ||
-                      'Chưa xác định'}
-                  </Text>
-                </View>
-
-                {/* 2. Chi tiết sự cố (hỗ trợ cả 1 hoặc nhiều subcategories) */}
+                {/* 1. Danh mục sự cố (hỗ trợ cả 1 hoặc nhiều danh mục AI nhận diện) */}
                 {(() => {
                   const names: string[] = [];
-                  if (Array.isArray(draft.aiAnalysis?.subCategoryNames) && draft.aiAnalysis.subCategoryNames.length > 0) {
+                  if (
+                    Array.isArray(draft.aiAnalysis?.subCategoryNames) &&
+                    draft.aiAnalysis.subCategoryNames.length > 0
+                  ) {
                     names.push(...draft.aiAnalysis.subCategoryNames.filter(Boolean));
                   } else if (draft.aiAnalysis?.subCategoryName) {
                     names.push(draft.aiAnalysis.subCategoryName);
-                  } else if (draft.aiAnalysis?.subCategoryId) {
-                    names.push(draft.aiAnalysis.subCategoryId);
+                  } else if (draft.aiAnalysis?.categoryName) {
+                    names.push(draft.aiAnalysis.categoryName);
                   }
 
-                  if (names.length === 0) return null;
+                  const parentCatName = draft.aiAnalysis?.categoryName?.trim();
+                  const hasDistinctParentCat =
+                    Boolean(parentCatName) &&
+                    names.length > 0 &&
+                    !names.some((n) => n.trim().toLowerCase() === parentCatName?.toLowerCase()) &&
+                    parentCatName !== names.join(', ');
 
-                  if (names.length === 1) {
+                  if (names.length > 1 && !hasDistinctParentCat) {
                     return (
-                      <View style={styles.resultRow}>
-                        <Text style={styles.rowLabel}>Chi tiết sự cố</Text>
-                        <Text style={[styles.rowValue, { color: '#ea580c' }]}>
-                          {names[0]}
-                        </Text>
+                      <View style={styles.multiSubCatBlock}>
+                        <View style={styles.multiSubCatHeader}>
+                          <Text style={styles.rowLabel}>
+                            Danh mục sự cố ({names.length} mục nhận diện)
+                          </Text>
+                          <View style={styles.multiBadgeTag}>
+                            <Text style={styles.multiBadgeText}>ĐA LĨNH VỰC</Text>
+                          </View>
+                        </View>
+                        <View style={styles.subCatChipsWrap}>
+                          {names.map((n, idx) => (
+                            <View key={idx} style={styles.subCatChip}>
+                              <Ionicons name="pricetag" size={12} color="#ea580c" />
+                              <Text style={styles.subCatChipText}>{n}</Text>
+                            </View>
+                          ))}
+                        </View>
                       </View>
                     );
                   }
 
                   return (
-                    <View style={styles.multiSubCatBlock}>
-                      <View style={styles.multiSubCatHeader}>
-                        <Text style={styles.rowLabel}>
-                          Chi tiết sự cố ({names.length} mục nhận diện)
+                    <>
+                      <View style={styles.resultRow}>
+                        <Text style={styles.rowLabel}>Danh mục sự cố</Text>
+                        <Text style={[styles.rowValue, { color: '#0f172a' }]}>
+                          {parentCatName ||
+                            names[0] ||
+                            draft.aiAnalysis?.categoryId ||
+                            'Chưa xác định'}
                         </Text>
-                        <View style={styles.multiBadgeTag}>
-                          <Text style={styles.multiBadgeText}>ĐA LĨNH VỰC</Text>
+                      </View>
+
+                      {/* 2. Chi tiết sự cố (chỉ hiển thị khi khác với Danh mục sự cố để tránh trùng lặp) */}
+                      {hasDistinctParentCat && names.length === 1 ? (
+                        <View style={styles.resultRow}>
+                          <Text style={styles.rowLabel}>Chi tiết sự cố</Text>
+                          <Text style={[styles.rowValue, { color: '#ea580c' }]}>
+                            {names[0]}
+                          </Text>
                         </View>
-                      </View>
-                      <View style={styles.subCatChipsWrap}>
-                        {names.map((n, idx) => (
-                          <View key={idx} style={styles.subCatChip}>
-                            <Ionicons name="pricetag" size={12} color="#ea580c" />
-                            <Text style={styles.subCatChipText}>{n}</Text>
+                      ) : hasDistinctParentCat && names.length > 1 ? (
+                        <View style={styles.multiSubCatBlock}>
+                          <View style={styles.multiSubCatHeader}>
+                            <Text style={styles.rowLabel}>
+                              Chi tiết sự cố ({names.length} mục nhận diện)
+                            </Text>
+                            <View style={styles.multiBadgeTag}>
+                              <Text style={styles.multiBadgeText}>ĐA LĨNH VỰC</Text>
+                            </View>
                           </View>
-                        ))}
-                      </View>
-                    </View>
+                          <View style={styles.subCatChipsWrap}>
+                            {names.map((n, idx) => (
+                              <View key={idx} style={styles.subCatChip}>
+                                <Ionicons name="pricetag" size={12} color="#ea580c" />
+                                <Text style={styles.subCatChipText}>{n}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
+                    </>
                   );
                 })()}
 
